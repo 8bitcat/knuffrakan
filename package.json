@@ -1,0 +1,10 @@
+{
+  "name": "knuffrakan",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "KNUFFRAKAN — packracing i 300 km/h genom snöbergen, three.js + Rapier",
+  "scripts": {
+    "start": "node tools/serve.mjs 8810"
+  }
+}

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>KNUFFRAKAN</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231e7bff'/%3E%3Ctext x='32' y='46' font-size='40' font-weight='900' font-style='italic' text-anchor='middle' fill='white' font-family='sans-serif'%3EK%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,800;1,900&family=Michroma&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=1">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.12.0/+esm"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="loading">
+  <div class="ltitle">KNUFFRAKAN</div>
+  <div id="loadtxt">Laddar…</div>
+</div>
+
+<div id="menu" class="hidden">
+  <div class="mcard">
+    <div id="menulogo"></div>
+    <p class="tag">Packracing i 300 km/h genom snöbergen. Ju längre bak du ligger, desto fortare går du — knuffa dig fram!</p>
+    <input id="namein" maxlength="16" placeholder="Ditt namn" autocomplete="off">
+    <button id="play" class="big">KÖR!</button>
+    <button id="garagebtn" class="chk">GARAGE</button>
+    <div class="keys">
+      <b>W / ↑</b> gas · <b>S / ↓</b> broms/back · <b>A D / ← →</b> styr · <b>Mellanslag</b> handbroms ·
+      <b>R</b> tillbaka på banan · <b>C</b> kamera · <b>M</b> ljud
+    </div>
+    <div id="ver"></div>
+  </div>
+</div>
+
+<div id="garage" class="hidden">
+  <h2>GARAGE</h2>
+  <div class="grow"><label>Kaross</label><div id="gshape" class="opts"></div></div>
+  <div class="grow"><label>Färger</label><div id="gpal" class="opts sws"></div><button id="gswap" class="small">⇄ byt</button></div>
+  <div class="grow"><label>Mönster</label><div id="gpat" class="opts"></div></div>
+  <div class="grow"><label>Nummer</label><input id="gnum" type="number" min="0" max="99"></div>
+  <div class="grow"><label>Sponsor</label><select id="gspon"></select></div>
+  <div class="grow end"><button id="grand" class="small">🎲 Slumpa</button><button id="gdone" class="big">KLAR</button></div>
+</div>
+
+<div id="hud" class="hidden">
+  <div id="sidebtns">
+    <button id="sb-garage" class="chk">GARAGE</button>
+    <button id="sb-cam" class="chk">KAMERA</button>
+    <button id="sb-mute" class="chk">LJUD</button>
+  </div>
+  <div id="place"><span id="placeN">–</span><span id="placeOf">/20</span><div class="plbl">PLATS</div></div>
+  <div id="raceinfo"><div id="lap">STARTGRID</div><div id="timer">0:00.00</div><div class="hb"><div id="healthbar"></div></div><div id="draft">SUG ≫</div></div>
+  <div id="status"></div>
+  <div id="flash"></div>
+  <div id="toasts"></div>
+  <canvas id="minimap" width="220" height="130"></canvas>
+  <div id="results" class="hidden"></div>
+  <div id="touch" class="hidden">
+    <div id="tl" class="tbtn">◀</div><div id="tr" class="tbtn">▶</div>
+    <div id="tb" class="tbtn">BROMS</div><div id="tg" class="tbtn">GAS</div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js?v=1"></script>
+</body>
+</html>

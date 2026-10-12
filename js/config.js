@@ -1,0 +1,47 @@
+// KNUFFRAKAN — global konfiguration.
+// PROTO bumpas vid varje släpp (nätkompatibilitet + cache-brytning).
+export const VERSION = '0.1.0';
+export const PROTO = 1;
+
+export const CONF = {
+  DT: 1 / 60,
+  GRAV: 14,             // lite tyngre än jorden — bilarna känns snärtigare
+
+  // Banan
+  DS: 4,                // samplingsavstånd längs banan (m)
+  ROAD_W: 30,           // bredd mellan kantlinjerna
+  SHOULDER: 1.2,        // asfalt utanför kantlinjen fram till muren
+  BANK_K: 55,           // dosering per krökning
+  BANK_MAX: 0.14,       // max ~8°
+
+  // Race
+  LAPS: 1,
+  BOTS: 19,             // + spelaren = 20 bilar
+  GRID_WAIT: 8,         // s på startgriden före nedräkning
+  COUNTDOWN: 3,
+  CLOSE_AFTER_WIN: 25,  // racet stänger efter ettan
+  RESULTS_T: 9,
+
+  // Packracing: ju längre bak, desto högre toppfart — fältet klumpar ihop sig
+  BASE_KMH: 305,        // ledarens toppfart
+  STEP_KMH: 4,          // + per placering bakåt (för brant ⇒ bakifrånkrockar i 100 km/h skillnad)
+  STEP_CAP: 10,
+  GAP_KMH: 70,          // extra om man tappat långt (efter krasch) — börjar efter 250 m
+  DRAFT_KMH: 26,        // suget bakom en bil
+
+  // Smällar (Δv-detektering)
+  DV_MIN: 6.5,
+  DMG_SCALE: 2.2,
+  DMG_MAX: 42,
+  DMG_CAR: 1.1,
+  DMG_WALL: 0.75,
+  TACKLE_JUICE: 1.0,    // extra knuff vid sidotackling
+};
+
+export const BOT_NAMES = [
+  'Bosse', 'Yngve', 'Siv', 'Kjell', 'Maud', 'Örjan', 'Gittan', 'Roffe', 'Berit', 'Sune',
+  'Doris', 'Ragnar', 'Lasse', 'Majken', 'Pelle', 'Svea', 'Totte', 'Inga', 'Bengan', 'Agda',
+  'Stig', 'Lotta', 'Janne', 'Elsa',
+];
+
+export const TITLES = ['Nybörjare', 'Knuffare', 'Plåtkrossare', 'Packledare', 'Oförstörbar'];

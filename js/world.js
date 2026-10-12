@@ -1,0 +1,752 @@
+// Världen: vägbana, murar (rosa betong + blå kurvväggar med stängsel), snöterräng,
+// granar, berg i diset, startportal, kurvskyltar. Grafik alltid — kolliders bara när
+// det finns en fysikvärld (värden).
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CONF } from './config.js?v=1';
+
+const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const h2 = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
+const hash1 = (n) => h2(n, n * 0.37 + 11.3);
+function vnoise(x, z) {
+  const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j;
+  const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+  const a = h2(i, j), b = h2(i + 1, j), c = h2(i, j + 1), d = h2(i + 1, j + 1);
+  return (a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v) * 2 - 1;
+}
+function fbm(x, z, oct = 4) {
+  let s = 0, a = 0.5, f = 1, n = 0;
+  for (let k = 0; k < oct; k++) { s += a * vnoise(x * f, z * f); n += a; a *= 0.5; f *= 2.03; }
+  return s / n;
+}
+
+export const GROUP_WORLD = (0x0002 << 16) | 0xffff;
+
+function canvasTex(w, h, draw, srgb = true) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  draw(cv.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(cv);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+// ---------- Vägen ----------
+// Band mellan två sidoavstånd längs hela slingan (u tvärs, v längs)
+function stripGeo(T, latA, latB, yOff, vScale, from = 0, to = T.N) {
+  const n = to - from + 1;
+  const pos = new Float32Array(n * 2 * 3), uv = new Float32Array(n * 2 * 2), idx = [];
+  for (let k = 0; k < n; k++) {
+    const i = (from + k) % T.N;
+    for (let sd = 0; sd < 2; sd++) {
+      const l = sd ? latB : latA, o = k * 2 + sd;
+      pos[o * 3] = T.px[i] + T.rx[i] * l + T.ux[i] * yOff;
+      pos[o * 3 + 1] = T.py[i] + T.ry[i] * l + T.uy[i] * yOff;
+      pos[o * 3 + 2] = T.pz[i] + T.rz[i] * l + T.uz[i] * yOff;
+      uv[o * 2] = sd; uv[o * 2 + 1] = (from + k) * T.ds / vScale;
+    }
+    if (k < n - 1) { const a = k * 2, b = a + 1, c = a + 2, d = a + 3; idx.push(a, b, c, b, d, c); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+function asphaltTex() {
+  return canvasTex(512, 512, (c, w, h) => {
+    const img = c.createImageData(w, h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const n = (Math.random() - 0.5) * 16 + fbm(x / 40, y / 40, 3) * 7;
+      const o = (y * w + x) * 4;
+      img.data[o] = 60 + n; img.data[o + 1] = 47 + n; img.data[o + 2] = 66 + n; img.data[o + 3] = 255;
+    }
+    c.putImageData(img, 0, 0);
+  });
+}
+
+function buildRoad(ctx) {
+  const { scene, track: T } = ctx;
+  const HW = T.halfW, W2 = CONF.ROAD_W / 2;
+  const tex = asphaltTex();
+  tex.wrapS = THREE.ClampToEdgeWrapping; tex.wrapT = THREE.RepeatWrapping;
+  const roadGeo = stripGeo(T, -HW, HW, 0, HW * 2);
+  const road = new THREE.Mesh(roadGeo, new THREE.MeshLambertMaterial({ map: tex }));
+  road.receiveShadow = true;
+  scene.add(road);
+
+  // Kantlinjer
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xf4eef2, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  for (const sgn of [-1, 1]) {
+    const a = sgn * (W2 - 0.18), b = sgn * (W2 - 0.52);
+    scene.add(new THREE.Mesh(stripGeo(T, Math.min(a, b), Math.max(a, b), 0.015, 10), lineMat));
+  }
+
+  // Start-/mållinje (rutig) tvärs banan
+  const checker = canvasTex(256, 32, (c) => {
+    for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { c.fillStyle = (x + y) % 2 ? '#f2f2f2' : '#141414'; c.fillRect(x * 16, y * 16, 16, 16); }
+  });
+  const sl = new THREE.Mesh(planeOnRoad(T, -1.6, 1.6, -W2, W2, 0.025), new THREE.MeshLambertMaterial({ map: checker, polygonOffset: true, polygonOffsetFactor: -3 }));
+  scene.add(sl);
+
+  // Startrutor bakom linjen
+  const slotMat = new THREE.MeshBasicMaterial({ color: 0xf4eef2, polygonOffset: true, polygonOffsetFactor: -2 });
+  const slotGeos = [];
+  for (const g of gridSlots(T)) {
+    slotGeos.push(planeOnRoad(T, g.s + 2.6, g.s + 2.9, g.lat - 2.2, g.lat + 2.2, 0.02));
+    for (const e of [-2.2, 2.05]) slotGeos.push(planeOnRoad(T, g.s - 2.6, g.s + 2.9, g.lat + e, g.lat + e + 0.15, 0.02));
+  }
+  scene.add(new THREE.Mesh(mergeGeometries(slotGeos), slotMat));
+
+  // Fysik: vägbanan som trianglar
+  if (ctx.world) {
+    const p = roadGeo.attributes.position.array, ix = roadGeo.index.array;
+    const cd = ctx.RAPIER.ColliderDesc.trimesh(new Float32Array(p), new Uint32Array(ix))
+      .setFriction(0.6).setRestitution(0.1).setCollisionGroups(GROUP_WORLD);
+    ctx.world.createCollider(cd, ctx.fixedBody);
+  }
+}
+
+// Liten rektangel på vägbanan mellan s0..s1 och lat0..lat1
+function planeOnRoad(T, s0, s1, l0, l1, yOff) {
+  const pts = [];
+  const f = {};
+  for (const [s, l] of [[s0, l0], [s0, l1], [s1, l0], [s1, l1]]) {
+    T.sampleAt(s, f);
+    pts.push(f.x + f.rx * l + f.ux * yOff, f.y + f.ry * l + f.uy * yOff, f.z + f.rz * l + f.uz * yOff);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2));
+  g.setIndex([0, 1, 2, 1, 3, 2]);
+  g.computeVertexNormals();
+  return g;
+}
+
+// Startrutorna: 4 i bredd, rader bakåt från linjen
+export function gridSlots(T, count = 24) {
+  const out = [];
+  const lanes = [-10.5, -3.5, 3.5, 10.5];
+  for (let k = 0; k < count; k++) {
+    const row = Math.floor(k / 4), col = k % 4;
+    out.push({ s: T.wrapS(-12 - row * 10 - (col % 2) * 3), lat: lanes[col] });
+  }
+  return out;
+}
+
+// ---------- Murar ----------
+const CONCRETE = [[0, 0], [0.08, 0.28], [0.24, 0.86], [0.3, 1.1], [0.62, 1.1], [0.68, 0.86], [0.84, 0.28], [0.92, 0]];
+const SAFER = [[0, -0.05], [0, 1.95], [0.45, 1.95], [0.45, -0.05]];
+
+function extrude(T, list, side, profile, base, uScale) {
+  const P = profile.length, M = list.length;
+  const pos = new Float32Array(M * P * 3), uv = new Float32Array(M * P * 2), idx = [];
+  const hMax = Math.max(...profile.map(p => p[1]));
+  for (let m = 0; m < M; m++) {
+    const i = list[m];
+    for (let p = 0; p < P; p++) {
+      const lat = side * (base + profile[p][0]), h = profile[p][1], o = m * P + p;
+      pos[o * 3] = T.px[i] + T.rx[i] * lat + T.ux[i] * h;
+      pos[o * 3 + 1] = T.py[i] + T.ry[i] * lat + T.uy[i] * h;
+      pos[o * 3 + 2] = T.pz[i] + T.rz[i] * lat + T.uz[i] * h;
+      uv[o * 2] = m * T.ds / uScale; uv[o * 2 + 1] = h / hMax;
+    }
+    if (m < M - 1) for (let p = 0; p < P - 1; p++) {
+      const a = m * P + p, b = a + 1, c = a + P, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+function chevronTex() {
+  const t = canvasTex(256, 128, (c, w, h) => {
+    c.fillStyle = '#123b86'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#0d2c66'; c.fillRect(0, 0, w, 10); c.fillRect(0, h - 14, w, 14);
+    c.fillStyle = '#f4f6ff';
+    for (let x = 0; x < w; x += 64) {
+      c.beginPath();
+      c.moveTo(x + 14, 26); c.lineTo(x + 30, 26); c.lineTo(x + 50, 64); c.lineTo(x + 30, 102); c.lineTo(x + 14, 102); c.lineTo(x + 34, 64);
+      c.closePath(); c.fill();
+    }
+  });
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+
+function fenceTex() {
+  const t = canvasTex(128, 128, (c, w, h) => {
+    c.clearRect(0, 0, w, h);
+    c.strokeStyle = 'rgba(70,74,88,0.95)'; c.lineWidth = 2.2;
+    for (let k = -h; k < w + h; k += 16) {
+      c.beginPath(); c.moveTo(k, 0); c.lineTo(k + h, h); c.stroke();
+      c.beginPath(); c.moveTo(k + h, 0); c.lineTo(k, h); c.stroke();
+    }
+    c.fillStyle = 'rgba(60,64,78,1)'; c.fillRect(0, 0, w, 5);
+  });
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+
+function buildBarriers(ctx) {
+  const { scene, track: T } = ctx;
+  const N = T.N, base = T.halfW;
+  const concMat = new THREE.MeshLambertMaterial({ color: 0xe2c3c8, flatShading: true, side: THREE.DoubleSide });
+  const saferMat = new THREE.MeshLambertMaterial({ map: chevronTex(), side: THREE.DoubleSide });
+  const fenceMat = new THREE.MeshLambertMaterial({ map: fenceTex(), transparent: true, alphaTest: 0.35, side: THREE.DoubleSide, depthWrite: false });
+  const postGeo = new THREE.CylinderGeometry(0.07, 0.07, 3.2, 5);
+  const posts = [];
+  const types = { '-1': new Uint8Array(N), '1': new Uint8Array(N) };
+
+  for (const side of [-1, 1]) {
+    // blå vägg på ytterkanten av kurvorna
+    const raw = new Uint8Array(N);
+    for (let i = 0; i < N; i++) raw[i] = side * T.k[i] < -1 / 1300 ? 1 : 0;
+    const typ = types[side];
+    for (let i = 0; i < N; i++) {
+      let v = 0;
+      for (let o = -12; o <= 12 && !v; o += 3) v = raw[(i + o + N) % N];
+      typ[i] = v;
+    }
+    // runs med samma typ
+    let start = 0;
+    while (start < N && typ[start] === typ[(start - 1 + N) % N]) start++;
+    if (start >= N) start = 0;
+    let i = start, run = [i];
+    const flush = () => {
+      if (run.length < 2) return;
+      const t = typ[run[0]];
+      const g = extrude(T, run, side, t ? SAFER : CONCRETE, base, t ? 4.2 : 6);
+      const m = new THREE.Mesh(g, t ? saferMat : concMat);
+      m.castShadow = true; m.receiveShadow = true;
+      scene.add(m);
+      if (t) {
+        scene.add(new THREE.Mesh(extrude(T, run, side, [[0.25, 1.95], [0.25, 4.9]], base, 4.5), fenceMat));
+        for (let k = 0; k < run.length; k += 3) posts.push([run[k], side]);
+      }
+    };
+    for (let n = 1; n <= N; n++) {
+      const j = (start + n) % N;
+      run.push(j);
+      if (typ[j] !== typ[run[0]] || n === N) { flush(); run = [j]; }
+    }
+  }
+  // stängselstolpar
+  const postInst = new THREE.InstancedMesh(postGeo, new THREE.MeshLambertMaterial({ color: 0x51566a }), posts.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  posts.forEach(([i, side], k) => {
+    const lat = side * (base + 0.3);
+    v.set(T.px[i] + T.rx[i] * lat, T.py[i] + T.ry[i] * lat + 3.4, T.pz[i] + T.rz[i] * lat);
+    m4.compose(v, q, one);
+    postInst.setMatrixAt(k, m4);
+  });
+  scene.add(postInst);
+
+  // Fysik: lådor var 8:e meter, orienterade efter banan
+  if (ctx.world) {
+    const R = new THREE.Vector3(), U = new THREE.Vector3(), B = new THREE.Vector3(), M = new THREE.Matrix4(), Q = new THREE.Quaternion();
+    for (let i = 0; i < N; i += 2) {
+      for (const side of [-1, 1]) {
+        const h = types[side][i] ? 2.0 : 1.15, th = 0.5;
+        const lat = side * (base + th);
+        R.set(T.rx[i], T.ry[i], T.rz[i]); U.set(T.ux[i], T.uy[i], T.uz[i]); B.set(-T.fx[i], -T.fy[i], -T.fz[i]);
+        M.makeBasis(R, U, B); Q.setFromRotationMatrix(M);
+        const cx = T.px[i] + R.x * lat + U.x * h / 2, cy = T.py[i] + R.y * lat + U.y * h / 2, cz = T.pz[i] + R.z * lat + U.z * h / 2;
+        const cd = ctx.RAPIER.ColliderDesc.cuboid(th, h / 2, T.ds + 0.35)
+          .setTranslation(cx, cy, cz).setRotation({ x: Q.x, y: Q.y, z: Q.z, w: Q.w })
+          .setFriction(0.25).setRestitution(0.15).setCollisionGroups(GROUP_WORLD);
+        ctx.world.createCollider(cd, ctx.fixedBody);
+      }
+    }
+  }
+  return types;
+}
+
+// ---------- Terräng ----------
+function natural(x, z, D) {
+  let h = 10 * fbm(x * 0.0012 + 3.1, z * 0.0012 - 1.7, 4) + 3 * fbm(x * 0.006, z * 0.006, 2);
+  const m = Math.max(0, D - 150);
+  h += m * 0.15 * (0.75 + 0.5 * fbm(x * 0.0021 + 9.1, z * 0.0021 + 2.3, 3)) + (m * 0.01) ** 2 * 2.2;
+  return h;
+}
+
+function buildTerrain(ctx) {
+  const { scene, track: T } = ctx;
+  const { minX, maxX, minZ, maxZ } = T.bounds;
+  const MARGIN = 1100, CELL = 10;
+  const x0 = minX - MARGIN, z0 = minZ - MARGIN;
+  const nx = Math.ceil((maxX - minX + 2 * MARGIN) / CELL) + 1;
+  const nz = Math.ceil((maxZ - minZ + 2 * MARGIN) / CELL) + 1;
+  const NV = nx * nz;
+  const H = new Float32Array(NV), Dist = new Float32Array(NV);
+  const N = T.N, px = T.px, pz = T.pz;
+
+  // Grovt rutnät med global närmaste-sökning, sedan lokal förfining per punkt
+  const CN = 4;
+  const cnx = Math.ceil(nx / CN) + 1, cnz = Math.ceil(nz / CN) + 1;
+  const cIdx = new Int32Array(cnx * cnz);
+  for (let b = 0; b < cnz; b++) for (let a = 0; a < cnx; a++) {
+    const x = x0 + a * CN * CELL, z = z0 + b * CN * CELL;
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < N; i += 4) { const d = (px[i] - x) ** 2 + (pz[i] - z) ** 2; if (d < bd) { bd = d; best = i; } }
+    cIdx[b * cnx + a] = best;
+  }
+  const HWb = T.halfW;
+  for (let iz = 0; iz < nz; iz++) {
+    const b = Math.floor(iz / CN);
+    for (let ix = 0; ix < nx; ix++) {
+      const a = Math.floor(ix / CN);
+      const x = x0 + ix * CELL, z = z0 + iz * CELL;
+      let best = 0, bd = Infinity;
+      for (const ci of [cIdx[b * cnx + a], cIdx[b * cnx + a + 1], cIdx[(b + 1) * cnx + a], cIdx[(b + 1) * cnx + a + 1]]) {
+        for (let o = -16; o <= 16; o++) {
+          const i = (ci + o + N) % N;
+          const d = (px[i] - x) ** 2 + (pz[i] - z) ** 2;
+          if (d < bd) { bd = d; best = i; }
+        }
+      }
+      const i = best, dx = x - px[i], dz = z - pz[i];
+      const lat = dx * (-T.hz[i]) + dz * T.hx[i];
+      const D = Math.sqrt(bd), al = Math.abs(lat);
+      const latC = Math.max(-HWb - 1, Math.min(HWb + 1, lat));
+      const yRoad = T.py[i] + latC * T.slope[i];
+      let y;
+      if (al < HWb + 3.5 && D < HWb + 6) y = yRoad - 0.6;
+      else {
+        const t = smoothstep(HWb + 4, HWb + 170, D);
+        const bankUp = Math.min(1.4, Math.max(0, (D - HWb - 3.5) * 0.1));
+        y = (yRoad - 0.4 + bankUp) * (1 - t) + natural(x, z, D) * t;
+      }
+      const o = iz * nx + ix;
+      H[o] = y; Dist[o] = D;
+    }
+  }
+
+  const pos = new Float32Array(NV * 3);
+  for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
+    const o = iz * nx + ix;
+    pos[o * 3] = x0 + ix * CELL; pos[o * 3 + 1] = H[o]; pos[o * 3 + 2] = z0 + iz * CELL;
+  }
+  const idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
+  let k = 0;
+  for (let iz = 0; iz < nz - 1; iz++) for (let ix = 0; ix < nx - 1; ix++) {
+    const a = iz * nx + ix, b = a + 1, c = a + nx, d = c + 1;
+    idx[k++] = a; idx[k++] = c; idx[k++] = b;
+    idx[k++] = b; idx[k++] = c; idx[k++] = d;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.computeVertexNormals();
+  // Färg: snö, lite rosa sten i branterna
+  const nor = g.attributes.normal.array;
+  const col = new Float32Array(NV * 3);
+  const snow = new THREE.Color(0xf7eef3), snow2 = new THREE.Color(0xeedde6), rock = new THREE.Color(0xb39aa6), c = new THREE.Color();
+  for (let o = 0; o < NV; o++) {
+    const ny = nor[o * 3 + 1];
+    const x = pos[o * 3], z = pos[o * 3 + 2];
+    c.copy(snow).lerp(snow2, 0.5 + 0.5 * fbm(x * 0.01, z * 0.01, 2));
+    c.lerp(rock, smoothstep(0.86, 0.62, ny));
+    col[o * 3] = c.r; col[o * 3 + 1] = c.g; col[o * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+
+  if (ctx.world) {
+    const cd = ctx.RAPIER.ColliderDesc.trimesh(pos, idx).setFriction(0.5).setRestitution(0.05).setCollisionGroups(GROUP_WORLD);
+    ctx.world.createCollider(cd, ctx.fixedBody);
+  }
+
+  const heightAt = (x, z) => {
+    const fx = (x - x0) / CELL, fz = (z - z0) / CELL;
+    const ix = Math.max(0, Math.min(nx - 2, Math.floor(fx))), iz = Math.max(0, Math.min(nz - 2, Math.floor(fz)));
+    const tx = Math.min(1, Math.max(0, fx - ix)), tz = Math.min(1, Math.max(0, fz - iz));
+    const a = H[iz * nx + ix], b = H[iz * nx + ix + 1], cc = H[(iz + 1) * nx + ix], d = H[(iz + 1) * nx + ix + 1];
+    // samma triangulering som meshen
+    if (tx + tz <= 1) return a + (b - a) * tx + (cc - a) * tz;
+    return d + (cc - d) * (1 - tx) + (b - d) * (1 - tz);
+  };
+  const distAt = (x, z) => {
+    const ix = Math.max(0, Math.min(nx - 1, Math.round((x - x0) / CELL))), iz = Math.max(0, Math.min(nz - 1, Math.round((z - z0) / CELL)));
+    return Dist[iz * nx + ix];
+  };
+  return { heightAt, distAt, x0, z0, x1: x0 + (nx - 1) * CELL, z1: z0 + (nz - 1) * CELL };
+}
+
+// ---------- Granar ----------
+function pineGeo(snowy) {
+  const parts = [];
+  const colored = (geo, hex) => {
+    const c = new THREE.Color(hex), n = geo.attributes.position.count, a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+    geo.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    geo.deleteAttribute('uv');
+    return geo;
+  };
+  parts.push(colored(new THREE.CylinderGeometry(0.32, 0.55, 7, 6).translate(0, 3.5, 0), 0x3a2622));
+  const green = 0x2b4532, snow = snowy ? 0xf2dce6 : 0x33553d;
+  for (let t = 0; t < 4; t++) {
+    const r = 3.3 - t * 0.72, h = 3.3 - t * 0.35, y = 3.2 + t * 2.15;
+    parts.push(colored(new THREE.ConeGeometry(r, h, 7, 1).translate(0, y + h / 2, 0), green));
+    parts.push(colored(new THREE.ConeGeometry(r * 0.9, h * 0.84, 7, 1).translate(0, y + h * 0.58, 0), snow));
+  }
+  const g = mergeGeometries(parts);
+  g.computeVertexNormals();
+  return g;
+}
+
+function buildTrees(ctx, terr) {
+  const { scene, track: T } = ctx;
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const geos = [pineGeo(true), pineGeo(false)];
+  const CH = 600; // chunkstorlek för culling
+  const chunks = new Map();
+  const HWb = T.halfW;
+  let seed = 1;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const W = terr.x1 - terr.x0, D = terr.z1 - terr.z0;
+  let placed = 0;
+  for (let n = 0; n < 60000 && placed < 5200; n++) {
+    const x = terr.x0 + rnd() * W, z = terr.z0 + rnd() * D;
+    const dist = terr.distAt(x, z);
+    if (dist < HWb + 9) continue;
+    if (dist > 1000) continue;
+    // tätare nära vägen, glesare längre bort, i dungar
+    const dens = fbm(x * 0.006 + 4.4, z * 0.006 - 2.2, 3) * 0.6 + 0.35 - Math.min(0.5, dist / 1600);
+    if (rnd() > dens + (dist < 60 ? 0.35 : 0)) continue;
+    // inte på startplattan
+    if (Math.hypot(x, z) < 140 && dist < 60) continue;
+    const y = terr.heightAt(x, z);
+    const type = rnd() < 0.62 ? 0 : 1;
+    const key = Math.floor(x / CH) + '|' + Math.floor(z / CH) + '|' + type;
+    if (!chunks.has(key)) chunks.set(key, { type, list: [], cx: (Math.floor(x / CH) + 0.5) * CH, cz: (Math.floor(z / CH) + 0.5) * CH });
+    chunks.get(key).list.push([x, y - 0.3, z, 0.85 + rnd() * 0.9, rnd() * 6.28]);
+    placed++;
+  }
+  const out = [];
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  for (const ch of chunks.values()) {
+    const inst = new THREE.InstancedMesh(geos[ch.type], mat, ch.list.length);
+    ch.list.forEach(([x, y, z, sc, r], k) => {
+      q.setFromAxisAngle(UP, r);
+      m4.compose(v.set(x, y, z), q, s.set(sc, sc * (0.9 + (r % 1) * 0.35), sc));
+      inst.setMatrixAt(k, m4);
+    });
+    inst.computeBoundingSphere();
+    inst.castShadow = true;
+    scene.add(inst);
+    out.push({ mesh: inst, cx: ch.cx, cz: ch.cz });
+  }
+  return out;
+}
+
+// Röda lövträd vid starten (som i förlagan)
+function buildRedTrees(ctx, terr) {
+  const parts = [];
+  const blob = (r, x, y, z) => new THREE.IcosahedronGeometry(r, 0).translate(x, y, z);
+  const trunk = new THREE.CylinderGeometry(0.4, 0.6, 6, 6).translate(0, 3, 0);
+  const crown = mergeGeometries([blob(3.4, 0, 8, 0), blob(2.6, 2.4, 7, 1), blob(2.5, -2.2, 7.4, -1), blob(2.2, 0.5, 10, -1.5)]);
+  const tm = new THREE.MeshLambertMaterial({ color: 0x4a2a24, flatShading: true });
+  const cm = new THREE.MeshLambertMaterial({ color: 0xb8283a, flatShading: true });
+  const T = ctx.track;
+  const spots = [[-140, -38], [-90, -42], [-200, 40], [-60, 44], [60, -45], [150, -40], [120, 46], [-250, -45]];
+  for (const [s, lat] of spots) {
+    const f = T.sampleAt(T.wrapS(s));
+    const x = f.x + f.rx * lat, z = f.z + f.rz * lat, y = terr.heightAt(x, z);
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(trunk, tm), new THREE.Mesh(crown, cm));
+    g.position.set(x, y - 0.2, z);
+    g.rotation.y = s;
+    g.scale.setScalar(1.1);
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    ctx.scene.add(g);
+  }
+  parts.length = 0;
+}
+
+// ---------- Berg i diset ----------
+function buildMountains(ctx, terr) {
+  const cx = (terr.x0 + terr.x1) / 2, cz = (terr.z0 + terr.z1) / 2;
+  const R0 = Math.max(terr.x1 - terr.x0, terr.z1 - terr.z0) * 0.55;
+  const geos = [];
+  const snowC = new THREE.Color(0xf6e8ef), rockC = new THREE.Color(0xc2a7b3), lowC = new THREE.Color(0xd9c4cd);
+  for (let k = 0; k < 44; k++) {
+    const a = (k / 44) * Math.PI * 2 + hash1(k) * 0.12;
+    const r = R0 + 300 + hash1(k + 50) * 1800;
+    const height = 380 + hash1(k + 90) * 650, rad = 800 + hash1(k + 130) * 900;
+    const g = new THREE.ConeGeometry(rad, height, 9, 4).toNonIndexed();
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      if (y < height / 2 - 1) {
+        const jx = p.getX(i), jz = p.getZ(i);
+        const n = vnoise(jx * 0.004 + k * 3.1, jz * 0.004 + y * 0.003) * 0.22;
+        p.setX(i, jx * (1 + n)); p.setZ(i, jz * (1 + n));
+        p.setY(i, y + n * height * 0.25);
+      }
+    }
+    const col = new Float32Array(p.count * 3), c = new THREE.Color();
+    for (let i = 0; i < p.count; i += 3) {
+      const ym = (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) / 3;
+      const t = (ym + height / 2) / height;
+      c.copy(t > 0.55 + hash1(i + k) * 0.12 ? snowC : (t < 0.2 ? lowC : rockC));
+      for (let j = 0; j < 3; j++) { col[(i + j) * 3] = c.r; col[(i + j) * 3 + 1] = c.g; col[(i + j) * 3 + 2] = c.b; }
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.deleteAttribute('uv');
+    g.translate(cx + Math.cos(a) * r * 1.25, height / 2 - 60, cz + Math.sin(a) * r);
+    geos.push(g);
+  }
+  const g = mergeGeometries(geos);
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  m.frustumCulled = false;
+  ctx.scene.add(m);
+}
+
+// ---------- Startportal ----------
+function trussTex() {
+  const t = canvasTex(64, 256, (c, w, h) => {
+    c.clearRect(0, 0, w, h);
+    c.strokeStyle = '#16171d'; c.lineWidth = 7;
+    c.strokeRect(3, -4, w - 6, h + 8);
+    c.lineWidth = 4;
+    for (let y = 0; y < h; y += 64) { c.beginPath(); c.moveTo(4, y); c.lineTo(w - 4, y + 32); c.lineTo(4, y + 64); c.stroke(); c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+export function logoCanvas(w = 1024, h = 300) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const c = cv.getContext('2d');
+  c.clearRect(0, 0, w, h);
+  c.textAlign = 'center';
+  c.lineJoin = 'round';
+  // KNUFF — vitt på svart
+  c.font = `italic 900 ${h * 0.36}px "Exo 2", system-ui, sans-serif`;
+  const tw = c.measureText('KNUFF').width;
+  c.fillStyle = '#05060a';
+  c.beginPath(); c.moveTo(w / 2 - tw / 2 - 40, h * 0.04); c.lineTo(w / 2 + tw / 2 + 50, h * 0.04); c.lineTo(w / 2 + tw / 2 + 30, h * 0.42); c.lineTo(w / 2 - tw / 2 - 60, h * 0.42); c.closePath(); c.fill();
+  c.fillStyle = '#ffffff';
+  c.fillText('KNUFF', w / 2, h * 0.37);
+  // RAKAN — blå gradient med svart kant
+  c.font = `italic 900 ${h * 0.56}px "Exo 2", system-ui, sans-serif`;
+  const g = c.createLinearGradient(0, h * 0.45, 0, h * 0.95);
+  g.addColorStop(0, '#9fd8ff'); g.addColorStop(0.45, '#1e7bff'); g.addColorStop(1, '#0a2f9e');
+  c.lineWidth = h * 0.06; c.strokeStyle = '#05060a';
+  c.strokeText('RAKAN', w / 2, h * 0.92);
+  c.lineWidth = h * 0.015; c.strokeStyle = '#d8f0ff';
+  c.fillStyle = g;
+  c.fillText('RAKAN', w / 2, h * 0.92);
+  c.strokeText('RAKAN', w / 2, h * 0.92);
+  return cv;
+}
+
+function buildGantry(ctx) {
+  const { scene, track: T } = ctx;
+  const f = T.sampleAt(0);
+  const grp = new THREE.Group();
+  const M = new THREE.Matrix4().makeBasis(
+    new THREE.Vector3(f.rx, f.ry, f.rz), new THREE.Vector3(f.ux, f.uy, f.uz), new THREE.Vector3(-f.fx, -f.fy, -f.fz));
+  grp.quaternion.setFromRotationMatrix(M);
+  grp.position.set(f.x, f.y, f.z);
+  scene.add(grp);
+
+  const span = T.halfW + 3;
+  const tt = trussTex();
+  const towerMat = new THREE.MeshLambertMaterial({ map: tt, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide });
+  for (const sx of [-span, span]) {
+    const tex = tt.clone(); tex.needsUpdate = true; tex.repeat.set(1, 3);
+    const tower = new THREE.Mesh(new THREE.BoxGeometry(1.6, 13, 1.6), new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+    tower.position.set(sx, 6.5, 0);
+    grp.add(tower);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 2.4), new THREE.MeshLambertMaterial({ color: 0x24252c }));
+    foot.position.set(sx, 0.3, 0);
+    grp.add(foot);
+  }
+  const beamTex = tt.clone(); beamTex.needsUpdate = true; beamTex.rotation = Math.PI / 2; beamTex.repeat.set(1, 12);
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(span * 2 + 1.6, 1.4, 1.4), new THREE.MeshLambertMaterial({ map: beamTex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+  beam.position.set(0, 11.6, 0);
+  grp.add(beam);
+  // rutiga banderoller under balken
+  const chk = canvasTex(512, 64, (c) => {
+    for (let x = 0; x < 64; x++) for (let y = 0; y < 8; y++) { c.fillStyle = (x + y) % 2 ? '#ececf0' : '#26262c'; c.fillRect(x * 8, y * 8, 8, 8); }
+  });
+  for (const sx of [-1, 1]) {
+    const b = new THREE.Mesh(new THREE.PlaneGeometry(span - 6, 3.2), new THREE.MeshLambertMaterial({ map: chk, side: THREE.DoubleSide }));
+    b.position.set(sx * (span / 2 + 3), 9.6, 0.1);
+    grp.add(b);
+  }
+  // loggan
+  const logo = new THREE.CanvasTexture(logoCanvas());
+  logo.colorSpace = THREE.SRGBColorSpace;
+  // loggan läsbar från båda hållen (två plan rygg mot rygg)
+  const lm = new THREE.MeshBasicMaterial({ map: logo, transparent: true, toneMapped: false, fog: false });
+  for (const back of [false, true]) {
+    const lg = new THREE.Mesh(new THREE.PlaneGeometry(20, 5.9), lm);
+    lg.position.set(0, 12.6, back ? -0.8 : 0.8);
+    if (back) lg.rotation.y = Math.PI;
+    grp.add(lg);
+  }
+  // startljus
+  const lights = [];
+  for (let k = 0; k < 5; k++) {
+    const mm = new THREE.MeshBasicMaterial({ color: 0x330808, toneMapped: false });
+    const l = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16), mm);
+    l.position.set((k - 2) * 1.3, 10.3, 0.75); // lokal +z = mot bilarna bakom linjen
+    grp.add(l);
+    lights.push(mm);
+  }
+  // stolparna är fysiska
+  if (ctx.world) {
+    for (const sx of [-span, span]) {
+      const p = new THREE.Vector3(sx, 6.5, 0).applyMatrix4(new THREE.Matrix4().compose(grp.position, grp.quaternion, new THREE.Vector3(1, 1, 1)));
+      ctx.world.createCollider(ctx.RAPIER.ColliderDesc.cuboid(0.8, 6.5, 0.8).setTranslation(p.x, p.y, p.z)
+        .setRotation({ x: grp.quaternion.x, y: grp.quaternion.y, z: grp.quaternion.z, w: grp.quaternion.w }).setCollisionGroups(GROUP_WORLD), ctx.fixedBody);
+    }
+  }
+  return {
+    setLights(n, green) {
+      lights.forEach((m, k) => m.color.setHex(green ? 0x2bff5a : (k < n ? 0xff2a1a : 0x330808)));
+    },
+  };
+}
+
+// Storbildsskärm vid starten
+function buildScreen(ctx, terr) {
+  const T = ctx.track;
+  const f = T.sampleAt(T.wrapS(-70));
+  const lat = -(T.halfW + 14);
+  const x = f.x + f.rx * lat, z = f.z + f.rz * lat, y = terr.heightAt(x, z);
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const grp = new THREE.Group();
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(14, 7), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+  scr.position.y = 9;
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(14.8, 7.8, 0.5), new THREE.MeshLambertMaterial({ color: 0x1b1c22 }));
+  frame.position.set(0, 9, -0.3);
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.6, 6, 0.6), new THREE.MeshLambertMaterial({ color: 0x1b1c22 }));
+  leg.position.set(0, 2.5, -0.4);
+  grp.add(scr, frame, leg);
+  grp.position.set(x, y, z);
+  grp.lookAt(f.x - f.fx * 60, y + 9, f.z - f.fz * 60);
+  ctx.scene.add(grp);
+  let last = '';
+  return {
+    set(l1, l2) {
+      const key = l1 + '|' + l2;
+      if (key === last) return; last = key;
+      const c = cv.getContext('2d');
+      c.fillStyle = '#0c0d14'; c.fillRect(0, 0, 512, 256);
+      c.textAlign = 'center';
+      c.fillStyle = '#ffffff'; c.font = '600 34px Montserrat, sans-serif'; c.fillText(l1, 256, 100);
+      c.fillStyle = '#7fd2ff'; c.font = 'italic 900 64px "Exo 2", sans-serif'; c.fillText(l2, 256, 180);
+      tex.needsUpdate = true;
+    },
+  };
+}
+
+// Neongrön pil vid starten
+function buildArrow(ctx, terr) {
+  const T = ctx.track;
+  const f = T.sampleAt(T.wrapS(-30));
+  const lat = T.halfW + 9;
+  const x = f.x + f.rx * lat, z = f.z + f.rz * lat, y = terr.heightAt(x, z);
+  const sh = new THREE.Shape();
+  sh.moveTo(0, 0); sh.lineTo(3, 2.6); sh.lineTo(3, 1.2); sh.lineTo(7, 1.2); sh.lineTo(7, -1.2); sh.lineTo(3, -1.2); sh.lineTo(3, -2.6); sh.closePath();
+  const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: 0x9dff3a, toneMapped: false, side: THREE.DoubleSide }));
+  const grp = new THREE.Group();
+  m.position.set(-3.5, 7, 0);
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 7, 0.5), new THREE.MeshLambertMaterial({ color: 0x2c4a2c }));
+  post.position.y = 3.5;
+  grp.add(m, post);
+  grp.position.set(x, y, z);
+  grp.lookAt(f.x - f.fx * 50, y, f.z - f.fz * 50);
+  ctx.scene.add(grp);
+}
+
+// Kurvskyltar (orange med svart pil) på ytterkanten
+function buildSigns(ctx, terr) {
+  const { scene, track: T } = ctx;
+  const mk = (dir) => canvasTex(128, 96, (c) => {
+    c.fillStyle = '#1a1a1a'; c.fillRect(0, 0, 128, 96);
+    c.fillStyle = '#ff9a1c'; c.fillRect(5, 5, 118, 86);
+    c.fillStyle = '#111';
+    c.save(); if (dir > 0) { c.translate(128, 0); c.scale(-1, 1); }
+    c.beginPath(); c.moveTo(30, 48); c.lineTo(78, 12); c.lineTo(100, 12); c.lineTo(58, 48); c.lineTo(100, 84); c.lineTo(78, 84); c.closePath(); c.fill();
+    c.restore();
+  });
+  const spots = [[], []]; // [vänsterpil, högerpil]
+  let last = -999;
+  for (let i = 0; i < T.N; i += 2) {
+    const k = T.k[i];
+    if (Math.abs(k) < 1 / 900) continue;
+    if (i * T.ds - last < 70) continue;
+    last = i * T.ds;
+    // vänstersväng (k<0) → skylten på höger sida med pil åt vänster
+    const side = k < 0 ? 1 : -1;
+    spots[k < 0 ? 0 : 1].push([i, side]);
+  }
+  const boardGeo = new THREE.PlaneGeometry(2.2, 1.65);
+  const postGeo = new THREE.BoxGeometry(0.14, 4, 0.14);
+  const postMat = new THREE.MeshLambertMaterial({ color: 0x3a3b44 });
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), B = new THREE.Matrix4();
+  const posts = [];
+  [0, 1].forEach((d) => {
+    const inst = new THREE.InstancedMesh(boardGeo, new THREE.MeshLambertMaterial({ map: mk(d) }), spots[d].length);
+    spots[d].forEach(([i, side], n) => {
+      const lat = side * (T.halfW + 3.2);
+      const x = T.px[i] + T.rx[i] * lat, z = T.pz[i] + T.rz[i] * lat;
+      const y = Math.max(terr.heightAt(x, z), T.py[i]) + 2.9;
+      B.makeBasis(v.set(T.hx[i] * 0 - T.hz[i], 0, T.hx[i]), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-T.hx[i], 0, -T.hz[i]));
+      q.setFromRotationMatrix(B);
+      m4.compose(new THREE.Vector3(x, y, z), q, one);
+      inst.setMatrixAt(n, m4);
+      posts.push([x, y - 1.9, z]);
+    });
+    scene.add(inst);
+  });
+  const pi = new THREE.InstancedMesh(postGeo, postMat, posts.length);
+  posts.forEach(([x, y, z], n) => { m4.compose(v.set(x, y, z), q.identity(), one); pi.setMatrixAt(n, m4); });
+  scene.add(pi);
+}
+
+// ---------- Huvudbygget ----------
+export function buildWorld(ctx) {
+  if (ctx.world) ctx.fixedBody = ctx.world.createRigidBody(ctx.RAPIER.RigidBodyDesc.fixed());
+  const t0 = performance.now();
+  buildRoad(ctx);
+  const barrierTypes = buildBarriers(ctx);
+  const terr = buildTerrain(ctx);
+  const t1 = performance.now();
+  const trees = buildTrees(ctx, terr);
+  buildRedTrees(ctx, terr);
+  buildMountains(ctx, terr);
+  const gantry = buildGantry(ctx);
+  const screen = buildScreen(ctx, terr);
+  buildArrow(ctx, terr);
+  buildSigns(ctx, terr);
+  console.log(`värld: terräng ${(t1 - t0).toFixed(0)} ms, totalt ${(performance.now() - t0).toFixed(0)} ms`);
+  return {
+    terr, gantry, screen, barrierTypes,
+    // göm träd långt bort (fog döljer dem ändå)
+    cull(cam) {
+      for (const t of trees) {
+        const d = Math.hypot(t.cx - cam.x, t.cz - cam.z);
+        t.mesh.visible = d < 2300;
+      }
+    },
+  };
+}

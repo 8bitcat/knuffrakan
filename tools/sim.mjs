@@ -13,6 +13,7 @@ const out = await page.evaluate(async (secs) => {
   const g = window.__game;
   g.tick = () => {}; // stoppa den vanliga loopen
   g.race.toGrid(1);
+  g.dmgLog = [];
   const DT = 1 / 60, samples = [];
   let wrecks = 0, finishT = null, t0 = performance.now();
   const ow = g.wreck.bind(g); g.wreck = (c) => { wrecks++; ow(c); };
@@ -28,7 +29,8 @@ const out = await page.evaluate(async (secs) => {
     if (k % 300 === 0) await new Promise(r => setTimeout(r, 0));
   }
   const by = {}; (g.respawnLog || []).forEach(l => by[l[2]] = (by[l[2]] || 0) + 1);
-  return { wallS: ((performance.now() - t0) / 1000).toFixed(1), wrecks, respawns: by, finishT, results: (g.race.results || []).slice(0, 5).map(r => r.name + ' ' + (r.time ? r.time.toFixed(1) : '-')), samples };
+  const dl = g.dmgLog; const agg = {}; for (const [ty, dv, dmg, dir] of dl) { const k = ty + '/' + dir; agg[k] ||= { n: 0, dmg: 0, big: 0 }; agg[k].n++; agg[k].dmg += dmg; if (dmg >= 20) agg[k].big++; }
+  return { dmgAgg: agg, dvHist: [6,8,10,13,16,20,30].map((lim, i, a) => (i ? a[i-1] : 0) + '-' + lim + ':' + dl.filter(d => d[1] >= (i ? a[i-1] : 0) && d[1] < lim).length).join(' '), wallS: ((performance.now() - t0) / 1000).toFixed(1), wrecks, respawns: by, finishT, results: (g.race.results || []).slice(0, 5).map(r => r.name + ' ' + (r.time ? r.time.toFixed(1) : '-')), samples };
 }, secs);
 console.log(JSON.stringify(out, null, 0).replace(/\{"t"/g, '\n {"t"'));
 if (errors.length) console.log(errors.join('\n'));

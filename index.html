@@ -30,10 +30,18 @@
 <div id="menu" class="hidden">
   <div class="mcard">
     <div id="menulogo"></div>
-    <p class="tag">Packracing i 300 km/h genom snöbergen. Ju längre bak du ligger, desto fortare går du — knuffa dig fram!</p>
+    <p class="tag">Packracing i 300 km/h genom snöbergen. Ju längre bak du ligger, desto fortare går du — knuffa dig fram!<br><span class="sub">KÖR! = race online med alla som spelar just nu · Eget rum = bara ni som har koden</span></p>
     <input id="namein" maxlength="16" placeholder="Ditt namn" autocomplete="off">
     <button id="play" class="big">KÖR!</button>
-    <button id="garagebtn" class="chk">GARAGE</button>
+    <div id="netstatus"></div>
+    <div class="row2">
+      <button id="solo" class="chk">SPELA SJÄLV</button>
+      <button id="garagebtn" class="chk">GARAGE</button>
+    </div>
+    <div class="row2 room">
+      <input id="roomin" maxlength="6" placeholder="Rumskod" autocomplete="off">
+      <button id="roombtn" class="small">EGET RUM</button>
+    </div>
     <div class="keys">
       <b>W / ↑</b> gas · <b>S / ↓</b> broms/back · <b>A D / ← →</b> styr · <b>Mellanslag</b> handbroms ·
       <b>R</b> tillbaka på banan · <b>C</b> kamera · <b>M</b> ljud

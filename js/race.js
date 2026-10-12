@@ -41,6 +41,7 @@ export class Race {
     });
     g.world3d.gantry.setLights(0, false);
     this.num++;
+    g.emit?.({ t: 'grid' });
   }
 
   update(dt) {
@@ -73,8 +74,7 @@ export class Race {
         this.phase = 'race'; this.raceT = 0;
         for (const c of cars) c.veh.hold = false;
         g.world3d.gantry.setLights(5, true);
-        g.audio?.beep(true);
-        g.hud?.flash('KÖR!');
+        g.flashAll('KÖR!');
       }
     } else if (this.phase === 'race') {
       this.raceT += dt;
@@ -84,8 +84,11 @@ export class Race {
         const c = order[i];
         if (c.finished) { c.veh.vmax = CONF.BASE_KMH * 0.75 / 3.6; continue; }
         const rank = i;
-        const gap = Math.max(0, (leader ? leader.prog : lead.prog) - c.prog);
-        let kmh = CONF.BASE_KMH + Math.min(rank, CONF.STEP_CAP) * CONF.STEP_KMH + Math.min(CONF.GAP_KMH, Math.max(0, gap - 250) * 0.08);
+        // ikappkörning: räknas mot bilen närmast framför — långt efter = mycket fortare,
+        // men bonusen försvinner när man når fram (annars rammar man packet i 400 km/h)
+        const ahead = i > 0 ? order[i - 1] : null;
+        const gapAhead = ahead && !ahead.finished ? Math.max(0, ahead.prog - c.prog) : 0;
+        let kmh = CONF.BASE_KMH + Math.min(rank, CONF.STEP_CAP) * CONF.STEP_KMH + Math.min(CONF.GAP_KMH, Math.max(0, gapAhead - 80) * 0.25);
         // suget: bil strax framför i samma fil
         c.drafting = false;
         for (const o of cars) {
@@ -93,7 +96,6 @@ export class Race {
           const d = o.prog - c.prog;
           if (d > 4 && d < 42 && Math.abs(o.trk.lat - c.trk.lat) < 2.4) { kmh += CONF.DRAFT_KMH; c.drafting = true; break; }
         }
-        if (c.comebackT > 0) kmh += 25;
         c.veh.vmax = kmh / 3.6;
         c.veh.powerMul = 1 + Math.min(rank, CONF.STEP_CAP) * 0.03;
         if (c.prog >= this.dist) {

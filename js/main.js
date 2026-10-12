@@ -1,6 +1,6 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION } from './config.js?v=1';
+import { CONF, VERSION, TITLES } from './config.js?v=1';
 import { Game } from './game.js?v=1';
 import { HUD } from './hud.js?v=1';
 import { GameAudio } from './audio.js?v=1';
@@ -9,6 +9,9 @@ import { CarView, SHAPES } from './carmodel.js?v=1';
 import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=1';
 import { logoCanvas } from './world.js?v=1';
 import { BotBrain } from './ai.js?v=1';
+import { connectRoom, NetHost, NetClient } from './net.js?v=1';
+
+const PUBLIC = 'PUBLIK';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -55,36 +58,76 @@ async function boot() {
   try { name = localStorage.getItem('knuff_namn') || ''; } catch { /* ok */ }
   $('namein').value = name;
 
-  game.onRaceEnd = (res) => {
-    hud.showResults(res);
-    const me = res.find(r => r.isPlayer);
-    if (me) {
-      try {
-        const st = JSON.parse(localStorage.getItem('knuff_stats') || '{"races":0,"wins":0,"podiums":0,"kos":0}');
-        st.races++; if (me.place === 1) st.wins++; if (me.place <= 3) st.podiums++; st.kos += me.kos;
-        localStorage.setItem('knuff_stats', JSON.stringify(st));
-      } catch { /* ok */ }
-    }
+  game.onLocalResult = (me) => {
+    try {
+      const st = JSON.parse(localStorage.getItem('knuff_stats') || '{"races":0,"wins":0,"podiums":0,"kos":0}');
+      st.races++; if (me.place === 1) st.wins++; if (me.place <= 3) st.podiums++; st.kos += me.kos || 0;
+      localStorage.setItem('knuff_stats', JSON.stringify(st));
+    } catch { /* ok */ }
   };
-  game.onFinish = (car) => {
-    if (car === game.me) { hud.flash(`MÅL! ${car.finishPlace}:${car.finishPlace <= 2 ? 'a' : 'e'}`); audio.beep(true); }
-  };
-  game.onWinner = (car) => { if (car !== game.me) hud.toast(`🏁 ${car.name} vann!`); };
 
-  const start = () => {
-    name = ($('namein').value || '').trim().slice(0, 16) || 'Spelare';
-    try { localStorage.setItem('knuff_namn', name); } catch { /* ok */ }
-    audio.start();
+  let busy = false;
+  const enterGame = () => {
     closeGarage();
     $('menu').classList.add('hidden');
     hud.show(true);
+    if ('ontouchstart' in window) $('touch').classList.remove('hidden');
+  };
+  const readName = () => {
+    name = ($('namein').value || '').trim().slice(0, 16) || 'Spelare';
+    try { localStorage.setItem('knuff_namn', name); } catch { /* ok */ }
     spec.driver = name;
+    // titel efter hur många race man vunnit/kört
+    let st = { races: 0, wins: 0 };
+    try { st = JSON.parse(localStorage.getItem('knuff_stats') || '{}'); } catch { /* ok */ }
+    const lvl = (st.wins || 0) >= 10 ? 4 : (st.wins || 0) >= 4 ? 3 : (st.races || 0) >= 10 ? 2 : (st.races || 0) >= 3 ? 1 : 0;
+    spec.title = TITLES[lvl];
+  };
+  // Ensam (eller som värd): egen bil + bottar på griden
+  const startLocal = () => {
     if (!game.me) game.addCar({ name, isPlayer: true, spec });
     if (params.has('bot')) game.me.brain = new BotBrain(Math.random); // testläge: AI kör spelarens bil
     game.race.toGrid(params.has('auto') ? 2 : CONF.GRID_WAIT);
-    if ('ontouchstart' in window) $('touch').classList.remove('hidden');
+    enterGame();
   };
-  $('play').onclick = start;
+  const startSolo = () => { if (busy) return; readName(); audio.start(); startLocal(); };
+  // Online: gå med i rummet, finns ingen värd blir man värd
+  const startOnline = async (room) => {
+    if (busy) return;
+    busy = true;
+    readName(); audio.start();
+    $('netstatus').textContent = 'Ansluter…';
+    let res = null;
+    try { res = await connectRoom(room, (s) => { $('netstatus').textContent = s; }); } catch (e) { console.warn(e); }
+    busy = false;
+    $('netstatus').textContent = '';
+    if (!res) { hud.toast('Kunde inte ansluta — du kör med bottar', 'bad'); startLocal(); return; }
+    if (res.role === 'host') {
+      game.net = new NetHost(game, res.peer);
+      game.room = room;
+      startLocal();
+      hud.toast(room === PUBLIC ? 'Du startade ett nytt race — andra kan gå med' : `Rum ${room}: dela koden med dina kompisar!`, 'good');
+    } else {
+      game.becomeClient();
+      game.room = room;
+      game.net = new NetClient(game, res.peer, res.conn, { name, spec });
+      game.onHostLost = () => {
+        hud.toast('Värden lämnade — letar nytt race…', 'bad');
+        try { sessionStorage.setItem('knuff_auto', room); } catch { /* ok */ }
+        setTimeout(() => location.reload(), 1500);
+      };
+      enterGame();
+      hud.toast(room === PUBLIC ? 'Du gick med i ett race!' : `Du är med i rum ${room}!`, 'good');
+    }
+  };
+  $('play').onclick = () => startOnline(PUBLIC);
+  $('solo').onclick = startSolo;
+  $('roombtn').onclick = () => {
+    const code = ($('roomin').value || '').toUpperCase().replace(/[^A-ZÅÄÖ0-9]/g, '').slice(0, 6);
+    if (code.length < 3) { $('roomin').focus(); $('netstatus').textContent = 'Skriv en kod på minst 3 tecken'; return; }
+    startOnline(code);
+  };
+  const start = () => startOnline(PUBLIC);
 
   // ---------- Garage ----------
   let showcase = null;
@@ -133,13 +176,9 @@ async function boot() {
     if (showcase) { game.scene.remove(showcase.group); showcase.dispose(); showcase = null; game.showcase = null; }
     // uppdatera spelarens bil om den finns
     if (game.me) {
-      const me = game.me;
-      spec.driver = me.name;
-      const sh = SHAPES[spec.shape % SHAPES.length];
-      game.scene.remove(me.view.group); me.view.dispose();
-      me.view = new CarView(sh, makeLivery(spec, sh));
-      me.spec = spec;
-      game.scene.add(me.view.group);
+      game.setSpec(game.me, { ...spec });
+      if (game.mode === 'client') game.net?.send({ t: 'spec', spec });
+      else game.emit({ t: 'spec', id: game.me.id, spec });
     }
   }
   buildGarage();
@@ -152,10 +191,10 @@ async function boot() {
   syncMute();
 
   input.onPress = (code) => {
-    if (!game.me) { if (code === 'Enter') start(); return; }
+    if (!game.me) { if (code === 'Enter' && !$('menu').classList.contains('hidden') && $('garage').classList.contains('hidden')) start(); return; }
     if (code === 'KeyC') game.cam.toggle();
     if (code === 'KeyM') { audio.setMuted(!audio.muted); syncMute(); }
-    if (code === 'KeyR' && !game.me.wrecked && game.race.phase === 'race') game.respawn(game.me, 5);
+    if (code === 'KeyR') { if (game.mode === 'client') game.net?.send({ t: 'reset' }); else game.requestReset(game.me); }
   };
 
   $('loading').classList.add('hidden');
@@ -187,7 +226,38 @@ async function boot() {
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
-  if (params.has('auto')) setTimeout(start, 300);
+
+  // Värden får inte stanna när fliken ligger i bakgrunden (rAF pausas) — en worker håller takten
+  try {
+    const wsrc = 'let id=null;onmessage=(e)=>{clearInterval(id);if(e.data)id=setInterval(()=>postMessage(0),33);}';
+    const tw = new Worker(URL.createObjectURL(new Blob([wsrc], { type: 'text/javascript' })));
+    let lastBg = performance.now();
+    tw.onmessage = () => {
+      const now = performance.now(), dt = (now - lastBg) / 1000; lastBg = now;
+      if (document.hidden && game.net && game.mode === 'host') { game.noRender = true; game.tick(Math.min(dt, 0.1)); game.noRender = false; }
+    };
+    document.addEventListener('visibilitychange', () => { lastBg = performance.now(); tw.postMessage(document.hidden); });
+  } catch { /* ingen worker */ }
+
+  // Automatiskt lägre kvalitet om datorn inte hänger med
+  let lowT = 0, lowered = false;
+  setInterval(() => {
+    if (lowered || document.hidden || !game.me) return;
+    if ((window.__fps || 60) < 38) lowT++; else lowT = 0;
+    if (lowT >= 4) {
+      lowered = true;
+      game.renderer.setPixelRatio(1);
+      game.renderer.shadowMap.enabled = false;
+      game.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
+      game.treeRange = 1500;
+      hud.toast('Grafiken sänktes för att flyta bättre');
+    }
+  }, 1000);
+  // automatisk start: tester (?auto), eller återanslutning efter att värden försvann
+  let rejoin = null;
+  try { rejoin = sessionStorage.getItem('knuff_auto'); sessionStorage.removeItem('knuff_auto'); } catch { /* ok */ }
+  if (rejoin) setTimeout(() => startOnline(rejoin), 300);
+  else if (params.has('auto')) setTimeout(() => (params.has('online') ? startOnline(params.get('room') || PUBLIC) : startSolo()), 300);
 }
 
 const _r = new THREE.Vector3(), _d = new THREE.Vector3();

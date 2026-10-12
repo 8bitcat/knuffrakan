@@ -742,10 +742,10 @@ export function buildWorld(ctx) {
   return {
     terr, gantry, screen, barrierTypes,
     // göm träd långt bort (fog döljer dem ändå)
-    cull(cam) {
+    cull(cam, range = 2300) {
       for (const t of trees) {
         const d = Math.hypot(t.cx - cam.x, t.cz - cam.z);
-        t.mesh.visible = d < 2300;
+        t.mesh.visible = d < range;
       }
     },
   };

@@ -12,7 +12,7 @@ export const CP = {
   mass: 1500,
   half: { x: 0.97, y: 0.42, z: 2.42 },
   colY: 0.2,
-  inertia: { x: 3900, y: 4800, z: 1250 },
+  inertia: { x: 4500, y: 5000, z: 2100 },
   rayLen: 0.72,          // fästet → marken vid fullt utfjädrat hjul (fjäder + hjulradie)
   susK: 36000, susC: 4300,
   muLat: 1.95, muLong: 1.8, rearGrip: 0.93,
@@ -38,7 +38,7 @@ export class Vehicle {
     const cd = RAPIER.ColliderDesc.cuboid(CP.half.x, CP.half.y, CP.half.z)
       .setTranslation(0, CP.colY, 0)
       .setMassProperties(CP.mass, { x: 0, y: 0, z: 0 }, CP.inertia, { x: 0, y: 0, z: 0, w: 1 })
-      .setFriction(0.32).setRestitution(0.18).setCollisionGroups(GROUP_CAR);
+      .setFriction(0.12).setRestitution(0.15).setCollisionGroups(GROUP_CAR);
     this.collider = world.createCollider(cd, this.body);
     this.ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
     this.wheels = WHEEL_POS.map(w => ({
@@ -166,6 +166,27 @@ export class Vehicle {
       w.spin += (vL / WHEEL_R) * dt;
     }
     this.grounded = grounded;
+
+    // Självrätning (arkad): vanliga sidokontakter i packet ska inte välta bilen.
+    // Efter en riktig tackling (spinT) får den snurra och volta fritt.
+    if (this.spinT <= 0 && up.y > 0.15) {
+      const near = grounded > 0 ? 1 : 0.35;
+      // vridning som för bilens upp-vektor mot världens upp
+      const tx = -up.z, tz = up.x; // axel = up × Y → vrider upp-vektorn mot lodrätt
+      const tilt = Math.hypot(up.x, up.z);
+      const kR = 3.2 * near;
+      const av = this.angv;
+      // dämpa rull/nick men inte gir
+      const yawRate = av.dot(up);
+      const rx = av.x - up.x * yawRate, ry = av.y - up.y * yawRate, rz = av.z - up.z * yawRate;
+      const damp = 1 - Math.min(1, 4.5 * near * dt);
+      const cur = this.body.angvel();
+      this.body.setAngvel({
+        x: cur.x - rx * (1 - damp) + tx * kR * dt * (tilt > 0.05 ? 1 : 0),
+        y: cur.y - ry * (1 - damp),
+        z: cur.z - rz * (1 - damp) + tz * kR * dt * (tilt > 0.05 ? 1 : 0),
+      }, true);
+    }
 
     if (grounded >= 2) {
       // marktryck

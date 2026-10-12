@@ -1,6 +1,6 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES } from './config.js?v=1';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=1';
 import { buildTrack } from './track.js?v=1';
 import { buildWorld } from './world.js?v=1';
 import { createScene, ChaseCam } from './scene.js?v=1';
@@ -11,6 +11,7 @@ import { BotBrain } from './ai.js?v=1';
 import { Race } from './race.js?v=1';
 import { FX, Trails } from './fx.js?v=1';
 import { NameTag, SpeedPlate } from './tags.js?v=1';
+import { RemoteVeh, carInfo } from './net.js?v=1';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const ord = (n) => n + ':' + (n === 1 || n === 2 ? 'a' : 'e');
@@ -35,22 +36,31 @@ export class Game {
     this.race = new Race(this);
     this.acc = 0; this.time = 0; this.simT = 0;
     this.nextId = 1;
-    this.dirtyTex = new Set();
     this.orbit = 0;
+    this.mode = 'host';   // 'host' (även ensam) eller 'client'
+    this.net = null;
+    this.myId = null;
   }
 
-  addCar({ name, isPlayer, spec }) {
+  addCar({ id, name, isPlayer, spec, remote = null }) {
     const sh = SHAPES[spec.shape % SHAPES.length];
     const livery = makeLivery(spec, sh);
     const view = new CarView(sh, livery);
     this.scene.add(view.group);
-    const f = this.track.sampleAt(0);
-    const veh = new Vehicle(this, new THREE.Vector3(f.x, f.y + 3, f.z), this.track.quatAt(0));
-    const id = this.nextId++;
+    const client = this.mode === 'client';
+    let veh;
+    if (client) veh = new RemoteVeh();
+    else {
+      const f = this.track.sampleAt(0);
+      veh = new Vehicle(this, new THREE.Vector3(f.x, f.y + 3, f.z), this.track.quatAt(0));
+    }
+    if (id == null) id = this.nextId++;
+    else this.nextId = Math.max(this.nextId, id + 1);
     const car = {
-      id, name, isPlayer, spec, view, veh,
+      id, name, isPlayer, spec, view, veh, remote,
+      remoteInput: { throttle: 0, brake: 0, steer: 0, handbrake: 0 },
       tag: new NameTag(this.scene, name, id * 7.3 + name.length, isPlayer),
-      brain: isPlayer ? null : new BotBrain(mulberry(id * 97 + 3)),
+      brain: isPlayer || remote || client ? null : new BotBrain(mulberry(id * 97 + 3)),
       trk: { i: 0, s: 0, lat: 0, y: 0 }, lap: 0, prog: 0, prevS: 0, place: 0,
       finished: false, finishT: 0, finishPlace: 0,
       health: 100, wrecked: false, wreckT: 0, flipT: 0, offT: 0, ghostT: 0, hitCD: 0, comebackT: 0,
@@ -64,11 +74,140 @@ export class Game {
 
   removeCar(car) {
     this.cars = this.cars.filter(c => c !== car);
-    car.veh.destroy();
+    car.veh.destroy?.();
     this.scene.remove(car.view.group);
     car.view.dispose();
     car.tag.dispose(this.scene);
-    this.trails.remove(car.id + 'L'); this.trails.remove(car.id + 'R');
+    for (const k of ['L', 'R']) { this.trails.remove(car.id + k); this.skids.remove(car.id + 's' + k); }
+    if (this.me === car) this.me = null;
+  }
+
+  carById(id) { return this.cars.find(c => c.id === id); }
+
+  setSpec(car, spec) {
+    if (!car || !spec) return;
+    car.spec = spec;
+    const sh = SHAPES[spec.shape % SHAPES.length];
+    this.scene.remove(car.view.group);
+    car.view.dispose();
+    car.view = new CarView(sh, makeLivery({ ...spec, driver: car.name }, sh));
+    this.scene.add(car.view.group);
+  }
+
+  // ---------- Nätverk: värden ----------
+  emit(msg) { this.net?.broadcast?.(msg); }
+  notify(car, m, k = '') {
+    if (!car) return;
+    if (car === this.me) this.hud?.toast(m, k);
+    else if (car.remote) this.net?.sendTo(car, { t: 'toast', m, k });
+  }
+  notifyAll(m, k = '') { this.hud?.toast(m, k); this.emit({ t: 'toast', m, k }); }
+  flashAll(m) { this.hud?.flash(m); this.audio?.beep(true); this.emit({ t: 'flash', m, beep: true }); }
+
+  addRemotePlayer(name, spec, conn) {
+    // en bot får lämna plats
+    if (this.cars.length >= CONF.BOTS + 1) {
+      const bots = this.cars.filter(c => c.brain && !c.isPlayer);
+      if (bots.length) {
+        const b = bots.reduce((a, c) => (c.place > a.place ? c : a), bots[0]);
+        this.removeCar(b);
+        this.emit({ t: 'remove', id: b.id });
+      }
+    }
+    const car = this.addCar({ name, isPlayer: false, spec: { ...spec, driver: name }, remote: conn });
+    this.placeLate(car);
+    return car;
+  }
+  removeRemotePlayer(car) {
+    this.removeCar(car);
+    if (this.cars.length < CONF.BOTS + 1) {
+      const n = this.cars.length;
+      this.setupBots(1);
+      const b = this.cars[n];
+      this.placeLate(b);
+      this.emit({ t: 'add', car: carInfo(b) });
+    }
+  }
+  // Ny bil mitt i allt: ställ den bakom fältet (i racet) eller på griden
+  placeLate(car) {
+    const r = this.race, T = this.track;
+    if (r.phase === 'grid' || r.phase === 'count' || r.phase === 'idle') { r.toGrid(Math.max(3, r.phase === 'grid' ? r.t : 3)); return; }
+    const others = (r.order || this.cars).filter(c => c !== car && !c.finished);
+    const last = others.length ? others[others.length - 1] : null;
+    const prog = last ? last.prog - 30 : 0;
+    const lap = Math.floor(prog / T.L), s = T.wrapS(prog - lap * T.L);
+    this.placeCar(car, s, (Math.random() - 0.5) * 16, 50);
+    car.lap = lap; car.prevS = car.trk.s; car.prog = prog;
+    car.ghostT = 2.5; car.veh.setGhost?.(true);
+    car.finished = false;
+  }
+  requestReset(car) {
+    if (!car || car.wrecked || this.race.phase !== 'race') return;
+    this.respawn(car, 5, 'knapp');
+  }
+
+  // Racets händelser (anropas av Race)
+  onFinish(car) {
+    const m = `MÅL! ${ord(car.finishPlace)}`;
+    if (car === this.me) { this.hud?.flash(m); this.audio?.beep(true); }
+    else if (car.remote) this.net?.sendTo(car, { t: 'flash', m, beep: true });
+    this.emit({ t: 'finish', id: car.id, place: car.finishPlace, time: car.finishT });
+  }
+  onWinner(car) { this.notifyAll(`🏁 ${car.name} vann!`); }
+  onRaceEnd(results) {
+    const res = results.map(r => ({ place: r.place, name: r.name, time: r.time, kos: r.kos, id: r.car.id }));
+    this.showResults(res);
+    this.emit({ t: 'results', res });
+  }
+  showResults(res) {
+    const mine = res.map(r => ({ ...r, isPlayer: !!this.me && r.id === this.me.id }));
+    this.hud?.showResults(mine);
+    const me = mine.find(r => r.isPlayer);
+    if (me) this.onLocalResult?.(me);
+  }
+
+  // ---------- Nätverk: gästen ----------
+  becomeClient() {
+    for (const c of this.cars.slice()) this.removeCar(c);
+    this.mode = 'client';
+    this.trails.clear(); this.skids.clear();
+  }
+  addCarFromInfo(info) {
+    return this.addCar({ id: info.id, name: info.name, isPlayer: info.id === this.myId, spec: info.spec });
+  }
+  clientWelcome(d) {
+    for (const c of this.cars.slice()) this.removeCar(c);
+    this.myId = d.you;
+    for (const info of d.cars) this.addCarFromInfo(info);
+    this.me = this.carById(this.myId);
+    this.race.lastWinner = d.winner || '';
+  }
+  clientHit(d) {
+    const car = this.carById(d.id); if (!car) return;
+    car.view.dent(d.cp[0], d.cp[1], d.cp[2], d.dl[0], d.dl[1], d.dl[2], d.amt);
+    car.view.livery.scratch(d.u, d.v, d.dmg);
+    this.fx.sparks(_v2.set(d.sp[0], d.sp[1], d.sp[2]), car.veh.vel, 6 + Math.floor(d.dmg / 3), 5);
+    if (car === this.me || d.by === this.myId) this.audio?.crash(d.dv, 1);
+    else if (this.me) { const near = Math.max(0, 1 - this.me.veh.pos.distanceTo(car.veh.pos) / 90); if (near > 0.05) this.audio?.crash(d.dv, near * 0.6); }
+  }
+  clientWreck(d) {
+    const car = this.carById(d.id); if (!car) return;
+    this.fx.explosion(car.veh.pos, car.veh.vel);
+    const near = this.me ? Math.max(0, 1 - this.me.veh.pos.distanceTo(car.veh.pos) / 140) : 1;
+    this.audio?.boom(car === this.me ? 1 : near);
+  }
+  clientGrid() {
+    for (const c of this.cars) { c.view.resetDamage(); c.finishT = 0; }
+    this.trails.clear(); this.skids.clear();
+    this.hud?.hideResults();
+  }
+  clientFinish(d) { const c = this.carById(d.id); if (c) { c.finishT = d.time; c.finishPlace = d.place; } }
+  clientResults(d) { this.showResults(d.res); }
+  clientLights() {
+    const r = this.race, gt = this.world3d.gantry;
+    if (r.phase === 'count') gt.setLights(Math.min(5, Math.max(0, Math.floor((CONF.COUNTDOWN + 0.6 - r.t) / (CONF.COUNTDOWN / 5)) + 1)), false);
+    else if (r.phase === 'race') gt.setLights(5, true);
+    else gt.setLights(0, false);
   }
 
   setupBots(n) {
@@ -77,7 +216,9 @@ export class Game {
       let name;
       do { name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)]; } while (used.has(name) && used.size < BOT_NAMES.length);
       used.add(name);
-      this.addCar({ name, isPlayer: false, spec: randomSpec(1000 + k * 17 + Math.floor(Math.random() * 1e5), name) });
+      const spec = randomSpec(1000 + k * 17 + Math.floor(Math.random() * 1e5), name);
+      spec.title = TITLES[Math.floor(Math.random() * TITLES.length)];
+      this.addCar({ name, isPlayer: false, spec });
     }
   }
 
@@ -92,6 +233,7 @@ export class Game {
     if (snap) { car.p0.copy(car.veh.pos); car.p1.copy(car.veh.pos); car.q0.copy(car.veh.quat); car.q1.copy(car.veh.quat); }
     this.trails.feed(car.id + 'L', p, _v2.set(0, 1, 0), false, this.time);
     this.trails.feed(car.id + 'R', p, _v2, false, this.time);
+    this.emit({ t: 'respawn', id: car.id });
   }
 
   // Återuppstå på banan bakom där man var, i en ledig fil
@@ -119,16 +261,18 @@ export class Game {
     this.fx.explosion(car.veh.pos, car.veh.vel);
     const near = this.me ? Math.max(0, 1 - this.me.veh.pos.distanceTo(car.veh.pos) / 140) : 1;
     this.audio?.boom(car === this.me ? 1 : near);
-    const by = car.lastHitBy && this.time - car.lastHitT < 4 ? car.lastHitBy : null;
+    const by = car.lastHitBy && this.time - car.lastHitT < 4 && this.cars.includes(car.lastHitBy) ? car.lastHitBy : null;
     if (by) { by.raceStats.kos++; }
-    if (car === this.me) this.hud?.toast(by ? `💥 ${by.name} knuffade ut dig!` : '💥 Du kraschade!', 'bad');
-    else if (by === this.me) this.hud?.toast(`💥 Du knuffade ut ${car.name}!`, 'good');
-    else if (by && near > 0.3) this.hud?.toast(`${by.name} knuffade ut ${car.name}`);
+    this.notify(car, by ? `💥 ${by.name} knuffade ut dig!` : '💥 Du kraschade!', 'bad');
+    if (by) this.notify(by, `💥 Du knuffade ut ${car.name}!`, 'good');
+    if (by && by !== this.me && car !== this.me && near > 0.3) this.hud?.toast(`${by.name} knuffade ut ${car.name}`);
+    this.emit({ t: 'wreck', id: car.id });
   }
 
   unwreck(car) {
     car.wrecked = false; car.veh.disabled = false; car.health = 100;
     car.view.resetDamage();
+    this.emit({ t: 'unwreck', id: car.id });
   }
 
   // ---------- Fast fysiksteg ----------
@@ -137,7 +281,7 @@ export class Game {
     const inp = this.input.state;
     for (const car of this.cars) {
       if (car.brain) car.brain.update(dt, car, this);
-      else Object.assign(car.veh.input, inp);
+      else Object.assign(car.veh.input, car.remote ? car.remoteInput : inp);
       car.veh.preStep(dt);
     }
     this.world.step();
@@ -171,6 +315,8 @@ export class Game {
       if (Math.abs(dl.z) > 0.65) dmg *= other ? 0.4 : 0.6; // knuff fram/bak = bumpdrafting, tål mer
       car.health -= dmg;
       car.hitCD = 0.2;
+      car.lastDmgT = this.simT;
+      if (this.dmgLog) this.dmgLog.push([other ? 'bil' : 'vägg', Math.round(im.dv), Math.round(dmg), Math.abs(dl.x) > 0.55 ? 'sida' : Math.abs(dl.z) > 0.65 ? 'fram/bak' : 'snett', Math.round(im.horiz), Math.round(Math.abs(im.dy))]);
       car.raceStats.hits++;
       // tackling från sidan → extra knuff, lyft och snurr
       if (other) {
@@ -187,7 +333,7 @@ export class Game {
           const f = car.veh.fwd, u = car.veh.up;
           car.veh.body.applyTorqueImpulse({ x: -f.x * roll + u.x * yaw, y: -f.y * roll + u.y * yaw, z: -f.z * roll + u.z * yaw }, true);
           car.veh.spinT = 1.8;
-          if (other === this.me && im.dv > 10) this.hud?.toast(`Tackling! ${car.name} snurrar`, 'good');
+          if (im.dv > 10) this.notify(other, `Tackling! ${car.name} snurrar`, 'good');
         }
       }
       // bucklor + repor där det smällde
@@ -200,6 +346,11 @@ export class Game {
       // gnistor i världen
       _v2.set(cp.x, cp.y, cp.z).applyQuaternion(car.veh.quat).add(car.veh.pos);
       this.fx.sparks(_v2, car.veh.vel, 6 + Math.floor(dmg / 3), 5);
+      if (this.net) {
+        const r3 = (x) => Math.round(x * 1000) / 1000;
+        this.emit({ t: 'hit', id: car.id, by: other ? other.id : 0, cp: [r3(cp.x), r3(cp.y), r3(cp.z)], dl: [r3(dl.x), r3(dl.y), r3(dl.z)],
+          amt: r3(dmg * 0.012), u: r3(u), v: r3(vv), dmg: Math.round(dmg), dv: Math.round(im.dv), sp: [r3(_v2.x), r3(_v2.y), r3(_v2.z)] });
+      }
       const near = this.me ? Math.max(0, 1 - this.me.veh.pos.distanceTo(car.veh.pos) / 90) : 1;
       if (car === this.me || (other === this.me)) this.audio?.crash(im.dv, 1);
       else if (near > 0.05) this.audio?.crash(im.dv, near * 0.6);
@@ -212,6 +363,8 @@ export class Game {
     if (car.hitCD > 0) car.hitCD -= dt;
     if (car.comebackT > 0) car.comebackT -= dt;
     if (car.ghostT > 0) { car.ghostT -= dt; if (car.ghostT <= 0) v.setGhost(false); }
+    // klarar man sig från smällar en stund lagas bilen sakta
+    if (!car.wrecked && car.health < 100 && this.simT - (car.lastDmgT || 0) > 4) car.health = Math.min(100, car.health + 2.5 * dt);
     if (car.wrecked) {
       car.wreckT -= dt;
       if (car.wreckT <= 0) { this.unwreck(car); this.respawn(car, 40, 'wreck'); }
@@ -239,7 +392,7 @@ export class Game {
       // spöke efter omstart: blinka
       g.visible = !(car.ghostT > 0 && Math.floor(this.time * 10) % 2 === 0);
       // namnskylt
-      const line2 = this.race.phase === 'race' || this.race.phase === 'results' ? `${ord(car.place)} plats` : (car.isPlayer ? 'Du' : 'Redo');
+      const line2 = this.race.phase === 'race' || this.race.phase === 'results' ? `${ord(car.place)} plats` : (car.spec.title || 'Redo');
       const ring = car.place === 1 ? 'gold' : car.place === 2 ? 'silver' : car.place === 3 ? 'bronze' : 'green';
       car.tag.set(line2, this.race.phase === 'race' ? ring : 'green');
       car.tag.place(g.position.x, g.position.y + 2.5, g.position.z, !car.wrecked || car.wreckT > 1.2);
@@ -271,6 +424,14 @@ export class Game {
           if (Math.abs(car.trk.lat) > T.halfW + 0.8 && v.speed > 8 && Math.random() < 0.6) this.fx.snow(w.hit, v.vel, 1);
         }
       }
+    }
+    this.screenT = (this.screenT || 0) + dt;
+    if (this.screenT > 0.5) {
+      this.screenT = 0;
+      const r = this.race, sc = this.world3d.screen;
+      if (r.phase === 'grid' || r.phase === 'count') sc.set('NÄSTA START', r.phase === 'count' ? 'NU!' : '0:' + String(Math.max(0, Math.ceil(r.t + CONF.COUNTDOWN))).padStart(2, '0'));
+      else if (r.phase === 'race') sc.set('LEDER JUST NU', (r.order && r.order[0]?.name) || '');
+      else if (r.phase === 'results') sc.set('VINNARE', r.lastWinner || (r.order && r.order[0]?.name) || '');
     }
     this.fx.update(dt);
     this.trails.update(this.time);
@@ -306,17 +467,24 @@ export class Game {
       this.plate.mesh.visible = false;
     }
     this.sceneApi.follow(me ? me.view.group.position : this.camera.position, this.time);
-    this.world3d.cull(this.camera.position);
-    this.renderer.render(this.scene, this.camera);
+    this.world3d.cull(this.camera.position, this.treeRange || 2300);
+    if (!this.noRender) this.renderer.render(this.scene, this.camera);
   }
 
   // Huvudloop: fast fysik + interpolerad rendering
   tick(dt) {
     dt = Math.min(dt, 0.1);
+    if (this.mode === 'client') {
+      if (this.me) Object.assign(this.me.veh.input, this.input.state);
+      this.net?.update(dt);
+      this.frame(dt, 1);
+      return;
+    }
     this.acc += dt;
     let n = 0;
     while (this.acc >= CONF.DT && n < 4) { this.step(CONF.DT); this.acc -= CONF.DT; n++; }
     if (n === 4) this.acc = 0;
+    this.net?.update(dt);
     this.frame(dt, this.acc / CONF.DT);
   }
 }

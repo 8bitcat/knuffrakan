@@ -1,0 +1,13 @@
+import { createRequire } from 'module';
+const require = createRequire('D:/Qisy/QISYFrontend/QISYFrontend-1/package.json');
+const { chromium } = require('playwright');
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11'] });
+const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
+await page.goto(`http://localhost:${process.env.PORT || 8810}/?auto&bot`);
+await page.waitForFunction(() => window.ready === true && window.__game?.me, null, { timeout: 90000 });
+await page.waitForTimeout(14000);
+await page.evaluate(() => { const g = window.__game; g.cars.slice(0, 3).forEach((c, i) => { c.finished = true; c.finishT = 140 + i * 1.7; c.finishPlace = i + 1; c.raceStats.kos = i; }); g.race.finishCount = 3; g.race.update(1 / 60); g.race.end(); });
+await page.waitForTimeout(1200);
+await page.screenshot({ path: 'tools/out/results.png' });
+await browser.close();

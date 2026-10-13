@@ -67,6 +67,7 @@ export class Game {
       p0: new THREE.Vector3(), p1: new THREE.Vector3(), q0: new THREE.Quaternion(), q1: new THREE.Quaternion(),
       emitAcc: 0, lastHitBy: null, raceStats: { kos: 0, hits: 0 },
     };
+    if (car.brain && veh instanceof Vehicle) veh.assist = true;
     this.cars.push(car);
     if (isPlayer) this.me = car;
     return car;
@@ -282,8 +283,11 @@ export class Game {
     for (const car of this.cars) {
       if (car.brain) car.brain.update(dt, car, this);
       else Object.assign(car.veh.input, car.remote ? car.remoteInput : inp);
-      car.veh.preStep(dt);
     }
+    const pushes = this.contacts(dt);
+    for (const car of this.cars) car.veh.preStep(dt);
+    // knuffarnas krafter läggs på efter preStep (räknas som egna impulser, inte smällar)
+    for (const p of pushes) p.veh.applyJ(p.jx, p.jy, p.jz, p.px, p.py, p.pz);
     this.world.step();
     for (const car of this.cars) {
       car.veh.postStep(dt);
@@ -294,6 +298,72 @@ export class Game {
     this.handleImpacts();
     this.race.update(dt);
     for (const car of this.cars) this.carState(car, dt);
+  }
+
+  // Sida-mot-sida-kontakt: den som styr in i en annan bil knuffar undan den.
+  // Trycket på bakhjulsområdet får bakvagnen att släppa → spinn (PIT). Den som blir
+  // knuffad kan hålla emot genom att styra tillbaka in i knuffaren.
+  contacts(dt) {
+    const cars = this.cars, out = [];
+    for (const c of cars) { c.veh.pressF = 1; c.veh.pressR = 1; c.veh.pressHold = 0; if (c.contactT > 0) c.contactT -= dt; }
+    for (let i = 0; i < cars.length; i++) {
+      for (let j = i + 1; j < cars.length; j++) {
+        const A = cars[i], B = cars[j];
+        if (A.wrecked || B.wrecked || A.ghostT > 0 || B.ghostT > 0) continue;
+        const a = A.veh.pos, b = B.veh.pos;
+        if ((a.x - b.x) ** 2 + (a.z - b.z) ** 2 > 36 || Math.abs(a.y - b.y) > 1.6) continue;
+        this.sidePress(A, B, dt, out);
+        this.sidePress(B, A, dt, out);
+      }
+    }
+    return out;
+  }
+
+  // B trycker på A:s sida?
+  sidePress(A, B, dt, out) {
+    const a = A.veh, b = B.veh;
+    const rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
+    const lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;     // B åt höger (+) om A
+    const lz = rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z;           // B framför (+) A
+    const ax = Math.abs(lx);
+    if (ax < 1.25 || ax > 2.5 || Math.abs(lz) > 4.9) return;
+    const side = Math.sign(lx);
+    const zc = (Math.max(-2.45, lz - 2.45) + Math.min(2.45, lz + 2.45)) / 2; // var på A trycket sitter
+    // B:s vilja: styr B mot A?
+    const lxB = -(rx * b.right.x + ry * b.right.y + rz * b.right.z);
+    const pushB = Math.max(0, (b.input.steer || 0) * Math.sign(lxB));
+    // A håller emot: styr mot B
+    const holdA = Math.max(0, (a.input.steer || 0) * side);
+    const closing = -((b.vel.x - a.vel.x) * a.right.x + (b.vel.z - a.vel.z) * a.right.z) * side;
+    const tight = 1 - Math.min(1, Math.max(0, (ax - 1.98) / 0.5));
+    if (tight <= 0.05) return;
+    const rearW = Math.min(1, Math.max(0, (-zc - 0.2) / 1.5));
+    const frontW = Math.min(1, Math.max(0, (zc - 0.2) / 1.5));
+    // att luta sig in i knuffaren hjälper vid sidan — mot bakhjulen hjälper bara motstyrning (i girkontrollen)
+    const holdEff = holdA * (1 - rearW);
+    let press = tight * Math.min(1, 0.25 + pushB * 0.85 + Math.max(0, closing) * 0.1) * (1 - 0.65 * holdEff);
+    if (a.assist) press *= 0.8;
+    if (press > 0.03) {
+      a.pressR = Math.min(a.pressR, 1 - 0.65 * press * (0.3 + 0.7 * rearW));
+      a.pressF = Math.min(a.pressF, 1 - 0.45 * press * (0.3 + 0.7 * frontW));
+      a.pressHold = Math.max(a.pressHold, holdEff);
+      if (press > 0.3) a.pressT = Math.max(a.pressT, 0.45);
+      A.contactT = 0.2; A.contactWith = B; A.contactZ = zc; A.contactSide = side;
+      if (press > 0.35) { A.lastHitBy = B; A.lastHitT = this.time; }
+    }
+    // B lutar sig in i A: kraft vid kontaktpunkten (lika stor åt andra hållet på B)
+    if (pushB > 0.05 && tight > 0.3) {
+      const J = 12000 * pushB * tight * (1 - 0.5 * holdEff) * dt;
+      const px = a.pos.x + a.fwd.x * zc + a.right.x * side * 0.95, py = a.pos.y + 0.05, pz = a.pos.z + a.fwd.z * zc + a.right.z * side * 0.95;
+      const dx = -side * a.right.x, dz = -side * a.right.z;
+      out.push({ veh: a, jx: dx * J, jy: 0, jz: dz * J, px, py, pz });
+      out.push({ veh: b, jx: -dx * J, jy: 0, jz: -dz * J, px, py, pz });
+    }
+    // gnistor när plåten skrapar längs varandra
+    const slide = Math.abs((b.vel.x - a.vel.x) * a.fwd.x + (b.vel.z - a.vel.z) * a.fwd.z);
+    if (tight > 0.6 && slide > 4 && Math.random() < dt * 20) {
+      (this.scrapes ||= []).push([a.pos.x + a.fwd.x * zc + a.right.x * side * 0.98, a.pos.y + 0.1, a.pos.z + a.fwd.z * zc + a.right.z * side * 0.98, a.vel.x, a.vel.y, a.vel.z]);
+    }
   }
 
   handleImpacts() {
@@ -329,7 +399,7 @@ export class Game {
           const big = im.dv > 13;
           car.veh.body.applyImpulse({ x: im.dx * m * 0.3 * k, y: big ? m * Math.min(3.4, im.dv * 0.22) * k : m * 0.6 * k, z: im.dz * m * 0.3 * k }, true);
           const roll = big ? Math.sign(dl.x) * CP.inertia.z * (1.6 + Math.random() * 2.4) * k : 0;
-          const yaw = (Math.random() - 0.5) * CP.inertia.y * 2.6 * k;
+          const yaw = 0;
           const f = car.veh.fwd, u = car.veh.up;
           car.veh.body.applyTorqueImpulse({ x: -f.x * roll + u.x * yaw, y: -f.y * roll + u.y * yaw, z: -f.z * roll + u.z * yaw }, true);
           car.veh.spinT = 1.8;
@@ -363,6 +433,24 @@ export class Game {
     if (car.hitCD > 0) car.hitCD -= dt;
     if (car.comebackT > 0) car.comebackT -= dt;
     if (car.ghostT > 0) { car.ghostT -= dt; if (car.ghostT <= 0) v.setGhost(false); }
+    // Mot kanten: hörnen räknas ut i sidled — skrapar man tappar man fart och det gnistrar
+    if (!car.wrecked && v.grounded >= 2) {
+      const i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];
+      const rr = v.right.x * rhx + v.right.z * rhz, fr = v.fwd.x * rhx + v.fwd.z * rhz;
+      const reach = Math.abs(rr) * 0.98 + Math.abs(fr) * 2.45;
+      const gap = T.halfW - (Math.abs(car.trk.lat) + reach);
+      if (gap < 0.12) {
+        v.wallT = 0.3;
+        const lv = v.body.linvel(), k = 1 - 0.3 * dt;
+        v.body.setLinvel({ x: lv.x * k, y: lv.y, z: lv.z * k }, true);
+        car.scrapeT = 0.15;
+        if (v.speed > 6 && Math.random() < dt * 25) {
+          const sd = Math.sign(car.trk.lat);
+          (this.scrapes ||= []).push([v.pos.x + rhx * sd * reach, v.pos.y, v.pos.z + rhz * sd * reach, lv.x, lv.y, lv.z]);
+        }
+      }
+    }
+    if (car.scrapeT > 0) car.scrapeT -= dt;
     // klarar man sig från smällar en stund lagas bilen sakta
     if (!car.wrecked && car.health < 100 && this.simT - (car.lastDmgT || 0) > 4) car.health = Math.min(100, car.health + 2.5 * dt);
     if (car.wrecked) {
@@ -395,7 +483,7 @@ export class Game {
       const line2 = this.race.phase === 'race' || this.race.phase === 'results' ? `${ord(car.place)} plats` : (car.spec.title || 'Redo');
       const ring = car.place === 1 ? 'gold' : car.place === 2 ? 'silver' : car.place === 3 ? 'bronze' : 'green';
       car.tag.set(line2, this.race.phase === 'race' ? ring : 'green');
-      car.tag.place(g.position.x, g.position.y + 2.5, g.position.z, !car.wrecked || car.wreckT > 1.2);
+      car.tag.place(g.position.x, g.position.y + car.tag.lift, g.position.z, !car.wrecked || car.wreckT > 1.2);
       // spår och sladdmärken (bakhjulen)
       for (const k of [2, 3]) {
         const w = v.wheels[k];
@@ -432,6 +520,10 @@ export class Game {
       if (r.phase === 'grid' || r.phase === 'count') sc.set('NÄSTA START', r.phase === 'count' ? 'NU!' : '0:' + String(Math.max(0, Math.ceil(r.t + CONF.COUNTDOWN))).padStart(2, '0'));
       else if (r.phase === 'race') sc.set('LEDER JUST NU', (r.order && r.order[0]?.name) || '');
       else if (r.phase === 'results') sc.set('VINNARE', r.lastWinner || (r.order && r.order[0]?.name) || '');
+    }
+    if (this.scrapes) {
+      for (const [x, y, z, vx, vy, vz] of this.scrapes) this.fx.sparks(_v.set(x, y, z), _v2.set(vx, vy, vz), 4, 3);
+      this.scrapes.length = 0;
     }
     this.fx.update(dt);
     this.trails.update(this.time);

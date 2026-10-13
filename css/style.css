@@ -62,6 +62,7 @@ button { font-family: inherit; cursor: pointer; }
 #healthbar { height: 100%; width: 100%; background: #5bff7a; transition: width 0.2s; }
 #draft { margin-top: 8px; font: italic 900 22px "Exo 2", sans-serif; color: var(--blue2); opacity: 0; transition: opacity 0.2s; }
 #draft.on { opacity: 1; }
+#bonus { margin-top: 4px; font: italic 900 20px "Exo 2", sans-serif; color: var(--lime); min-height: 24px; }
 #status { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font: italic 800 24px "Exo 2", sans-serif; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7); white-space: nowrap; }
 #flash { position: absolute; top: 28%; left: 50%; transform: translate(-50%, -50%); font: italic 900 120px "Exo 2", sans-serif; text-shadow: 0 6px 0 #0a2f9e, 0 0 30px rgba(0, 0, 0, 0.4); white-space: nowrap; }
 #flash.pop { animation: pop 0.5s ease-out; }

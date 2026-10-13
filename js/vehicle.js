@@ -12,7 +12,7 @@ export const CP = {
   mass: 1500,
   half: { x: 0.97, y: 0.42, z: 2.42 },
   colY: 0.2,
-  inertia: { x: 4500, y: 5000, z: 2100 },
+  inertia: { x: 4500, y: 4300, z: 2100 },
   rayLen: 0.72,          // fästet → marken vid fullt utfjädrat hjul (fjäder + hjulradie)
   susK: 36000, susC: 4300,
   muLat: 1.95, muLong: 1.8, rearGrip: 0.93,
@@ -26,6 +26,8 @@ const _R = new THREE.Vector3(), _U = new THREE.Vector3(), _F = new THREE.Vector3
 const _a = new THREE.Vector3(), _c = new THREE.Vector3(), _n = new THREE.Vector3(), _wf = new THREE.Vector3(), _ws = new THREE.Vector3();
 const _pv = new THREE.Vector3(), _r = new THREE.Vector3(), _j = new THREE.Vector3(), _t = new THREE.Vector3();
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+// största styrvinkel vid en viss fart (delas med AI:n)
+export const steerMaxAt = (v) => CP.steerMax / (1 + Math.abs(v) / 20);
 
 export class Vehicle {
   constructor(sim, pos, quat) {
@@ -38,7 +40,7 @@ export class Vehicle {
     const cd = RAPIER.ColliderDesc.cuboid(CP.half.x, CP.half.y, CP.half.z)
       .setTranslation(0, CP.colY, 0)
       .setMassProperties(CP.mass, { x: 0, y: 0, z: 0 }, CP.inertia, { x: 0, y: 0, z: 0, w: 1 })
-      .setFriction(0.12).setRestitution(0.15).setCollisionGroups(GROUP_CAR);
+      .setFriction(0.22).setRestitution(0.28).setCollisionGroups(GROUP_CAR);
     this.collider = world.createCollider(cd, this.body);
     this.ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
     this.wheels = WHEEL_POS.map(w => ({
@@ -52,6 +54,12 @@ export class Vehicle {
     this.disabled = false;   // vrak / väntar på start
     this.hold = false;       // står på griden
     this.spinT = 0;          // efter en tackling: låt bilen snurra fritt
+    this.assist = false;     // bottar: stabil bil som inte driftar av sig själv
+    this.drift = 0;          // 0..1 hur mycket bilen driftar just nu
+    this.beta = 0;           // driftvinkel: hastighetens riktning mot nosen (+ = glider åt höger)
+    this.pressF = 1; this.pressR = 1; // sidogrepp när en annan bil trycker på (sätts av spelet varje steg)
+    this.pressT = 0; this.pressHold = 0;
+    this.wallT = 0;          // skrapar mot kanten: väggen får vrida bilen parallellt
     // läs-värden
     this.pos = new THREE.Vector3(); this.quat = new THREE.Quaternion();
     this.vel = new THREE.Vector3(); this.angv = new THREE.Vector3();
@@ -90,8 +98,15 @@ export class Vehicle {
     const hand = off ? 0 : inp.handbrake;
 
     const sp = Math.abs(this.vLong);
-    const steerTarget = (off ? 0 : inp.steer) * CP.steerMax / (1 + sp / 12);
-    this.steer += clamp(steerTarget - this.steer, -dt * 3, dt * 3);
+    const vf = this.vel.dot(fwd), vr = this.vel.dot(right);
+    this.beta = this.speed > 6 ? Math.atan2(vr, Math.max(0.5, Math.abs(vf))) : 0;
+    if (this.pressT > 0) this.pressT -= dt;
+    if (this.wallT > 0) this.wallT -= dt;
+    const inSteer = off ? 0 : inp.steer;
+    let dmax = steerMaxAt(sp);
+    // motstyrning: styr man åt glidriktningen får man större utslag och kan fånga sladden
+    if (Math.sign(inSteer) === Math.sign(this.beta) && Math.abs(this.beta) > 0.08) dmax = Math.max(dmax, Math.min(0.45, Math.abs(this.beta) + 0.1));
+    this.steer += clamp(inSteer * dmax - this.steer, -dt * 3.5, dt * 3.5);
 
     // Motor: kraften avtar mot den (rörliga) toppfarten
     let drive = 0;
@@ -141,7 +156,9 @@ export class Vehicle {
       _pv.copy(this.vel).add(_t.crossVectors(this.angv, _r));
       const vL = _pv.dot(_wf), vS = _pv.dot(_ws);
 
-      const grip = CP.muLat * (w.front ? 1 : CP.rearGrip * (hand > 0.5 ? 0.42 : 1));
+      const grip = CP.muLat * (w.front
+        ? this.pressF
+        : CP.rearGrip * this.pressR * (1 - 0.55 * this.drift) * (hand > 0.5 ? 0.42 : 1));
       const maxJ = grip * Fs * dt;
       let jS = clamp(-vS * CP.mass * 0.25, -maxJ, maxJ);
 
@@ -192,17 +209,44 @@ export class Vehicle {
       // marktryck
       const df = CP.downforce * this.speed * this.speed * dt;
       this.applyJ(-up.x * df, -up.y * df, -up.z * df, pos.x, pos.y, pos.z);
-      // girspärr: hindra snurr av vanlig styrning (inte efter tacklingar)
-      if (this.spinT <= 0 && !off) {
+      // Girkontroll (arkad): bilen vrider sig så mycket ratten säger — släpper man ratten
+      // rätar den upp sig (ingen "fortsätter svänga" med gasen i botten).
+      if (!off) {
         const yaw = this.angv.dot(up);
-        const kin = Math.abs(this.vLong * Math.tan(this.steer) / 2.94) + 0.55;
-        if (Math.abs(yaw) > kin) {
-          const corr = (Math.abs(yaw) - kin) * Math.sign(yaw) * 0.35;
-          const av = this.body.angvel();
-          this.body.setAngvel({ x: av.x - up.x * corr, y: av.y - up.y * corr, z: av.z - up.z * corr }, true);
+        // önskad gir: hjulvinkeln, men aldrig mer än däcken klarar (~30 m/s² i sidled) —
+        // annars vrids nosen runt fortare än bilen kan svänga och den snurrar
+        const v = Math.max(1, Math.abs(this.vLong));
+        const dm = steerMaxAt(sp);
+        const wMax = Math.min(v * Math.tan(dm) / 2.94, 30 / v);
+        const kin = -Math.sign(this.vLong || 1) * clamp(this.steer / dm, -1.6, 1.6) * wMax;   // höger = negativ gir
+        // drift: hårt rattutslag i hög fart med gas (eller handbroms) → bakvagnen släpper
+        const wantDrift = !this.assist && (hand > 0.5 ? sp > 12 : (Math.abs(inSteer) > 0.6 && sp > 40 && throttle > 0.4));
+        this.drift += ((wantDrift ? 1 : 0) - this.drift) * Math.min(1, (wantDrift ? 3.5 : 4) * dt);
+        let target = kin * (1 + 1.2 * this.drift);
+        let gain = 7 - 4.5 * this.drift;
+        // knuffad/tacklad: lös gir så bilen kan spinna — men den som motstyr tar tillbaka kontrollen
+        if (this.spinT > 0 || this.pressT > 0) {
+          const hold = Math.max(0, inSteer * Math.sign(yaw));
+          gain = (this.assist ? 0.6 : 0.25) + 3.2 * Math.max(hold, this.pressHold);
+          target = kin;
+        } else if (Math.abs(this.beta) > 0.6) gain = Math.max(gain, 5); // max ~35° drift
+        // mot kanten: låt väggen vrida bilen längs med sig (annars plöjer den rakt in)
+        if (this.wallT > 0) gain = Math.min(gain, 0.8);
+        const corr = (target - yaw) * Math.min(1, gain * dt);
+        const av = this.body.angvel();
+        this.body.setAngvel({ x: av.x + up.x * corr, y: av.y + up.y * corr, z: av.z + up.z * corr }, true);
+        // Drifthjälp (arkad): i en drift vrids farten mot nosen — man driftar runt kurvan
+        // i stället för att plöja rakt in i väggen. Lite fart går förlorad.
+        if (this.drift > 0.05 && Math.abs(this.beta) > 0.02 && sp > 15 && this.spinT <= 0 && this.wallT <= 0) {
+          const th = Math.sign(this.beta) * Math.min(Math.abs(this.beta), 0.55 * this.drift * dt);
+          const lv = this.body.linvel();
+          const c = Math.cos(th), sn = Math.sin(th), keep = 1 - 0.12 * this.drift * dt;
+          const nx = (lv.x * c + lv.z * sn) * keep, nz = (-lv.x * sn + lv.z * c) * keep;
+          this.J.x += (nx - lv.x) * CP.mass; this.J.z += (nz - lv.z) * CP.mass;
+          this.body.setLinvel({ x: nx, y: lv.y, z: nz }, true);
         }
       }
-    }
+    } else this.drift = Math.max(0, this.drift - dt * 2);
   }
 
   // Efter world.step(): räkna ut Δv som inte kom från våra egna impulser/gravitationen
@@ -229,7 +273,7 @@ export class Vehicle {
     b.setAngvel({ x: 0, y: 0, z: 0 }, true);
     for (const w of this.wheels) { w.prevComp = 0; w.comp = 0; }
     this.steer = 0;
-    this.spinT = 0;
+    this.spinT = 0; this.drift = 0; this.pressT = 0;
     this.readState();
   }
 

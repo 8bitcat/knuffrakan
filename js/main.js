@@ -217,7 +217,7 @@ async function boot() {
         if (d < 70) others.push({ v: c.veh.speed, throttle: c.veh.input.throttle, dist: d, pan: _pan(game.camera, c.veh.pos) });
       }
       others.sort((a, b) => a.dist - b.dist);
-      audio.update({ v: me.veh.speed, throttle: me.veh.input.throttle, on: !me.wrecked }, others, me.veh.speed, me.veh.up.y < 0.35 && me.veh.speed > 5);
+      audio.update({ v: me.veh.speed, throttle: me.veh.input.throttle, on: !me.wrecked, slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0 }, others, me.veh.speed, (me.veh.up.y < 0.35 && me.veh.speed > 5) || me.scrapeT > 0 || me.contactT > 0);
     }
     frames++;
     if (frames === 30) window.ready = true;

@@ -1,6 +1,6 @@
 // Bottarna: kör i full gas i sin fil, byter fil, väjer för långsammare bilar och
 // tacklar ibland den som ligger bredvid.
-import { CP } from './vehicle.js?v=1';
+import { steerMaxAt } from './vehicle.js?v=1';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -73,8 +73,12 @@ export class BotBrain {
     const alpha = Math.atan2(lat, fwd);
     const dist = Math.hypot(tx, tz);
     const delta = Math.atan(2 * 2.94 * Math.sin(alpha) / Math.max(8, dist));
-    const dmax = CP.steerMax / (1 + Math.abs(v.vLong) / 12);
+    const dmax = steerMaxAt(v.vLong);
     let steer = delta / dmax + Math.sin(this.wob * 1.7) * this.noise;
+    // motstyr om bilen glider
+    if (Math.abs(v.beta) > 0.1) steer += Math.max(-0.7, Math.min(0.7, v.beta * 2));
+    // knuffad från sidan: tuffa bottar lutar sig tillbaka in i knuffaren
+    if (car.contactT > 0 && car.contactWith && this.aggr > 0.35) steer += car.contactSide * 0.55 * this.aggr;
     inp.steer = clamp(steer, -1, 1);
 
     // fart: bromsa i tid inför snäva kurvor (nödvändig retardation till kurvans fart)

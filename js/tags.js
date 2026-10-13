@@ -42,8 +42,9 @@ export class NameTag {
     this.mat = new THREE.SpriteMaterial({ map: this.tex, depthTest: false, depthWrite: false, transparent: true, fog: false, toneMapped: false });
     this.sprite = new THREE.Sprite(this.mat);
     this.sprite.center.set(0.62, 0.5);
-    const k = big ? 1.15 : 1;
-    this.sprite.scale.set(4.6 * k, 1.15 * k, 1);
+    // egen skylt liten och låg (får inte skymma vägen), andras lite större
+    if (big) this.sprite.scale.set(2.3, 0.575, 1); else this.sprite.scale.set(3.5, 0.875, 1);
+    this.lift = big ? 1.6 : 2.25;
     this.sprite.renderOrder = 20;
     scene.add(this.sprite);
     this.name = name; this.seed = seed; this.key = '';

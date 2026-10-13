@@ -1,3 +1,4 @@
+import { CONF } from './config.js?v=1';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -7,7 +8,7 @@ export class HUD {
     this.el = {
       hud: $('hud'), place: $('place'), placeN: $('placeN'), placeOf: $('placeOf'), status: $('status'), lap: $('lap'),
       timer: $('timer'), flash: $('flash'), toasts: $('toasts'), results: $('results'), map: $('minimap'), health: $('healthbar'),
-      boost: $('draft'),
+      boost: $('draft'), bonus: $('bonus'),
     };
     this.mapCtx = this.el.map.getContext('2d');
     this.flashT = 0;
@@ -48,6 +49,10 @@ export class HUD {
     this.el.health.style.width = Math.max(0, me.health) + '%';
     this.el.health.style.background = me.health > 60 ? '#5bff7a' : me.health > 30 ? '#ffc23a' : '#ff3b3b';
     this.el.boost.classList.toggle('on', !!me.drafting && r.phase === 'race');
+    // fartbonus: ju längre bak, desto högre toppfart
+    const bonus = r.phase === 'race' && !me.finished ? Math.round(me.veh.vmax * 3.6 - CONF.BASE_KMH) : 0;
+    const bt = bonus > 2 ? `+${bonus} km/h bakifrån` : (r.phase === 'race' && me.place === 1 ? 'LEDARE – långsammast' : '');
+    if (this.el.bonus.textContent !== bt) this.el.bonus.textContent = bt;
   }
 
   drawMap(game) {

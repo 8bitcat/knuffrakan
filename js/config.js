@@ -1,7 +1,7 @@
 // KNUFFRAKAN — global konfiguration.
 // PROTO bumpas vid varje släpp (nätkompatibilitet + cache-brytning).
 export const VERSION = '0.1.0';
-export const PROTO = 1;
+export const PROTO = 2;
 
 export const CONF = {
   DT: 1 / 60,
@@ -24,8 +24,8 @@ export const CONF = {
 
   // Packracing: ju längre bak, desto högre toppfart — fältet klumpar ihop sig
   BASE_KMH: 305,        // ledarens toppfart
-  STEP_KMH: 4,          // + per placering bakåt (för brant ⇒ bakifrånkrockar i 100 km/h skillnad)
-  STEP_CAP: 10,
+  STEP_KMH: 6,          // + per placering bakåt: långsammast längst fram, snabbast längst bak
+  STEP_CAP: 14,         // (stegen mellan grannar är liten ⇒ knuffar, inte 100 km/h-krockar)
   GAP_KMH: 70,          // extra om man tappat långt (efter krasch) — börjar efter 250 m
   DRAFT_KMH: 26,        // suget bakom en bil
 

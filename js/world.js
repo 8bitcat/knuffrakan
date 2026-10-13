@@ -262,7 +262,7 @@ function buildBarriers(ctx) {
         const cx = T.px[i] + R.x * lat + U.x * h / 2, cy = T.py[i] + R.y * lat + U.y * h / 2, cz = T.pz[i] + R.z * lat + U.z * h / 2;
         const cd = ctx.RAPIER.ColliderDesc.cuboid(th, h / 2, T.ds + 0.35)
           .setTranslation(cx, cy, cz).setRotation({ x: Q.x, y: Q.y, z: Q.z, w: Q.w })
-          .setFriction(0.25).setRestitution(0.15).setCollisionGroups(GROUP_WORLD);
+          .setFriction(0.04).setRestitution(0.45).setCollisionGroups(GROUP_WORLD);
         ctx.world.createCollider(cd, ctx.fixedBody);
       }
     }

@@ -18,3 +18,16 @@ metal_scrape.mp3 — Pól — s023 metal rail scrape — https://freesound.org/p
 explosion.mp3 — Nox_Sound — explosion debris short stereo — https://freesound.org/people/Nox_Sound/sounds/560510/
 tire_screech.mp3 — audible-edge — Chrysler LHS tire squeal 04 — https://freesound.org/people/audible-edge/sounds/71739/
 wind.mp3 — FunWithSound — Car Strong Wind Noise — https://freesound.org/people/FunWithSound/sounds/439242/
+
+Tillagda i v0.3 (alla CC0 1.0, Freesound):
+race_lo.mp3, race_mid.mp3, race_hi.mp3 — nnus_ — NNUS_race_car_muffled_engine — https://freesound.org/people/nnus_/sounds/243634/ (urklipp vid 33 s, 547 s, 356 s; diskant +4 dB, normaliserade)
+pack.mp3 — skycarl — Approaching field more than 20 NASCAR's (Darlington) — https://freesound.org/people/skycarl/sounds/797608/ (9,0–18,0 s)
+hit1.mp3 — qubodup — Clank Car Crash Collision — https://freesound.org/people/qubodup/sounds/151624/
+hit2.mp3 — qubodup — Fast Collision — https://freesound.org/people/qubodup/sounds/332056/
+hit3.mp3 — Logicogonist — car crash short 1 — https://freesound.org/people/Logicogonist/sounds/807438/
+hit4.mp3 — qubodup — Collision — https://freesound.org/people/qubodup/sounds/332058/
+ring.mp3 — JoMungus — Impact on metal — https://freesound.org/people/JoMungus/sounds/726486/
+wreck.mp3 — magnuswaker — Car Crash (with Glass) — https://freesound.org/people/magnuswaker/sounds/592388/
+grind1.mp3 — qubodup — Longer Grinding Scrape Sound — https://freesound.org/people/qubodup/sounds/743238/
+grind2.mp3 — qubodup — Metal Grinding 2 — https://freesound.org/people/qubodup/sounds/743239/
+grind3.mp3 — qubodup — Short Rusty Metal Scrape — https://freesound.org/people/qubodup/sounds/743259/

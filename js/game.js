@@ -1,19 +1,19 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=2';
-import { buildTrack } from './track.js?v=2';
-import { buildWorld } from './world.js?v=2';
-import { createScene, ChaseCam } from './scene.js?v=2';
-import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=2';
-import { makeLivery, randomSpec } from './livery.js?v=2';
-import { Vehicle, CP } from './vehicle.js?v=2';
-import { BotBrain } from './ai.js?v=2';
-import { Race } from './race.js?v=2';
-import { FX, Trails } from './fx.js?v=2';
-import { NameTag, SpeedPlate } from './tags.js?v=2';
-import { RemoteVeh, carInfo } from './net.js?v=2';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=3';
+import { buildTrack } from './track.js?v=3';
+import { buildWorld } from './world.js?v=3';
+import { createScene, ChaseCam } from './scene.js?v=3';
+import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=3';
+import { makeLivery, randomSpec } from './livery.js?v=3';
+import { Vehicle, CP } from './vehicle.js?v=3';
+import { BotBrain } from './ai.js?v=3';
+import { Race } from './race.js?v=3';
+import { FX, Trails } from './fx.js?v=3';
+import { NameTag, SpeedPlate } from './tags.js?v=3';
+import { RemoteVeh, carInfo } from './net.js?v=3';
 
-const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const ord = (n) => n + ':' + (n === 1 || n === 2 ? 'a' : 'e');
 
 export class Game {
@@ -361,9 +361,11 @@ export class Game {
     }
     // gnistor när plåten skrapar längs varandra
     const slide = Math.abs((b.vel.x - a.vel.x) * a.fwd.x + (b.vel.z - a.vel.z) * a.fwd.z);
-    if (tight > 0.6 && slide > 4 && Math.random() < dt * 20) {
-      (this.scrapes ||= []).push([a.pos.x + a.fwd.x * zc + a.right.x * side * 0.98, a.pos.y + 0.1, a.pos.z + a.fwd.z * zc + a.right.z * side * 0.98, a.vel.x, a.vel.y, a.vel.z]);
+    const grind = Math.abs(closing) > 1.5 || pushB > 0.3 || slide > 3;
+    if (tight > 0.55 && grind && a.speed > 8 && Math.random() < dt * 40) {
+      (this.scrapes ||= []).push([a.pos.x + a.fwd.x * zc + a.right.x * side * 0.98, a.pos.y + 0.05, a.pos.z + a.fwd.z * zc + a.right.z * side * 0.98, a.vel.x, a.vel.y, a.vel.z, -side * a.right.x, -side * a.right.z]);
     }
+    if (tight > 0.55 && grind) A.grindT = 0.15;
   }
 
   handleImpacts() {
@@ -402,7 +404,7 @@ export class Game {
           const yaw = 0;
           const f = car.veh.fwd, u = car.veh.up;
           car.veh.body.applyTorqueImpulse({ x: -f.x * roll + u.x * yaw, y: -f.y * roll + u.y * yaw, z: -f.z * roll + u.z * yaw }, true);
-          car.veh.spinT = 1.8;
+          car.veh.spinT = 1.2;
           if (im.dv > 10) this.notify(other, `Tackling! ${car.name} snurrar`, 'good');
         }
       }
@@ -415,7 +417,8 @@ export class Game {
       car.view.livery.scratch(u, vv, dmg);
       // gnistor i världen
       _v2.set(cp.x, cp.y, cp.z).applyQuaternion(car.veh.quat).add(car.veh.pos);
-      this.fx.sparks(_v2, car.veh.vel, 6 + Math.floor(dmg / 3), 5);
+      if (other) this.fx.tackle(_v2, car.veh.vel, _v3.set(-im.dx, 0, -im.dz).normalize(), im.dv / 12);
+      else this.fx.sparks(_v2, car.veh.vel, 8 + Math.floor(dmg / 2), 6);
       if (this.net) {
         const r3 = (x) => Math.round(x * 1000) / 1000;
         this.emit({ t: 'hit', id: car.id, by: other ? other.id : 0, cp: [r3(cp.x), r3(cp.y), r3(cp.z)], dl: [r3(dl.x), r3(dl.y), r3(dl.z)],
@@ -444,13 +447,18 @@ export class Game {
         const lv = v.body.linvel(), k = 1 - 0.3 * dt;
         v.body.setLinvel({ x: lv.x * k, y: lv.y, z: lv.z * k }, true);
         car.scrapeT = 0.15;
-        if (v.speed > 6 && Math.random() < dt * 25) {
+        if (v.speed > 6 && Math.random() < dt * 40) {
           const sd = Math.sign(car.trk.lat);
-          (this.scrapes ||= []).push([v.pos.x + rhx * sd * reach, v.pos.y, v.pos.z + rhz * sd * reach, lv.x, lv.y, lv.z]);
+          (this.scrapes ||= []).push([v.pos.x + rhx * sd * reach, v.pos.y, v.pos.z + rhz * sd * reach, lv.x, lv.y, lv.z, -rhx * sd, -rhz * sd]);
         }
       }
     }
     if (car.scrapeT > 0) car.scrapeT -= dt;
+    if (car.grindT > 0) car.grindT -= dt;
+    // första kontakten sida mot sida: en plåtsmäll (även utan stor Δv)
+    const inContact = car.contactT > 0.1;
+    if (inContact && !car.wasContact && car.contactWith && (car === this.me || car.contactWith === this.me)) this.audio?.bump?.(Math.min(1, 0.4 + v.speed / 120));
+    car.wasContact = inContact;
     // klarar man sig från smällar en stund lagas bilen sakta
     if (!car.wrecked && car.health < 100 && this.simT - (car.lastDmgT || 0) > 4) car.health = Math.min(100, car.health + 2.5 * dt);
     if (car.wrecked) {
@@ -528,8 +536,25 @@ export class Game {
       else if (r.phase === 'race') sc.set('LEDER JUST NU', (r.order && r.order[0]?.name) || '');
       else if (r.phase === 'results') sc.set('VINNARE', r.lastWinner || (r.order && r.order[0]?.name) || '');
     }
+    // gästen: gnistor ur ögonblicksbildernas skrapflaggor
+    if (this.mode === 'client') {
+      for (const car of this.cars) {
+        if (!(car.scrapeT > 0 || car.grindT > 0) || car.veh.speed < 6 || Math.random() > dt * 40) continue;
+        const v = car.veh;
+        let sd = Math.sign(car.trk.lat) || 1;
+        if (car.grindT > 0) {
+          let best = null, bd = 49;
+          for (const o of this.cars) { if (o === car) continue; const d = o.veh.pos.distanceToSquared(v.pos); if (d < bd) { bd = d; best = o; } }
+          if (best) sd = Math.sign((best.veh.pos.x - v.pos.x) * v.right.x + (best.veh.pos.z - v.pos.z) * v.right.z) || 1;
+          (this.scrapes ||= []).push([v.pos.x + v.right.x * sd * 0.98, v.pos.y, v.pos.z + v.right.z * sd * 0.98, v.vel.x, v.vel.y, v.vel.z, -v.right.x * sd, -v.right.z * sd]);
+        } else {
+          const i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];
+          (this.scrapes ||= []).push([v.pos.x + rhx * sd * 1.1, v.pos.y, v.pos.z + rhz * sd * 1.1, v.vel.x, v.vel.y, v.vel.z, -rhx * sd, -rhz * sd]);
+        }
+      }
+    }
     if (this.scrapes) {
-      for (const [x, y, z, vx, vy, vz] of this.scrapes) this.fx.sparks(_v.set(x, y, z), _v2.set(vx, vy, vz), 4, 3);
+      for (const [x, y, z, vx, vy, vz, dx, dz] of this.scrapes) this.fx.scrape(_v.set(x, y, z), _v2.set(vx, vy, vz), _v3.set(dx || 0, 0, dz || 0));
       this.scrapes.length = 0;
     }
     this.fx.update(dt);

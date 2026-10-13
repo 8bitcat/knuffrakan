@@ -59,6 +59,19 @@ const res = await page.evaluate(() => {
   out.pitPassiv = pit(false);
   out.pitMotstyr = pit(true);
 
+  // 3b) Spinn efter tackling (3 rad/s gir i 250 km/h): kan man rädda det med motstyrning?
+  const spin = (counter) => {
+    A.health = 100; park(B);
+    g.placeCar(A, 400, 0, 70); A.ghostT = 0; A.veh.setGhost(false);
+    run(10, () => inp(A, 1, 0));
+    const av = A.veh.body.angvel(); A.veh.body.setAngvel({ x: av.x, y: 3, z: av.z }, true); A.veh.spinT = 1.2;
+    const h0 = head(A); let maxD = 0;
+    run(150, () => { const yaw = A.veh.angv.y; inp(A, 1, counter ? Math.sign(A.veh.beta || yaw) : 0); maxD = Math.max(maxD, Math.abs(dang(head(A), h0))); });
+    return { maxHeadingDeg: Math.round(maxD), slutDeg: Math.round(dang(head(A), h0)), kmh: Math.round(A.veh.speed * 3.6) };
+  };
+  out.spinPassiv = spin(false);
+  out.spinMotstyr = spin(true);
+
   // 4) Sidoknuff: B bredvid A, styr in i A en sekund
   const shove = (hold) => {
     g.placeCar(A, 300, 3, 65); g.placeCar(B, 300, 3 - 2.1, 65);

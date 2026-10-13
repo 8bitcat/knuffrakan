@@ -1,7 +1,7 @@
 // Racet: startgrid → nedräkning → race (ett varv) → resultat → ny grid.
 // Packracing: toppfarten styrs av placeringen (sist går fortast) + suget bakom bilar.
-import { CONF } from './config.js?v=2';
-import { gridSlots } from './world.js?v=2';
+import { CONF } from './config.js?v=3';
+import { gridSlots } from './world.js?v=3';
 
 export class Race {
   constructor(game) {

@@ -96,8 +96,23 @@ export class FX {
   constructor(scene) {
     this.glow = new Particles(scene, 3000, true);
     this.puff = new Particles(scene, 3000, false);
+    this.lines = new SparkLines(scene);
   }
-  update(dt) { this.glow.update(dt); this.puff.update(dt); }
+  update(dt) { this.glow.update(dt); this.puff.update(dt); this.lines.update(dt); }
+  // Tackling: blixt + kraftig gnistskur ut från kontaktpunkten
+  tackle(p, v, dir, strength = 1) {
+    const k = Math.min(2.5, strength);
+    this.glow.spawn(p.x, p.y, p.z, v.x, v.y, v.z, 0.12, 2.2 * k, 3.6 * k, SPARK0, FIRE1, 1, 0, 0);
+    this.lines.emit(p, v, Math.round(35 + 45 * k), 9 + 4 * k, dir);
+    for (let n = 0; n < 10 * k; n++) this.glow.spawn(p.x, p.y, p.z, v.x * 0.8 + rnd(7), Math.random() * 6, v.z * 0.8 + rnd(7), 0.3 + Math.random() * 0.3, 0.3, 0.1, SPARK0, SPARK1, 1, 14, 0.6);
+  }
+  // Skrap: en stråle gnistor per anrop
+  scrape(p, v, dir) {
+    this.lines.emit(p, v, 10, 6, dir);
+    // glödande punkt där plåten slipar + små heta korn
+    this.glow.spawn(p.x, p.y, p.z, v.x * 0.95, 0.3, v.z * 0.95, 0.07, 1.3, 0.6, SPARK0, SPARK1, 1, 0, 0);
+    for (let n = 0; n < 3; n++) this.glow.spawn(p.x, p.y, p.z, v.x * 0.8 + rnd(4), Math.random() * 3, v.z * 0.8 + rnd(4), 0.25, 0.22, 0.08, SPARK0, SPARK1, 1, 14, 0.6);
+  }
   fire(p, v, k = 1) {
     this.glow.spawn(p.x + rnd(0.4), p.y + rnd(0.2), p.z + rnd(0.4), v.x * 0.6 + rnd(1), v.y * 0.6 + 2 + Math.random() * 2, v.z * 0.6 + rnd(1),
       0.45 + Math.random() * 0.35, 0.9 * k, 2.4 * k, FIRE0, FIRE1, 0.9, -1.5, 1.2);
@@ -111,6 +126,7 @@ export class FX {
       1.1 + Math.random() * 0.8, 1.2, 4.5, TIRE0, TIRE1, 0.35, -0.3, 1.4);
   }
   sparks(p, v, n = 8, spread = 6) {
+    this.lines.emit(p, v, n * 2, spread * 1.2);
     for (let k = 0; k < n; k++) {
       this.glow.spawn(p.x, p.y, p.z, v.x * 0.7 + rnd(spread), v.y * 0.3 + Math.random() * spread * 0.7, v.z * 0.7 + rnd(spread),
         0.25 + Math.random() * 0.35, 0.22, 0.08, SPARK0, SPARK1, 1, 14, 0.6);
@@ -129,6 +145,69 @@ export class FX {
     }
     for (let k = 0; k < 26; k++) this.smoke(p, { x: v.x * 0.3 + rnd(6), y: 4, z: v.z * 0.3 + rnd(6) }, true, 1.8);
     this.sparks(p, v, 40, 14);
+  }
+}
+
+// Gnistor som ljusstrimmor (linjer längs farten) — sprutar när plåt möter plåt
+export class SparkLines {
+  constructor(scene, max = 2400) {
+    this.max = max; this.n = 0;
+    this.p = new Float32Array(max * 3); this.v = new Float32Array(max * 3);
+    this.life = new Float32Array(max); this.maxLife = new Float32Array(max);
+    this.pos = new Float32Array(max * 6); this.col = new Float32Array(max * 6);
+    const g = new THREE.BufferGeometry();
+    this.aPos = new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage);
+    this.aCol = new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('position', this.aPos); g.setAttribute('color', this.aCol);
+    g.setDrawRange(0, 0);
+    this.geo = g;
+    this.mesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false,
+    }));
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 7;
+    scene.add(this.mesh);
+  }
+  // p = punkt, v = bilens fart (gnistorna ärver den), dir = utåt från kontakten
+  emit(p, v, n, spread = 8, dir = null) {
+    for (let k = 0; k < n; k++) {
+      let i = this.n;
+      if (i >= this.max) i = Math.floor(Math.random() * this.max); else this.n++;
+      this.p[i * 3] = p.x; this.p[i * 3 + 1] = p.y; this.p[i * 3 + 2] = p.z;
+      const dx = dir ? dir.x * spread * (0.4 + Math.random()) : 0, dz = dir ? dir.z * spread * (0.4 + Math.random()) : 0;
+      this.v[i * 3] = v.x * (0.75 + Math.random() * 0.2) + dx + rnd(spread);
+      this.v[i * 3 + 1] = v.y * 0.3 + Math.random() * spread * 0.6;
+      this.v[i * 3 + 2] = v.z * (0.75 + Math.random() * 0.2) + dz + rnd(spread);
+      this.life[i] = 0; this.maxLife[i] = 0.25 + Math.random() * 0.45;
+    }
+  }
+  update(dt) {
+    let i = 0;
+    while (i < this.n) {
+      this.life[i] += dt;
+      if (this.life[i] >= this.maxLife[i]) {
+        const j = --this.n;
+        if (i !== j) {
+          for (let k = 0; k < 3; k++) { this.p[i * 3 + k] = this.p[j * 3 + k]; this.v[i * 3 + k] = this.v[j * 3 + k]; }
+          this.life[i] = this.life[j]; this.maxLife[i] = this.maxLife[j];
+        }
+        continue;
+      }
+      const t = this.life[i] / this.maxLife[i];
+      this.v[i * 3] *= 1 - 0.8 * dt; this.v[i * 3 + 2] *= 1 - 0.8 * dt; this.v[i * 3 + 1] -= 16 * dt;
+      for (let k = 0; k < 3; k++) this.p[i * 3 + k] += this.v[i * 3 + k] * dt;
+      // strimma: från punkten bakåt längs farten
+      const L = 0.035;
+      for (let k = 0; k < 3; k++) { this.pos[i * 6 + k] = this.p[i * 3 + k]; this.pos[i * 6 + 3 + k] = this.p[i * 3 + k] - this.v[i * 3 + k] * L; }
+      const a = 1 - t;
+      // vitgul → orange → slocknar
+      const r = 2.4 * a + 0.3, gg = (2.0 - 1.2 * t) * a, b = (1.1 - 1.1 * t) * a;
+      this.col[i * 6] = r; this.col[i * 6 + 1] = gg; this.col[i * 6 + 2] = b;
+      this.col[i * 6 + 3] = r * 0.5; this.col[i * 6 + 4] = gg * 0.35; this.col[i * 6 + 5] = 0;
+      i++;
+    }
+    this.geo.setDrawRange(0, this.n * 2);
+    this.aPos.needsUpdate = this.aCol.needsUpdate = true;
   }
 }
 

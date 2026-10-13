@@ -1,15 +1,15 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, TITLES } from './config.js?v=2';
-import { Game } from './game.js?v=2';
-import { HUD } from './hud.js?v=2';
-import { GameAudio } from './audio.js?v=2';
-import { Input } from './input.js?v=2';
-import { CarView, SHAPES } from './carmodel.js?v=2';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=2';
-import { logoCanvas } from './world.js?v=2';
-import { BotBrain } from './ai.js?v=2';
-import { connectRoom, NetHost, NetClient } from './net.js?v=2';
+import { CONF, VERSION, TITLES } from './config.js?v=3';
+import { Game } from './game.js?v=3';
+import { HUD } from './hud.js?v=3';
+import { GameAudio } from './audio.js?v=3';
+import { Input } from './input.js?v=3';
+import { CarView, SHAPES } from './carmodel.js?v=3';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=3';
+import { logoCanvas } from './world.js?v=3';
+import { BotBrain } from './ai.js?v=3';
+import { connectRoom, NetHost, NetClient } from './net.js?v=3';
 
 const PUBLIC = 'PUBLIK';
 
@@ -211,13 +211,22 @@ async function boot() {
     if (game.me && mapT > 0.1) { mapT = 0; hud.drawMap(game); }
     if (game.me) {
       const me = game.me, others = [];
+      let pack = 0;
       for (const c of game.cars) {
         if (c === me) continue;
-        const d = c.veh.pos.distanceTo(me.veh.pos);
-        if (d < 70) others.push({ v: c.veh.speed, throttle: c.veh.input.throttle, dist: d, pan: _pan(game.camera, c.veh.pos) });
+        const dx = me.veh.pos.x - c.veh.pos.x, dy = me.veh.pos.y - c.veh.pos.y, dz = me.veh.pos.z - c.veh.pos.z;
+        const d = Math.hypot(dx, dy, dz) || 1;
+        if (d < 45) pack++;
+        if (d < 80) {
+          // närmar sig bilen mig? (för dopplereffekten)
+          const closing = ((c.veh.vel.x - me.veh.vel.x) * dx + (c.veh.vel.y - me.veh.vel.y) * dy + (c.veh.vel.z - me.veh.vel.z) * dz) / d;
+          others.push({ v: c.veh.speed, throttle: c.veh.input.throttle || 1, dist: d, pan: _pan(game.camera, c.veh.pos), closing });
+        }
       }
       others.sort((a, b) => a.dist - b.dist);
-      audio.update({ v: me.veh.speed, throttle: me.veh.input.throttle, on: !me.wrecked, slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0 }, others, me.veh.speed, (me.veh.up.y < 0.35 && me.veh.speed > 5) || me.scrapeT > 0 || me.contactT > 0);
+      const scrape = (me.veh.up.y < 0.35 && me.veh.speed > 5) || me.scrapeT > 0 || me.grindT > 0;
+      audio.update({ v: me.veh.speed, throttle: me.veh.input.throttle, on: !me.wrecked, slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0 },
+        others, me.veh.speed, scrape, pack, Math.min(dt, 0.1));
     }
     frames++;
     if (frames === 30) window.ready = true;

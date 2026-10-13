@@ -2,8 +2,8 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=2';
-import { WHEEL_POS, WHEEL_R } from './carmodel.js?v=2';
+import { CONF } from './config.js?v=3';
+import { WHEEL_POS, WHEEL_R } from './carmodel.js?v=3';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -220,14 +220,14 @@ export class Vehicle {
         const wMax = Math.min(v * Math.tan(dm) / 2.94, 30 / v);
         const kin = -Math.sign(this.vLong || 1) * clamp(this.steer / dm, -1.6, 1.6) * wMax;   // höger = negativ gir
         // drift: hårt rattutslag i hög fart med gas (eller handbroms) → bakvagnen släpper
-        const wantDrift = !this.assist && (hand > 0.5 ? sp > 12 : (Math.abs(inSteer) > 0.6 && sp > 40 && throttle > 0.4));
+        const wantDrift = !this.assist && (hand > 0.5 ? sp > 12 : (Math.abs(inSteer) > 0.45 && sp > 30 && throttle > 0.3));
         this.drift += ((wantDrift ? 1 : 0) - this.drift) * Math.min(1, (wantDrift ? 3.5 : 4) * dt);
         let target = kin * (1 + 1.2 * this.drift);
         let gain = 7 - 4.5 * this.drift;
         // knuffad/tacklad: lös gir så bilen kan spinna — men den som motstyr tar tillbaka kontrollen
+        const hold = Math.max(0, inSteer * Math.sign(yaw)); // motstyrning mot snurret
         if (this.spinT > 0 || this.pressT > 0) {
-          const hold = Math.max(0, inSteer * Math.sign(yaw));
-          gain = (this.assist ? 0.6 : 0.25) + 3.2 * Math.max(hold, this.pressHold);
+          gain = (this.assist ? 0.6 : 0.45) + 4.5 * Math.max(hold, this.pressHold);
           target = kin;
         } else if (Math.abs(this.beta) > 0.6) gain = Math.max(gain, 5); // max ~35° drift
         // mot kanten: låt väggen vrida bilen längs med sig (annars plöjer den rakt in)
@@ -237,8 +237,11 @@ export class Vehicle {
         this.body.setAngvel({ x: av.x + up.x * corr, y: av.y + up.y * corr, z: av.z + up.z * corr }, true);
         // Drifthjälp (arkad): i en drift vrids farten mot nosen — man driftar runt kurvan
         // i stället för att plöja rakt in i väggen. Lite fart går förlorad.
-        if (this.drift > 0.05 && Math.abs(this.beta) > 0.02 && sp > 15 && this.spinT <= 0 && this.wallT <= 0) {
-          const th = Math.sign(this.beta) * Math.min(Math.abs(this.beta), 0.55 * this.drift * dt);
+        // Räddning: motstyr man i ett spinn/en för vid drift vrids farten tillbaka mot nosen snabbare
+        const save = (this.spinT > 0 || Math.abs(this.beta) > 0.8) && Math.abs(this.beta) < 1.6
+          && Math.sign(inSteer) === Math.sign(this.beta) && Math.abs(inSteer) > 0.3 ? Math.abs(inSteer) : 0;
+        if ((this.drift > 0.05 || save > 0) && Math.abs(this.beta) > 0.02 && sp > 15 && this.wallT <= 0 && (this.spinT <= 0 || save > 0)) {
+          const th = Math.sign(this.beta) * Math.min(Math.abs(this.beta), (0.55 * this.drift + 1.3 * save) * dt);
           const lv = this.body.linvel();
           const c = Math.cos(th), sn = Math.sin(th), keep = 1 - 0.12 * this.drift * dt;
           const nx = (lv.x * c + lv.z * sn) * keep, nz = (-lv.x * sn + lv.z * c) * keep;

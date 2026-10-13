@@ -1,0 +1,20 @@
+Ljud i KNUFFRAKAN — alla CC0 1.0 (Freesound), konverterade till mp3.
+
+v8_idle.mp3 — tubbers — CHEVY HOT ROD — https://freesound.org/people/tubbers/sounds/570800/
+v8_high.mp3 — cr4sht3st — med (LS6 V8, 3000 rpm) — https://freesound.org/people/cr4sht3st/sounds/157144/
+v8b_idle.mp3 — FreeCarSoundsGaming — Muscle_Idle — https://freesound.org/people/FreeCarSoundsGaming/sounds/535038/
+v8b_high.mp3 — FreeCarSoundsGaming — Revving_2 — https://freesound.org/people/FreeCarSoundsGaming/sounds/535040/
+rev.mp3 — Henaway — Big Block V8 Rev — https://freesound.org/people/Henaway/sounds/127980/
+engine_start_v8.mp3 — DigPro120 — Starting and revving a 74 Corvette — https://freesound.org/people/DigPro120/sounds/432638/
+crash_heavy_1.mp3 — PauliusI — car crash ext — https://freesound.org/people/PauliusI/sounds/346299/
+crash_heavy_2.mp3 — craigsmith — S37-14 Two Cars Crash Foley — https://freesound.org/people/craigsmith/sounds/675466/
+crash_heavy_3.mp3 — craigsmith — S30-29 Car Crashes into Metal Sign — https://freesound.org/people/craigsmith/sounds/675256/
+crash_heavy_4.mp3 — squareal — car crash — https://freesound.org/people/squareal/sounds/237375/
+crash_light_1.mp3 — Pól — s021 metal impact — https://freesound.org/people/P%C3%B3l/sounds/385937/
+crash_light_2.mp3 — LPA134 — hood impact — https://freesound.org/people/LPA134/sounds/329516/
+crash_light_3.mp3 — dslrguide — metal hit 2 — https://freesound.org/people/dslrguide/sounds/321482/
+crash_light_4.mp3 — qubodup — metal crash collision — https://freesound.org/people/qubodup/sounds/67617/
+metal_scrape.mp3 — Pól — s023 metal rail scrape — https://freesound.org/people/P%C3%B3l/sounds/385939/
+explosion.mp3 — Nox_Sound — explosion debris short stereo — https://freesound.org/people/Nox_Sound/sounds/560510/
+tire_screech.mp3 — audible-edge — Chrysler LHS tire squeal 04 — https://freesound.org/people/audible-edge/sounds/71739/
+wind.mp3 — FunWithSound — Car Strong Wind Noise — https://freesound.org/people/FunWithSound/sounds/439242/

@@ -1,17 +1,17 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=1';
-import { buildTrack } from './track.js?v=1';
-import { buildWorld } from './world.js?v=1';
-import { createScene, ChaseCam } from './scene.js?v=1';
-import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=1';
-import { makeLivery, randomSpec } from './livery.js?v=1';
-import { Vehicle, CP } from './vehicle.js?v=1';
-import { BotBrain } from './ai.js?v=1';
-import { Race } from './race.js?v=1';
-import { FX, Trails } from './fx.js?v=1';
-import { NameTag, SpeedPlate } from './tags.js?v=1';
-import { RemoteVeh, carInfo } from './net.js?v=1';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=2';
+import { buildTrack } from './track.js?v=2';
+import { buildWorld } from './world.js?v=2';
+import { createScene, ChaseCam } from './scene.js?v=2';
+import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=2';
+import { makeLivery, randomSpec } from './livery.js?v=2';
+import { Vehicle, CP } from './vehicle.js?v=2';
+import { BotBrain } from './ai.js?v=2';
+import { Race } from './race.js?v=2';
+import { FX, Trails } from './fx.js?v=2';
+import { NameTag, SpeedPlate } from './tags.js?v=2';
+import { RemoteVeh, carInfo } from './net.js?v=2';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const ord = (n) => n + ':' + (n === 1 || n === 2 ? 'a' : 'e');
@@ -484,6 +484,13 @@ export class Game {
       const ring = car.place === 1 ? 'gold' : car.place === 2 ? 'silver' : car.place === 3 ? 'bronze' : 'green';
       car.tag.set(line2, this.race.phase === 'race' ? ring : 'green');
       car.tag.place(g.position.x, g.position.y + car.tag.lift, g.position.z, !car.wrecked || car.wreckT > 1.2);
+      // andras skyltar krymper nära kameran så de aldrig skymmer vägen
+      if (car !== this.me) {
+        const d = this.camera.position.distanceTo(g.position);
+        const k = Math.max(0.3, Math.min(1, (d - 4) / 22));
+        car.tag.sprite.scale.set(3.5 * k, 0.875 * k, 1);
+        car.tag.sprite.material.opacity = Math.min(1, (d - 3) / 6);
+      }
       // spår och sladdmärken (bakhjulen)
       for (const k of [2, 3]) {
         const w = v.wheels[k];

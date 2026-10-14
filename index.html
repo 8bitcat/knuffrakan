@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="sv" data-v="6">
+<html lang="sv" data-v="7">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,800;1,900&family=Michroma&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 <script type="importmap">
 {
   "imports": {
@@ -32,6 +32,7 @@
     <div id="menulogo"></div>
     <p class="tag">Packracing i 300 km/h genom snöbergen. Ju längre bak du ligger, desto fortare går du — knuffa dig fram!<br><span class="sub">KÖR! = race online med alla som spelar just nu · Eget rum = bara ni som har koden</span></p>
     <input id="namein" maxlength="16" placeholder="Ditt namn" autocomplete="off">
+    <div id="mtrack" class="tracks"></div>
     <button id="play" class="big">KÖR!</button>
     <div id="netstatus"></div>
     <div class="row2">
@@ -72,6 +73,7 @@
   <div id="lobby" class="hidden">
     <div class="lhead"><span class="lt">LOBBY</span><span id="lroom"></span></div>
     <div id="lshare"></div>
+    <div id="ltrack" class="tracks"></div>
     <div id="lplayers"></div>
     <div id="ltimer"></div>
     <div class="lbtns">
@@ -90,6 +92,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=6"></script>
+<script type="module" src="js/main.js?v=7"></script>
 </body>
 </html>

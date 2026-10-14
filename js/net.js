@@ -1,8 +1,8 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=6';
-import { WHEEL_POS } from './carmodel.js?v=6';
+import { PROTO } from './config.js?v=7';
+import { WHEEL_POS } from './carmodel.js?v=7';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
 const ROW = 21;     // flyttal per bil i en ögonblicksbild
@@ -89,7 +89,7 @@ export class NetHost {
       if (this.clients.has(conn)) return;
       const car = g.addRemotePlayer(String(d.name || 'Gäst').slice(0, 16), d.spec, conn);
       this.clients.set(conn, car);
-      conn.send({ t: 'welcome', you: car.id, cars: g.cars.map(carInfo), winner: g.race.lastWinner });
+      conn.send({ t: 'welcome', you: car.id, track: g.trackId, cars: g.cars.map(carInfo), winner: g.race.lastWinner });
       this.broadcast({ t: 'add', car: carInfo(car) }, conn);
       g.notifyAll(`👋 ${car.name} är med!`);
       return;
@@ -224,6 +224,7 @@ export class NetClient {
       case 'respawn': this.snapNext.add(d.id); break;
       case 'grid': g.clientGrid(); break;
       case 'lobby': g.clientLobby(); break;
+      case 'track': g.setTrack(d.id); g.hud?.toast('Ny bana: ' + (g.track.namn || d.id)); break;
       case 'lobbystate':
         g.lobbyInfo = d.info;
         for (const p of d.info.players || []) { const c = g.carById(p.id); if (c) c.ready = p.ready; }
@@ -279,7 +280,7 @@ export class NetClient {
       car.scrapeT = (f & 128) ? 0.15 : 0; car.grindT = (f & 256) ? 0.15 : 0; car.hidden = !!(f & 512);
       car.place = rb[18]; car.prog = rb[19]; car.veh.vmax = rb[20];
       car.trk.s = car.trk.s || 0;
-      g.track.project(car.veh.pos.x, car.veh.pos.z, car.trk.i, car.trk);
+      g.track.project(car.veh.pos.x, car.veh.pos.z, g.track.idx(((rb[19] % g.track.L) + g.track.L) % g.track.L), car.trk);
     }
     r.order = g.cars.slice().sort((x, y) => x.place - y.place);
   }

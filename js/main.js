@@ -1,15 +1,16 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=6';
-import { Game } from './game.js?v=6';
-import { HUD } from './hud.js?v=6';
-import { GameAudio } from './audio.js?v=6';
-import { Input } from './input.js?v=6';
-import { CarView, SHAPES } from './carmodel.js?v=6';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=6';
-import { logoCanvas } from './world.js?v=6';
-import { BotBrain } from './ai.js?v=6';
-import { connectRoom, NetHost, NetClient } from './net.js?v=6';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=7';
+import { Game } from './game.js?v=7';
+import { HUD } from './hud.js?v=7';
+import { GameAudio } from './audio.js?v=7';
+import { Input } from './input.js?v=7';
+import { CarView, SHAPES } from './carmodel.js?v=7';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=7';
+import { logoCanvas } from './world.js?v=7';
+import { BotBrain } from './ai.js?v=7';
+import { connectRoom, NetHost, NetClient } from './net.js?v=7';
+import { TRACKS } from './track.js?v=7';
 
 const PUBLIC = 'PUBLIK';
 
@@ -64,7 +65,12 @@ async function boot() {
   const audio = new GameAudio();
   const input = new Input();
   input.bindTouch(document);
-  const game = new Game(RAPIER, $('game'), { hud, audio, input });
+  // vald bana (minns mellan besök)
+  let trackChoice = 'hoppbacken';
+  try { trackChoice = localStorage.getItem('knuff_bana') || trackChoice; } catch { /* ok */ }
+  if (!TRACKS.some(t => t.id === trackChoice)) trackChoice = TRACKS[0].id;
+  hud.tracks = TRACKS.map(t => ({ id: t.id, namn: t.namn, besk: t.besk, laps: t.laps }));
+  const game = new Game(RAPIER, $('game'), { hud, audio, input, track: trackChoice });
   window.__game = game;
   game.setupBots(CONF.BOTS);
   game.race.toGrid(99999);
@@ -109,7 +115,7 @@ async function boot() {
     else game.race.toGrid(params.has('auto') ? 2 : CONF.GRID_WAIT);
     enterGame();
   };
-  const startSolo = () => { if (busy) return; readName(); audio.start(); startLocal(); };
+  const startSolo = () => { if (busy) return; readName(); audio.start(); game.setTrack(trackChoice); startLocal(); };
   // Online: gå med i rummet, finns ingen värd blir man värd
   const startOnline = async (room) => {
     if (busy) return;
@@ -124,6 +130,7 @@ async function boot() {
     if (res.role === 'host') {
       game.net = new NetHost(game, res.peer);
       game.room = room; game.isPublic = room === PUBLIC;
+      game.setTrack(trackChoice);
       startLocal();
       hud.toast(room === PUBLIC ? 'Du är först här — andra kan gå med i lobbyn' : `Rum ${room}: dela koden med dina kompisar!`, 'good');
     } else {
@@ -218,6 +225,19 @@ async function boot() {
     hud.lobbyKey = '';
   };
   bind('lready', 'onclick', toggleReady);
+  // banval i menyn och i lobbyn (bara värden kan byta)
+  const renderMenuTracks = () => { const el = $('mtrack'); if (el) el.innerHTML = hud.trackButtons(trackChoice, true, 1); };
+  renderMenuTracks();
+  const pickTrack = (e) => {
+    const b = e.target.closest('[data-track]');
+    if (!b) return;
+    trackChoice = b.dataset.track;
+    try { localStorage.setItem('knuff_bana', trackChoice); } catch { /* ok */ }
+    renderMenuTracks();
+    if (game.me && game.mode === 'host') { hud.toast('Bygger banan…'); setTimeout(() => { game.changeTrack(trackChoice); hud.lobbyKey = ''; }, 30); }
+  };
+  bind('mtrack', 'onclick', pickTrack);
+  bind('ltrack', 'onclick', pickTrack);
   bind('lstart', 'onclick', () => { if (game.mode === 'host') game.race.startFromLobby(); });
   bind('sb-cam', 'onclick', () => game.cam.toggle());
   const muteBtn = $('sb-mute');

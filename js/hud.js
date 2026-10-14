@@ -1,4 +1,4 @@
-import { CONF } from './config.js?v=6';
+import { CONF } from './config.js?v=7';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -9,7 +9,7 @@ export class HUD {
       hud: $('hud'), place: $('place'), placeN: $('placeN'), placeOf: $('placeOf'), status: $('status'), lap: $('lap'),
       timer: $('timer'), flash: $('flash'), toasts: $('toasts'), results: $('results'), map: $('minimap'), health: $('healthbar'),
       boost: $('draft'), bonus: $('bonus'),
-      lobby: $('lobby'), lroom: $('lroom'), lshare: $('lshare'), lplayers: $('lplayers'), ltimer: $('ltimer'), lready: $('lready'), lstart: $('lstart'),
+      lobby: $('lobby'), ltrack: $('ltrack'), lroom: $('lroom'), lshare: $('lshare'), lplayers: $('lplayers'), ltimer: $('ltimer'), lready: $('lready'), lstart: $('lstart'),
     };
     this.mapCtx = this.el.map.getContext('2d');
     this.flashT = 0;
@@ -46,7 +46,14 @@ export class HUD {
     this.el.placeN.textContent = racing ? me.place : '–';
     this.el.placeOf.textContent = '/' + (r.phase === 'lobby' ? game.cars.filter(c => !c.hidden).length : game.cars.length);
     const km = (x) => (x / 1000).toFixed(1).replace('.', ',');
-    this.el.lap.textContent = racing ? (me.finished ? 'I MÅL' : `${km(Math.max(0, me.prog))} / ${km(r.dist)} km`) : (r.phase === 'lobby' ? 'LOBBY' : 'STARTGRID');
+    const laps = r.laps;
+    const lapTxt = laps > 1 ? `VARV ${Math.min(laps, Math.max(1, me.lap + 1))}/${laps}` : `${km(Math.max(0, me.prog))} / ${km(r.dist)} km`;
+    this.el.lap.textContent = racing ? (me.finished ? 'I MÅL' : lapTxt) : (r.phase === 'lobby' ? 'LOBBY' : 'STARTGRID');
+    if (racing && laps > 1 && me.lap + 1 !== this.lastLap) {
+      if (this.lastLap && me.lap + 1 > this.lastLap && me.lap + 1 <= laps) this.flash(me.lap + 1 === laps ? 'SISTA VARVET!' : `VARV ${me.lap + 1}`);
+      this.lastLap = me.lap + 1;
+    }
+    if (!racing) this.lastLap = 0;
     this.el.timer.textContent = racing ? fmt(me.finished ? me.finishT : r.raceT) : '0:00.00';
     this.el.health.style.width = Math.max(0, me.health) + '%';
     this.el.health.style.background = me.health > 60 ? '#5bff7a' : me.health > 30 ? '#ffc23a' : '#ff3b3b';
@@ -70,6 +77,7 @@ export class HUD {
     if (key !== this.lobbyKey) {
       this.lobbyKey = key;
       this.el.lroom.textContent = info.pub ? 'ÖPPET RACE' : 'RUM ' + info.room;
+      this.el.ltrack.innerHTML = this.trackButtons(info.track, isHost, info.laps);
       this.el.lshare.textContent = info.pub ? 'Alla som trycker KÖR! hamnar här' : `Kompisar skriver ${info.room} och trycker EGET RUM`;
       this.el.lplayers.innerHTML = players.map(p => `<div class="lp${p.ready ? ' ready' : ''}${p.id === myId ? ' me' : ''}">
         <span class="chip" style="background:linear-gradient(135deg,${esc(p.c1)} 55%,${esc(p.c2)} 55%)">${esc(String(p.nr ?? ""))}</span>
@@ -86,6 +94,13 @@ export class HUD {
     else if (isHost) tt = n > 1 ? 'Tryck STARTA RACE när alla är här' : 'Väntar på kompisar… eller starta direkt';
     else tt = 'Väntar på att värden startar…';
     if (this.el.ltimer.textContent !== tt) this.el.ltimer.textContent = tt;
+  }
+
+  // banval: värden får knappar, gästerna ser vilken bana det blir
+  trackButtons(cur, canPick, laps) {
+    const list = this.tracks || [];
+    if (!canPick) { const t = list.find(x => x.id === cur); return t ? `<span class="tcur">BANA: <b>${esc(t.namn)}</b> · ${laps} varv</span>` : ''; }
+    return list.map(t => `<button class="tbt${t.id === cur ? ' on' : ''}" data-track="${t.id}" title="${esc(t.besk)}">${esc(t.namn)}<i>${t.laps || 1} varv</i></button>`).join('');
   }
 
   drawMap(game) {

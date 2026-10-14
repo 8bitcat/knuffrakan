@@ -3,7 +3,8 @@
 // det finns en fysikvärld (värden).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONF } from './config.js?v=6';
+import { CONF } from './config.js?v=7';
+import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, JUMP } from './track.js?v=7';
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const h2 = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -56,6 +57,59 @@ function stripGeo(T, latA, latB, yOff, vScale, from = 0, to = T.N) {
   return g;
 }
 
+// Sammanhängande bitar [från, till] där segmentet k→k+1 är ok (glipor i hoppen bryter vägen)
+function segRuns(T, okSeg) {
+  const N = T.N, runs = [];
+  let start = -1;
+  for (let k = 0; k < N; k++) if (!okSeg(k)) { start = k; break; }
+  if (start < 0) return [[0, N]];
+  let a = -1;
+  for (let n = 1; n <= N; n++) {
+    const k = (start + n) % N;
+    if (okSeg(k)) { if (a < 0) a = start + n; } else if (a >= 0) { runs.push([a, start + n]); a = -1; }
+  }
+  if (a >= 0) runs.push([a, start + N]);
+  return runs;
+}
+const noGap = (T) => (k) => !(T.flags[k % T.N] & F_GAP) && !(T.flags[(k + 1) % T.N] & F_GAP);
+
+// Profil med absoluta sidoavstånd [lat, h] längs en lista sample-index (tunnlar, brodäck)
+function extrudeAbs(T, list, profile, uScale, closed = false) {
+  const P = profile.length, M = list.length;
+  const pos = new Float32Array(M * P * 3), uv = new Float32Array(M * P * 2), idx = [];
+  let acc = 0; const vAcc = [0];
+  for (let p = 1; p < P; p++) { acc += Math.hypot(profile[p][0] - profile[p - 1][0], profile[p][1] - profile[p - 1][1]); vAcc.push(acc); }
+  for (let m = 0; m < M; m++) {
+    const i = list[m] % T.N;
+    for (let p = 0; p < P; p++) {
+      const [lat, h] = profile[p], o = m * P + p;
+      pos[o * 3] = T.px[i] + T.rx[i] * lat + T.ux[i] * h;
+      pos[o * 3 + 1] = T.py[i] + T.ry[i] * lat + T.uy[i] * h;
+      pos[o * 3 + 2] = T.pz[i] + T.rz[i] * lat + T.uz[i] * h;
+      uv[o * 2] = m * T.ds / uScale; uv[o * 2 + 1] = vAcc[p] / (closed ? acc : 4);
+    }
+    if (m < M - 1) for (let p = 0; p < P - 1; p++) {
+      const a = m * P + p, b = a + 1, c = a + P, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+// index-lista för en s-sträcka (med marginal i sample)
+function idxRange(T, s0, s1, pad = 0) {
+  const a = Math.round(T.wrapS(s0) / T.ds) - pad;
+  let b = Math.round(T.wrapS(s1) / T.ds) + pad;
+  if (b < a) b += T.N;
+  const out = [];
+  for (let k = a; k <= b; k++) out.push(((k % T.N) + T.N) % T.N);
+  return out;
+}
+
 function asphaltTex() {
   return canvasTex(512, 512, (c, w, h) => {
     const img = c.createImageData(w, h);
@@ -73,16 +127,20 @@ function buildRoad(ctx) {
   const HW = T.halfW, W2 = CONF.ROAD_W / 2;
   const tex = asphaltTex();
   tex.wrapS = THREE.ClampToEdgeWrapping; tex.wrapT = THREE.RepeatWrapping;
-  const roadGeo = stripGeo(T, -HW, HW, 0, HW * 2);
-  const road = new THREE.Mesh(roadGeo, new THREE.MeshLambertMaterial({ map: tex }));
-  road.receiveShadow = true;
-  scene.add(road);
+  const runs = segRuns(T, noGap(T));
+  const roadMat = new THREE.MeshLambertMaterial({ map: tex });
+  const roadGeos = runs.map(([a, b]) => stripGeo(T, -HW, HW, 0, HW * 2, a, b));
+  for (const g of roadGeos) {
+    const road = new THREE.Mesh(g, roadMat);
+    road.receiveShadow = true;
+    scene.add(road);
+  }
 
   // Kantlinjer
   const lineMat = new THREE.MeshBasicMaterial({ color: 0xf4eef2, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   for (const sgn of [-1, 1]) {
     const a = sgn * (W2 - 0.18), b = sgn * (W2 - 0.52);
-    scene.add(new THREE.Mesh(stripGeo(T, Math.min(a, b), Math.max(a, b), 0.015, 10), lineMat));
+    for (const [ra, rb] of runs) scene.add(new THREE.Mesh(stripGeo(T, Math.min(a, b), Math.max(a, b), 0.015, 10, ra, rb), lineMat));
   }
 
   // Start-/mållinje (rutig) tvärs banan
@@ -103,10 +161,12 @@ function buildRoad(ctx) {
 
   // Fysik: vägbanan som trianglar
   if (ctx.world) {
-    const p = roadGeo.attributes.position.array, ix = roadGeo.index.array;
-    const cd = ctx.RAPIER.ColliderDesc.trimesh(new Float32Array(p), new Uint32Array(ix))
-      .setFriction(0.6).setRestitution(0.1).setCollisionGroups(GROUP_WORLD);
-    ctx.world.createCollider(cd, ctx.fixedBody);
+    for (const g of roadGeos) {
+      const p = g.attributes.position.array, ix = g.index.array;
+      const cd = ctx.RAPIER.ColliderDesc.trimesh(new Float32Array(p), new Uint32Array(ix))
+        .setFriction(0.6).setRestitution(0.1).setCollisionGroups(GROUP_WORLD);
+      ctx.world.createCollider(cd, ctx.fixedBody);
+    }
   }
 }
 
@@ -196,34 +256,58 @@ function fenceTex() {
   return t;
 }
 
+// räcke på broar: låg betongkant + två blå stålbalkar på stolpar
+const BRIDGE_CURB = [[0, -0.05], [0, 0.55], [0.4, 0.55], [0.4, -0.05]];
 function buildBarriers(ctx) {
   const { scene, track: T } = ctx;
   const N = T.N, base = T.halfW;
   const concMat = new THREE.MeshLambertMaterial({ color: 0xe2c3c8, flatShading: true, side: THREE.DoubleSide });
   const saferMat = new THREE.MeshLambertMaterial({ map: chevronTex(), side: THREE.DoubleSide });
   const fenceMat = new THREE.MeshLambertMaterial({ map: fenceTex(), transparent: true, alphaTest: 0.35, side: THREE.DoubleSide, depthWrite: false });
+  const railMat = new THREE.MeshLambertMaterial({ color: 0x2c5fd6, side: THREE.DoubleSide });
   const postGeo = new THREE.CylinderGeometry(0.07, 0.07, 3.2, 5);
-  const posts = [];
-  const types = { '-1': new Uint8Array(N), '1': new Uint8Array(N) };
+  const posts = [], railPosts = [];
+  // typ per sample: -1 ingen mur (glipa), 0 betong, 1 blå kurvvägg, 2 broräcke, 3 betong + högt fångstängsel (hopp)
+  const types = { '-1': new Int8Array(N), '1': new Int8Array(N) };
 
   for (const side of [-1, 1]) {
-    // blå vägg på ytterkanten av kurvorna
     const raw = new Uint8Array(N);
     for (let i = 0; i < N; i++) raw[i] = side * T.k[i] < -1 / 1300 ? 1 : 0;
     const typ = types[side];
     for (let i = 0; i < N; i++) {
+      const f = T.flags[i];
+      if (f & F_GAP) { typ[i] = -1; continue; }
+      if (f & F_BRIDGE) { typ[i] = 2; continue; }
+      if (f & F_LAND) { typ[i] = 3; continue; }
       let v = 0;
-      for (let o = -12; o <= 12 && !v; o += 3) v = raw[(i + o + N) % N];
+      if (!(f & F_TUNNEL)) for (let o = -12; o <= 12 && !v; o += 3) v = raw[(i + o + N) % N];
       typ[i] = v;
     }
-    // runs med samma typ
     let start = 0;
     while (start < N && typ[start] === typ[(start - 1 + N) % N]) start++;
     if (start >= N) start = 0;
-    let i = start, run = [i];
+    let run = [start];
     const flush = () => {
       if (run.length < 2) return;
       const t = typ[run[0]];
+      if (t < 0) return;
+      if (t === 2) {
+        const m = new THREE.Mesh(extrude(T, run, side, BRIDGE_CURB, base, 6), concMat);
+        m.castShadow = true; scene.add(m);
+        for (const h of [0.82, 1.18, 3.45]) scene.add(new THREE.Mesh(extrude(T, run, side, [[0.08, h - 0.09], [0.08, h + 0.09], [0.3, h + 0.09], [0.3, h - 0.09], [0.08, h - 0.09]], base, 6), railMat));
+        // högt stängsel: på en bro får ingen flyga över kanten
+        scene.add(new THREE.Mesh(extrude(T, run, side, [[0.2, 1.3], [0.2, 3.4]], base, 4.5), fenceMat));
+        for (let k = 0; k < run.length; k++) railPosts.push([run[k], side, 3.4]);
+        return;
+      }
+      if (t === 3) {
+        const m = new THREE.Mesh(extrude(T, run, side, CONCRETE, base, 6), concMat);
+        m.castShadow = true; scene.add(m);
+        scene.add(new THREE.Mesh(extrude(T, run, side, [[0.45, 1.0], [0.45, 7.0]], base, 4.5), fenceMat));
+        scene.add(new THREE.Mesh(extrude(T, run, side, [[0.4, 6.9], [0.4, 7.2], [0.55, 7.2], [0.55, 6.9], [0.4, 6.9]], base, 6), railMat));
+        for (let k = 0; k < run.length; k += 2) railPosts.push([run[k], side, 7.2]);
+        return;
+      }
       const g = extrude(T, run, side, t ? SAFER : CONCRETE, base, t ? 4.2 : 6);
       const m = new THREE.Mesh(g, t ? saferMat : concMat);
       m.castShadow = true; m.receiveShadow = true;
@@ -235,13 +319,14 @@ function buildBarriers(ctx) {
     };
     for (let n = 1; n <= N; n++) {
       const j = (start + n) % N;
-      run.push(j);
-      if (typ[j] !== typ[run[0]] || n === N) { flush(); run = [j]; }
+      if (typ[j] !== typ[run[0]]) { run.push(j); flush(); run = [j]; } else run.push(j);
+      if (n === N) flush();
     }
   }
-  // stängselstolpar
-  const postInst = new THREE.InstancedMesh(postGeo, new THREE.MeshLambertMaterial({ color: 0x51566a }), posts.length);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  // stängselstolpar
+  const postInst = new THREE.InstancedMesh(postGeo, new THREE.MeshLambertMaterial({ color: 0x51566a }), Math.max(1, posts.length));
+  postInst.count = posts.length;
   posts.forEach(([i, side], k) => {
     const lat = side * (base + 0.3);
     v.set(T.px[i] + T.rx[i] * lat, T.py[i] + T.ry[i] * lat + 3.4, T.pz[i] + T.rz[i] * lat);
@@ -249,13 +334,27 @@ function buildBarriers(ctx) {
     postInst.setMatrixAt(k, m4);
   });
   scene.add(postInst);
+  // räckesstolpar på broarna
+  if (railPosts.length) {
+    const rp = new THREE.InstancedMesh(new THREE.BoxGeometry(0.16, 1, 0.16), railMat, railPosts.length);
+    const sc = new THREE.Vector3();
+    railPosts.forEach(([i, side, h], k) => {
+      const lat = side * (base + 0.3);
+      v.set(T.px[i] + T.rx[i] * lat, T.py[i] + T.ry[i] * lat + h / 2, T.pz[i] + T.rz[i] * lat);
+      m4.compose(v, q, sc.set(1, h, 1));
+      rp.setMatrixAt(k, m4);
+    });
+    scene.add(rp);
+  }
 
-  // Fysik: lådor var 8:e meter, orienterade efter banan
+  // Fysik: lådor var 8:e meter, orienterade efter banan (inga i glipan)
   if (ctx.world) {
     const R = new THREE.Vector3(), U = new THREE.Vector3(), B = new THREE.Vector3(), M = new THREE.Matrix4(), Q = new THREE.Quaternion();
     for (let i = 0; i < N; i += 2) {
       for (const side of [-1, 1]) {
-        const h = types[side][i] ? 2.0 : 1.15, th = 0.5;
+        const t = types[side][i];
+        if (t < 0) continue;
+        const h = t === 1 ? 2.0 : t === 2 ? 3.6 : t === 3 ? 7.2 : 1.15, th = 0.5;
         const lat = side * (base + th);
         R.set(T.rx[i], T.ry[i], T.rz[i]); U.set(T.ux[i], T.uy[i], T.uz[i]); B.set(-T.fx[i], -T.fy[i], -T.fz[i]);
         M.makeBasis(R, U, B); Q.setFromRotationMatrix(M);
@@ -299,7 +398,27 @@ function buildTerrain(ctx) {
     for (let i = 0; i < N; i += 4) { const d = (px[i] - x) ** 2 + (pz[i] - z) ** 2; if (d < bd) { bd = d; best = i; } }
     cIdx[b * cnx + a] = best;
   }
-  const HWb = T.halfW;
+  const HWb = T.halfW, FL = T.flags;
+  const VM = new Float32Array(NV);            // dal-mask (inga träd på isen)
+  const hole = new Uint8Array(NV);            // tunnelns hål i berget
+  const feats = T.features;
+  // sample som inte är bro, nära broarna — marken under en bro följer dem i stället
+  const nb = [];
+  const bridges = feats.filter(f => f.type === 'valley' || f.type === 'overpass');
+  for (let j = 0; j < N; j++) {
+    if (FL[j] & F_BRIDGE) continue;
+    if (bridges.some(f => (px[j] - f.x) ** 2 + (pz[j] - f.z) ** 2 < 800 * 800)) nb.push(j);
+  }
+  // vägens höjd vid (x,z) från sample i — även lutningen LÄNGS vägen (annars sticker marken
+  // upp genom vägen där den lutar, t.ex. i slutet av en bro eller i hoppens landning)
+  const roadAt = (i, x, z) => {
+    const dx = x - px[i], dz = z - pz[i];
+    const lat = dx * (-T.hz[i]) + dz * T.hx[i];
+    const along = Math.max(-40, Math.min(40, dx * T.hx[i] + dz * T.hz[i]));
+    const latC = Math.max(-HWb - 1, Math.min(HWb + 1, lat));
+    const g = T.fy[i] / Math.max(0.5, Math.hypot(T.fx[i], T.fz[i]));
+    return { lat, al: Math.abs(lat), y: T.py[i] + latC * T.slope[i] + along * g };
+  };
   for (let iz = 0; iz < nz; iz++) {
     const b = Math.floor(iz / CN);
     for (let ix = 0; ix < nx; ix++) {
@@ -313,20 +432,61 @@ function buildTerrain(ctx) {
           if (d < bd) { bd = d; best = i; }
         }
       }
-      const i = best, dx = x - px[i], dz = z - pz[i];
-      const lat = dx * (-T.hz[i]) + dz * T.hx[i];
-      const D = Math.sqrt(bd), al = Math.abs(lat);
-      const latC = Math.max(-HWb - 1, Math.min(HWb + 1, lat));
-      const yRoad = T.py[i] + latC * T.slope[i];
+      const iA = best, fA = FL[iA], dA = Math.sqrt(bd);
+      // marken under en bro: närmaste väg som INTE är bro
+      let iB = iA, dB = dA;
+      if (fA & F_BRIDGE) {
+        let bb = Infinity;
+        for (const j of nb) { const d = (px[j] - x) ** 2 + (pz[j] - z) ** 2; if (d < bb) { bb = d; iB = j; } }
+        dB = Math.sqrt(bb);
+      }
+      const rB = roadAt(iB, x, z);
       let y;
-      if (al < HWb + 3.5 && D < HWb + 6) y = yRoad - 0.6;
+      if (rB.al < HWb + 3.5 && dB < HWb + 6) y = rB.y - 0.6;
       else {
-        const t = smoothstep(HWb + 4, HWb + 170, D);
-        const bankUp = Math.min(1.4, Math.max(0, (D - HWb - 3.5) * 0.1));
-        y = (yRoad - 0.4 + bankUp) * (1 - t) + natural(x, z, D) * t;
+        const t = smoothstep(HWb + 4, HWb + 170, dB);
+        const bankUp = Math.min(1.4, Math.max(0, (dB - HWb - 3.5) * 0.1));
+        y = (rB.y - 0.4 + bankUp) * (1 - t) + natural(x, z, dB) * t;
       }
       const o = iz * nx + ix;
-      H[o] = y; Dist[o] = D;
+      const rA = fA ? roadAt(iA, x, z) : rB;
+      // under ett brodäck: marken alltid under däcket
+      if (fA & F_BRIDGE && rA.al < HWb + 10) y = Math.min(y, rA.y - 2.8 - Math.max(0, rA.al - HWb) * 0.3);
+      const sA = iA * T.ds;
+      for (const f of feats) {
+        if (f.type === 'valley') {
+          // dal med platt botten tvärs under bron
+          const dx = x - f.x, dz = z - f.z;
+          const across = dx * f.tx + dz * f.tz, along = -dx * f.tz + dz * f.tx, W = f.len / 2;
+          const m = (1 - smoothstep(W * 0.35, W, Math.abs(across))) * (1 - smoothstep(f.lv * 0.75, f.lv, Math.abs(along)));
+          if (m > 0) { y += (Math.min(y, f.floorY) - y) * m; VM[o] = Math.max(VM[o], m); }
+        } else if (f.type === 'jump') {
+          // ravin under glipan (ramperna på var sida svävar på betongfundament)
+          const d = T.sdist(sA, f.lip);
+          if (d > -30 && d < JUMP.GAP + 30) {
+            const cm = (1 - smoothstep(HWb + 3, HWb + 16, rA.al)) * (1 - smoothstep(JUMP.GAP / 2 + 14, JUMP.GAP / 2 + 26, Math.abs(d - JUMP.GAP / 2)));
+            if (cm > 0) y += (Math.min(y, rA.y - 16) - y) * cm;
+          }
+        } else if (f.type === 'tunnel') {
+          const in0 = T.sdist(sA, f.s0), in1 = T.sdist(f.s1, sA);
+          if (fA & F_TUNNEL) {
+            // berget över tunneln, hål där vägen går
+            const u = Math.max(0, Math.min(in0, in1));
+            const Hm = Math.min(52, 15 + u * 0.45) + Math.max(0, rA.al - HWb) * 0.3;
+            const wt = 1 - smoothstep(110, 240, rA.al);
+            y = Math.max(y, y * (1 - wt) + (rA.y + Hm) * wt);
+            if (rA.al < HWb + 1.9) hole[o] = 1;
+          } else {
+            // skärning i berget fram till tunnelmynningen
+            const dp = in0 < 0 && in0 > -110 ? -in0 : (in1 < 0 && in1 > -110 ? -in1 : -1);
+            if (dp >= 0 && rA.al > HWb + 2.5) {
+              const fade = 1 - dp / 110;
+              y = Math.max(y, rA.y + Math.min(40, (rA.al - HWb - 2.5) * 1.1) * fade);
+            }
+          }
+        }
+      }
+      H[o] = y; Dist[o] = dA;
     }
   }
 
@@ -335,13 +495,15 @@ function buildTerrain(ctx) {
     const o = iz * nx + ix;
     pos[o * 3] = x0 + ix * CELL; pos[o * 3 + 1] = H[o]; pos[o * 3 + 2] = z0 + iz * CELL;
   }
-  const idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
+  const idxAll = new Uint32Array((nx - 1) * (nz - 1) * 6);
   let k = 0;
   for (let iz = 0; iz < nz - 1; iz++) for (let ix = 0; ix < nx - 1; ix++) {
     const a = iz * nx + ix, b = a + 1, c = a + nx, d = c + 1;
-    idx[k++] = a; idx[k++] = c; idx[k++] = b;
-    idx[k++] = b; idx[k++] = c; idx[k++] = d;
+    if (hole[a] || hole[b] || hole[c] || hole[d]) continue;     // tunnelns hål
+    idxAll[k++] = a; idxAll[k++] = c; idxAll[k++] = b;
+    idxAll[k++] = b; idxAll[k++] = c; idxAll[k++] = d;
   }
+  const idx = idxAll.slice(0, k);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setIndex(new THREE.BufferAttribute(idx, 1));
@@ -380,7 +542,11 @@ function buildTerrain(ctx) {
     const ix = Math.max(0, Math.min(nx - 1, Math.round((x - x0) / CELL))), iz = Math.max(0, Math.min(nz - 1, Math.round((z - z0) / CELL)));
     return Dist[iz * nx + ix];
   };
-  return { heightAt, distAt, x0, z0, x1: x0 + (nx - 1) * CELL, z1: z0 + (nz - 1) * CELL };
+  const valleyAt = (x, z) => {
+    const ix = Math.max(0, Math.min(nx - 1, Math.round((x - x0) / CELL))), iz = Math.max(0, Math.min(nz - 1, Math.round((z - z0) / CELL)));
+    return VM[iz * nx + ix];
+  };
+  return { heightAt, distAt, valleyAt, x0, z0, x1: x0 + (nx - 1) * CELL, z1: z0 + (nz - 1) * CELL };
 }
 
 // ---------- Granar ----------
@@ -420,6 +586,7 @@ function buildTrees(ctx, terr) {
     const x = terr.x0 + rnd() * W, z = terr.z0 + rnd() * D;
     const dist = terr.distAt(x, z);
     if (dist < HWb + 9) continue;
+    if (terr.valleyAt(x, z) > 0.05) continue;
     if (dist > 1000) continue;
     // tätare nära vägen, glesare längre bort, i dungar
     const dens = fbm(x * 0.006 + 4.4, z * 0.006 - 2.2, 3) * 0.6 + 0.35 - Math.min(0.5, dist / 1600);
@@ -693,6 +860,7 @@ function buildSigns(ctx, terr) {
   for (let i = 0; i < T.N; i += 2) {
     const k = T.k[i];
     if (Math.abs(k) < 1 / 900) continue;
+    if (T.flags[i] & (F_GAP | F_RAMP | F_TUNNEL | F_BRIDGE)) continue;
     if (i * T.ds - last < 70) continue;
     last = i * T.ds;
     // vänstersväng (k<0) → skylten på höger sida med pil åt vänster
@@ -723,6 +891,225 @@ function buildSigns(ctx, terr) {
   scene.add(pi);
 }
 
+// ---------- Tunnlar, broar, dalen och hoppen ----------
+function panelTex(base, line, w = 256, h = 256) {
+  const t = canvasTex(w, h, (c) => {
+    c.fillStyle = base; c.fillRect(0, 0, w, h);
+    for (let k = 0; k < 900; k++) { c.fillStyle = k % 2 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'; c.fillRect(Math.random() * w, Math.random() * h, 3, 3); }
+    c.strokeStyle = line; c.lineWidth = 3;
+    for (let x = 0; x <= w; x += 64) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, h); c.stroke(); }
+    for (let y = 0; y <= h; y += 128) { c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+function hazardTex() {
+  const t = canvasTex(256, 64, (c, w, h) => {
+    c.fillStyle = '#ffc21a'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#16161a';
+    for (let x = -h; x < w + h; x += 48) { c.beginPath(); c.moveTo(x, h); c.lineTo(x + 24, h); c.lineTo(x + 24 + h, 0); c.lineTo(x + h, 0); c.closePath(); c.fill(); }
+  });
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+function signTex(l1, l2, bg = '#ff9a1c') {
+  return canvasTex(256, 128, (c, w, h) => {
+    c.fillStyle = '#16161a'; c.fillRect(0, 0, w, h);
+    c.fillStyle = bg; c.fillRect(6, 6, w - 12, h - 12);
+    c.fillStyle = '#16161a'; c.textAlign = 'center';
+    const fit = (txt, font, size, maxW) => { c.font = font.replace('#', size); const m = c.measureText(txt).width; if (m > maxW) c.font = font.replace('#', Math.floor(size * maxW / m)); };
+    fit(l1, 'italic 900 #px "Exo 2", sans-serif', 56, w - 28); c.fillText(l1, w / 2, 66);
+    fit(l2, '800 #px Montserrat, sans-serif', 26, w - 28); c.fillText(l2, w / 2, 106);
+  });
+}
+// högerhänt ram vid s: x = höger, y = upp, z = BAKÅT (−körriktningen) → matris
+function frameAt(T, s, out = new THREE.Matrix4()) {
+  const f = T.sampleAt(s);
+  const R = new THREE.Vector3(f.rx, f.ry, f.rz).normalize(), U = new THREE.Vector3(f.ux, f.uy, f.uz).normalize(), B = new THREE.Vector3(-f.fx, -f.fy, -f.fz).normalize();
+  out.makeBasis(R, U, B).setPosition(f.x, f.y, f.z);
+  return out;
+}
+function boardAt(ctx, s, lat, tex, w = 3.2, h = 1.6, up = 3.2) {
+  const T = ctx.track, f = T.sampleAt(s);
+  const x = f.x + f.rx * lat, z = f.z + f.rz * lat, y = Math.max(ctx.terr.heightAt(x, z), f.y);
+  const g = new THREE.Group();
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
+  board.position.y = up;
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, up, 0.16), new THREE.MeshLambertMaterial({ color: 0x3a3b44 }));
+  post.position.y = up / 2;
+  g.add(board, post);
+  g.position.set(x, y, z);
+  g.lookAt(x - f.fx * 10, y, z - f.fz * 10);   // mot de som kommer körande
+  ctx.scene.add(g);
+}
+
+function buildTunnels(ctx) {
+  const { scene, track: T } = ctx;
+  const W = T.halfW + 1.4;
+  const prof = [[-W, -0.4], [-W, 5.6], [-W * 0.86, 7.6], [-W * 0.55, 8.9], [0, 9.4], [W * 0.55, 8.9], [W * 0.86, 7.6], [W, 5.6], [W, -0.4]];
+  const wallMat = new THREE.MeshLambertMaterial({ map: panelTex('#b9a8b0', 'rgba(60,40,60,0.35)'), side: THREE.DoubleSide });
+  const ledMat = new THREE.MeshBasicMaterial({ color: 0x4f8cff, side: THREE.DoubleSide, toneMapped: false });
+  const portalMat = new THREE.MeshLambertMaterial({ map: panelTex('#a8939c', 'rgba(40,30,40,0.4)') });
+  const lampGeo = new THREE.BoxGeometry(0.6, 0.14, 2.4);
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff1c8, toneMapped: false });
+  const lamps = [];
+  for (const f of T.features) {
+    if (f.type !== 'tunnel') continue;
+    const list = idxRange(T, f.s0, f.s1, 1);
+    const tube = new THREE.Mesh(extrudeAbs(T, list, prof, 8, true), wallMat);
+    tube.castShadow = true; tube.receiveShadow = true;
+    scene.add(tube);
+    for (const sd of [-1, 1]) scene.add(new THREE.Mesh(extrudeAbs(T, list, [[sd * (W - 0.03), 1.2], [sd * (W - 0.03), 1.5]], 4), ledMat));
+    for (let k = 1; k < list.length - 1; k += 3) for (const sd of [-0.45, 0.45]) lamps.push([list[k], sd * W]);
+    // mynningar: betongvägg med valvöppning
+    const Wo = W + 16, top = 26;
+    const sh = new THREE.Shape();
+    sh.moveTo(-Wo, -3); sh.lineTo(-W, -3);
+    for (const [lx, h] of prof) sh.lineTo(lx, Math.max(-3, h));
+    sh.lineTo(W, -3); sh.lineTo(Wo, -3); sh.lineTo(Wo, top); sh.lineTo(-Wo, top); sh.closePath();
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 3, bevelEnabled: false });
+    const sign = signTex(f.namn || 'TUNNEL', 'TUNNEL', '#ffd23a');
+    for (const [sp, dir] of [[f.s0, -1], [f.s1, 1]]) {
+      const M = frameAt(T, sp);
+      const portal = new THREE.Mesh(geo, portalMat);
+      portal.applyMatrix4(M);
+      // ExtrudeGeometry går längs +z (= bakåt): vid ingången ligger väggen före tunneln, vid utgången efter
+      if (dir > 0) portal.translateZ(-3);
+      portal.castShadow = true;
+      scene.add(portal);
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(14, 3.5), new THREE.MeshBasicMaterial({ map: sign, toneMapped: false }));
+      board.applyMatrix4(M);
+      board.translateY(12.5);
+      board.translateZ(dir < 0 ? 3.05 : -3.05);
+      if (dir > 0) board.rotateY(Math.PI);
+      scene.add(board);
+    }
+  }
+  if (lamps.length) {
+    const inst = new THREE.InstancedMesh(lampGeo, lampMat, lamps.length);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), B = new THREE.Matrix4();
+    lamps.forEach(([i, lat], k) => {
+      B.makeBasis(new THREE.Vector3(T.rx[i], T.ry[i], T.rz[i]), new THREE.Vector3(T.ux[i], T.uy[i], T.uz[i]), new THREE.Vector3(T.fx[i], T.fy[i], T.fz[i]));
+      q.setFromRotationMatrix(B);
+      v.set(T.px[i] + T.rx[i] * lat + T.ux[i] * 8.9, T.py[i] + T.ry[i] * lat + T.uy[i] * 8.9, T.pz[i] + T.rz[i] * lat + T.uz[i] * 8.9);
+      inst.setMatrixAt(k, m4.compose(v, q, one));
+    });
+    scene.add(inst);
+  }
+}
+
+function buildBridges(ctx) {
+  const { scene, track: T, terr } = ctx;
+  const W = T.halfW + 1.3;
+  const deckMat = new THREE.MeshLambertMaterial({ map: panelTex('#cdb9c1', 'rgba(60,40,60,0.25)'), side: THREE.DoubleSide });
+  const blueMat = new THREE.MeshLambertMaterial({ color: 0x2c5fd6, side: THREE.DoubleSide });
+  const pillarMat = new THREE.MeshLambertMaterial({ color: 0xc4b0b8, flatShading: true });
+  const pillars = [];
+  for (const f of T.features) {
+    if (f.type !== 'valley' && f.type !== 'overpass') continue;
+    const list = idxRange(T, f.s0, f.s1, 3);
+    const deck = new THREE.Mesh(extrudeAbs(T, list, [[-W, -0.06], [-W, -1.9], [W, -1.9], [W, -0.06]], 6), deckMat);
+    deck.castShadow = true; deck.receiveShadow = true;
+    scene.add(deck);
+    for (const sd of [-1, 1]) scene.add(new THREE.Mesh(extrudeAbs(T, list, [[sd * (W + 0.04), -0.3], [sd * (W + 0.04), -1.1]], 6), blueMat));
+    const loHint = f.type === 'overpass' ? T.idx(f.lo) : -1;
+    for (let k = 4; k < list.length - 4; k += 8) {
+      const i = list[k];
+      for (const lat of [-(T.halfW - 4), T.halfW - 4]) {
+        const x = T.px[i] + T.rx[i] * lat, z = T.pz[i] + T.rz[i] * lat;
+        const top = T.py[i] + T.ry[i] * lat - 1.9, ground = terr.heightAt(x, z) - 1;
+        if (top - ground < 2.5) continue;
+        if (loHint >= 0) { const pr = T.project(x, z, loHint); if (Math.abs(pr.lat) < T.halfW + 3.5 && Math.abs(pr.y - top) < 30) continue; }
+        pillars.push([x, ground, z, top - ground, Math.atan2(T.hx[i], T.hz[i])]);
+      }
+    }
+  }
+  if (!pillars.length) return;
+  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 1, 3.2), pillarMat, pillars.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+  pillars.forEach(([x, y0, z, h, yaw], k) => {
+    q.setFromAxisAngle(Y, yaw);
+    inst.setMatrixAt(k, m4.compose(v.set(x, y0 + h / 2, z), q, sc.set(1, h, 1)));
+    if (ctx.world) {
+      ctx.world.createCollider(ctx.RAPIER.ColliderDesc.cuboid(1.1, h / 2, 1.6).setTranslation(x, y0 + h / 2, z)
+        .setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }).setCollisionGroups(GROUP_WORLD), ctx.fixedBody);
+    }
+  });
+  inst.castShadow = true;
+  scene.add(inst);
+}
+
+function buildValleys(ctx) {
+  const { scene, track: T } = ctx;
+  for (const f of T.features) {
+    if (f.type !== 'valley') continue;
+    const tex = canvasTex(512, 128, (c, w, h) => {
+      c.fillStyle = '#cfeaf6'; c.fillRect(0, 0, w, h);
+      c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = 2;
+      for (let k = 0; k < 40; k++) { c.beginPath(); let x = Math.random() * w, y = Math.random() * h; c.moveTo(x, y); for (let n = 0; n < 4; n++) { x += (Math.random() - 0.3) * 40; y += (Math.random() - 0.5) * 20; c.lineTo(x, y); } c.stroke(); }
+      c.fillStyle = 'rgba(120,170,210,0.25)'; c.fillRect(0, h * 0.35, w, h * 0.3);
+    });
+    tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(4, 1);
+    const len = f.lv * 1.5;
+    const ice = new THREE.Mesh(new THREE.PlaneGeometry(len, 46).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: tex, emissive: 0x1a2a3a }));
+    const ax = -f.tz, az = f.tx;                        // dalens riktning
+    ice.rotation.y = Math.atan2(-az, ax);
+    ice.position.set(f.x, f.floorY + 0.35, f.z);
+    ice.receiveShadow = true;
+    scene.add(ice);
+    boardAt(ctx, f.s0 - 120, T.halfW + 4, signTex(f.namn || 'BRON', 'HÅLL I DIG!', '#7fd2ff'));
+  }
+}
+
+function buildJumps(ctx) {
+  const { scene, track: T } = ctx;
+  const W = T.halfW + 1.0, G = JUMP.GAP;
+  const blockMat = new THREE.MeshLambertMaterial({ map: panelTex('#c3aeb7', 'rgba(60,40,60,0.3)'), side: THREE.DoubleSide });
+  const hz = hazardTex();
+  hz.repeat.set(8, 1);
+  const capTex = canvasTex(256, 256, (c, w) => {
+    c.fillStyle = '#b9a4ad'; c.fillRect(0, 0, w, w);
+    c.fillStyle = '#ffc21a'; c.fillRect(0, 0, w, 30);
+    c.fillStyle = '#16161a';
+    for (let x = -30; x < w + 30; x += 32) { c.beginPath(); c.moveTo(x, 30); c.lineTo(x + 16, 30); c.lineTo(x + 46, 0); c.lineTo(x + 30, 0); c.closePath(); c.fill(); }
+  });
+  for (const f of T.features) {
+    if (f.type !== 'jump') continue;
+    // betongfundament under ramperna på var sida om ravinen
+    const kick = idxRange(T, f.lip - 24, f.lip - 1.5).filter(i => !(T.flags[i] & F_GAP));
+    const land = idxRange(T, f.lip + G + 1.5, f.lip + G + 24).filter(i => !(T.flags[i] & F_GAP));
+    for (const list of [kick, land]) {
+      const m = new THREE.Mesh(extrudeAbs(T, list, [[-W, -0.06], [-W, -16], [W, -16], [W, -0.06]], 6), blockMat);
+      m.castShadow = true; m.receiveShadow = true;
+      scene.add(m);
+    }
+    // gavlar mot ravinen (gul-svart kant)
+    for (const [sp, face] of [[kick[kick.length - 1] * T.ds, 1], [land[0] * T.ds, -1]]) {
+      const cap = new THREE.Mesh(new THREE.PlaneGeometry(2 * W, 16), new THREE.MeshLambertMaterial({ map: capTex, side: THREE.DoubleSide }));
+      cap.applyMatrix4(frameAt(T, sp));
+      cap.translateY(-8);
+      if (face > 0) cap.rotateY(Math.PI);
+      scene.add(cap);
+    }
+    // varningsränder på vägen vid kanten
+    scene.add(new THREE.Mesh(planeOnRoad(T, f.lip - 5, f.lip - 1.5, -T.halfW, T.halfW, 0.03),
+      new THREE.MeshLambertMaterial({ map: hz, polygonOffset: true, polygonOffsetFactor: -3 })));
+    for (const sd of [-1, 1]) {
+      boardAt(ctx, f.lip - 200, sd * (T.halfW + 4), signTex('HOPP!', 'GASA — STANNA INTE'));
+      boardAt(ctx, f.lip - 90, sd * (T.halfW + 4), signTex('HOPP!', 'FULL GAS!'));
+    }
+    // fysik: landningsfundamentets front — den som inte kommer över smäller in i den
+    if (ctx.world) {
+      const M = frameAt(T, f.lip + G + 10);
+      const p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+      M.decompose(p, q, sc);
+      p.addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(q), -8.1);
+      ctx.world.createCollider(ctx.RAPIER.ColliderDesc.cuboid(W, 8, 8.5).setTranslation(p.x, p.y, p.z)
+        .setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }).setCollisionGroups(GROUP_WORLD), ctx.fixedBody);
+    }
+  }
+}
+
 // ---------- Huvudbygget ----------
 export function buildWorld(ctx) {
   if (ctx.world) ctx.fixedBody = ctx.world.createRigidBody(ctx.RAPIER.RigidBodyDesc.fixed());
@@ -730,7 +1117,12 @@ export function buildWorld(ctx) {
   buildRoad(ctx);
   const barrierTypes = buildBarriers(ctx);
   const terr = buildTerrain(ctx);
+  ctx.terr = terr;
   const t1 = performance.now();
+  buildTunnels(ctx);
+  buildBridges(ctx);
+  buildValleys(ctx);
+  buildJumps(ctx);
   const trees = buildTrees(ctx, terr);
   buildRedTrees(ctx, terr);
   buildMountains(ctx, terr);
@@ -740,7 +1132,7 @@ export function buildWorld(ctx) {
   buildSigns(ctx, terr);
   console.log(`värld: terräng ${(t1 - t0).toFixed(0)} ms, totalt ${(performance.now() - t0).toFixed(0)} ms`);
   return {
-    terr, gantry, screen, barrierTypes,
+    terr, gantry, screen, barrierTypes, fixedBody: ctx.fixedBody,
     // göm träd långt bort (fog döljer dem ändå)
     cull(cam, range = 2300) {
       for (const t of trees) {

@@ -1,0 +1,24 @@
+// Skärmdump mitt i ett hopp + vid tunnelmynningen
+import { createRequire } from 'module';
+const require = createRequire('D:/Qisy/QISYFrontend/QISYFrontend-1/package.json');
+const { chromium } = require('playwright');
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11'] });
+const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
+await page.addInitScript(() => localStorage.setItem('knuff_bana', 'hoppbacken'));
+await page.goto(`http://localhost:${process.env.PORT || 8810}/?auto&bot`);
+await page.waitForFunction(() => window.ready === true && window.__game?.race.phase === 'race', null, { timeout: 90000 });
+const place = (s, lat, v) => page.evaluate(([s, lat, v]) => { const g = window.__game, me = g.me; g.placeCar(me, g.track.wrapS(s), lat, v); me.ghostT = 0; me.veh.setGhost(false); g.cam.inited = false; }, [s, lat, v]);
+const lip = await page.evaluate(() => window.__game.track.features.find(f => f.type === 'jump').lip);
+await place(lip - 140, 0, 92);
+await page.waitForFunction(() => window.__game.me.veh.grounded === 0, null, { timeout: 8000, polling: 16 });
+await page.waitForTimeout(700); await page.screenshot({ path: 'tools/out/flight-1.png' });
+await page.waitForTimeout(500); await page.screenshot({ path: 'tools/out/flight-2.png' });
+const t = await page.evaluate(() => window.__game.track.features.find(f => f.type === 'tunnel'));
+await place(t.s0 - 80, -4, 60);
+await page.waitForTimeout(400); await page.screenshot({ path: 'tools/out/portal.png' });
+const v = await page.evaluate(() => window.__game.track.features.find(f => f.type === 'valley'));
+await page.evaluate((v) => { const g = window.__game; g.showcase = { group: { position: { x: v.x + v.tz * 0 - v.tz * 140, y: v.floorY + 18, z: v.z + v.tx * 140 } } }; }, v);
+await page.evaluate((v) => { const g = window.__game; g.showcase = null; g.me.view.group.visible = false; const c = g.camera; c.position.set(v.x - v.tz * 170 + v.tx * 60, v.floorY + 14, v.z + v.tx * 170 + v.tz * 60); c.lookAt(v.x, v.floorY + 18, v.z); g.frameHold = true; }, v);
+await page.screenshot({ path: 'tools/out/valley-side.png' });
+await browser.close();

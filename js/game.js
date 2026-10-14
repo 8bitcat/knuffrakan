@@ -1,32 +1,32 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=6';
-import { buildTrack } from './track.js?v=6';
-import { buildWorld, gridSlots } from './world.js?v=6';
-import { createScene, ChaseCam } from './scene.js?v=6';
-import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=6';
-import { makeLivery, randomSpec } from './livery.js?v=6';
-import { Vehicle, CP } from './vehicle.js?v=6';
-import { BotBrain } from './ai.js?v=6';
-import { Race } from './race.js?v=6';
-import { FX, Trails } from './fx.js?v=6';
-import { NameTag, SpeedPlate } from './tags.js?v=6';
-import { RemoteVeh, carInfo } from './net.js?v=6';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=7';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=7';
+import { buildWorld, gridSlots } from './world.js?v=7';
+import { createScene, ChaseCam } from './scene.js?v=7';
+import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=7';
+import { makeLivery, randomSpec } from './livery.js?v=7';
+import { Vehicle, CP } from './vehicle.js?v=7';
+import { BotBrain } from './ai.js?v=7';
+import { Race } from './race.js?v=7';
+import { FX, Trails } from './fx.js?v=7';
+import { NameTag, SpeedPlate } from './tags.js?v=7';
+import { RemoteVeh, carInfo } from './net.js?v=7';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
+const TRACK_DEFAULT = 'hoppbacken';
 const ord = (n) => n + ':' + (n === 1 || n === 2 ? 'a' : 'e');
 
 export class Game {
-  constructor(RAPIER, canvas, { hud, audio, input }) {
+  constructor(RAPIER, canvas, { hud, audio, input, track }) {
     this.RAPIER = RAPIER;
     this.hud = hud; this.audio = audio; this.input = input;
     const S = createScene(canvas);
     Object.assign(this, { renderer: S.renderer, scene: S.scene, camera: S.camera, sceneApi: S });
     this.cam = new ChaseCam(this.camera);
-    this.track = buildTrack();
     this.world = new RAPIER.World({ x: 0, y: -CONF.GRAV, z: 0 });
     this.world.timestep = CONF.DT;
-    this.world3d = buildWorld({ scene: this.scene, track: this.track, RAPIER, world: this.world });
+    this.setTrack(track || TRACK_DEFAULT);
     this.fx = new FX(this.scene);
     this.trails = new Trails(this.scene, { color: 0x5b8cff, width: 0.11, life: 7, alpha: 0.85, step: 3, maxPts: 240 });
     this.skids = new Trails(this.scene, { color: 0x140f18, width: 0.15, life: 22, alpha: 0.55, step: 1.2, maxPts: 160 });
@@ -40,6 +40,31 @@ export class Game {
     this.mode = 'host';   // 'host' (även ensam) eller 'client'
     this.net = null;
     this.myId = null;
+  }
+
+  // Bygg (om) banan: riv gamla världen (grafik + kolliders) och bygg den nya
+  setTrack(id) {
+    const def = trackDef(id);
+    if (this.trackId === def.id) return false;
+    const t0 = performance.now();
+    if (this.worldGroup) {
+      this.scene.remove(this.worldGroup);
+      this.worldGroup.traverse((o) => {
+        o.geometry?.dispose?.();
+        for (const m of [].concat(o.material || [])) { m.map?.dispose?.(); m.dispose?.(); }
+      });
+    }
+    if (this.world3d?.fixedBody) this.world.removeRigidBody(this.world3d.fixedBody);
+    this.track = buildTrack(def);
+    this.worldGroup = new THREE.Group();
+    this.scene.add(this.worldGroup);
+    this.world3d = buildWorld({ scene: this.worldGroup, track: this.track, RAPIER: this.RAPIER, world: this.world });
+    this.trackId = def.id;
+    this.trails?.clear(); this.skids?.clear();
+    for (const c of this.cars || []) { c.trk.i = 0; c.lap = 0; c.prevS = 0; }
+    if (this.hud) this.hud.mapBase = null;
+    console.log(`bana ${def.id}: ${(performance.now() - t0).toFixed(0)} ms`);
+    return true;
   }
 
   addCar({ id, name, isPlayer, spec, remote = null }) {
@@ -176,6 +201,12 @@ export class Game {
     this.placeCar(car, slot.s, slot.lat, 0);
     car.veh.hold = true; car.hidden = true; car.ghostT = 0; car.veh.setGhost?.(true);
   }
+  changeTrack(id) {
+    if (this.mode !== 'host' || (this.race.phase !== 'lobby' && this.net)) return;
+    if (!this.setTrack(id)) return;
+    this.emit({ t: 'track', id: this.trackId });
+    if (this.net) this.race.toLobby(); else this.race.toGrid(CONF.GRID_WAIT);
+  }
   setReady(car, on) {
     if (!car || this.race.phase !== 'lobby') return;
     car.ready = !!on;
@@ -184,7 +215,7 @@ export class Game {
   lobbyState() {
     const r = this.race;
     return {
-      room: this.room || '', pub: !!this.isPublic, t: r.t, readyT: r.readyT ?? null,
+      room: this.room || '', pub: !!this.isPublic, t: r.t, readyT: r.readyT ?? null, track: this.trackId, laps: this.track.def.laps || 1,
       players: this.cars.filter(c => this.isHuman(c)).map(c => ({
         id: c.id, name: c.name, ready: !!c.ready, host: c === this.me, nr: c.spec.number,
         c1: c.spec.colors?.[0] || '#888', c2: c.spec.colors?.[1] || '#444',
@@ -223,6 +254,7 @@ export class Game {
   }
   clientWelcome(d) {
     for (const c of this.cars.slice()) this.removeCar(c);
+    if (d.track) this.setTrack(d.track);
     this.myId = d.you;
     for (const info of d.cars) this.addCarFromInfo(info);
     this.me = this.carById(this.myId);
@@ -280,7 +312,7 @@ export class Game {
     const f = T.sampleAt(s, _f);
     p.x += f.ux * 0.62; p.y += f.uy * 0.62; p.z += f.uz * 0.62;
     car.veh.resetTo(p, T.quatAt(s, _q), speed);
-    T.project(p.x, p.z, -1, car.trk); // prevS lämnas — varvräkningen ser hoppet över linjen
+    T.project(p.x, p.z, T.idx(s), car.trk); // prevS lämnas — varvräkningen ser hoppet över linjen
     if (snap) { car.p0.copy(car.veh.pos); car.p1.copy(car.veh.pos); car.q0.copy(car.veh.quat); car.q1.copy(car.veh.quat); }
     this.trails.feed(car.id + 'L', p, _v2.set(0, 1, 0), false, this.time);
     this.trails.feed(car.id + 'R', p, _v2, false, this.time);
@@ -289,9 +321,10 @@ export class Game {
 
   // Återuppstå på banan bakom där man var, i en ledig fil
   respawn(car, back = 30, why = "?") {
-    (this.respawnLog ||= []).push([Math.round(this.simT), car.name, why, Math.round(car.trk.s), Math.round(car.trk.lat)]);
+    const gp = this.track.project(car.veh.pos.x, car.veh.pos.z, -1, {});
+    (this.respawnLog ||= []).push([Math.round(this.simT), car.name, why, Math.round(car.trk.s), Math.round(car.trk.lat), +(car.veh.pos.y - car.trk.y).toFixed(1), Math.round(car.veh.speed * 3.6), Math.round(gp.s), Math.round(gp.lat), +(car.veh.pos.y - gp.y).toFixed(1), car.lastWhy || '']);
     const T = this.track;
-    const s = T.wrapS(car.trk.s - back);
+    const s = T.safeS(car.trk.s - back);
     let best = 0, bestScore = -1;
     for (const lat of [-10, -5, 0, 5, 10, -12.5, 12.5]) {
       const p = T.pointAt(s, lat, _v2);
@@ -429,7 +462,14 @@ export class Game {
         if (d < od) { od = d; other = o; }
       }
       const vertical = Math.abs(im.dy) > im.horiz * 1.4;
-      if (!other && vertical && im.dv < 15) continue; // landning
+      if (!other && vertical) {
+        // landning efter hopp: gnistor + duns, ingen skada (bara riktigt brutala nedslag gör ont)
+        if (im.dv > 9) {
+          this.fx.sparks(_v2.set(car.veh.pos.x, car.veh.pos.y - 0.4, car.veh.pos.z), car.veh.vel, 10 + Math.floor(im.dv), 4);
+          if (car === this.me) this.audio?.bump?.(Math.min(1, im.dv / 25));
+        }
+        if (im.dv < 32) continue;
+      }
       if (car.ghostT > 0 || car.hidden) continue;
       const inv = _q.copy(car.veh.quat).invert();
       const dl = _v.set(im.dx, im.dy * 0.4, im.dz).normalize().applyQuaternion(inv); // knuffens riktning, lokalt
@@ -490,7 +530,8 @@ export class Game {
     // Väggvakt (i stället för CCD): har bilen ändå hamnat genom muren puttas den tillbaka
     // innanför och sidofarten studsar — men inte om den flyger högt över muren
     const wallOut = Math.abs(car.trk.lat) - T.halfW;
-    if (!car.wrecked && wallOut > 0.9 && wallOut < 12 && v.pos.y < car.trk.y + 2.6 && Math.abs(car.lastLat ?? 0) < T.halfW + 0.2) {
+    const inGap = !!(car.trk.f & F_GAP);
+    if (!car.wrecked && !inGap && wallOut > 0.9 && wallOut < 12 && v.pos.y < car.trk.y + 2.6 && Math.abs(car.lastLat ?? 0) < T.halfW + 0.2) {
       const sd = Math.sign(car.trk.lat), i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];
       const lv = v.body.linvel(), vl = lv.x * rhx + lv.z * rhz;
       const back = wallOut + 1.6;
@@ -503,7 +544,7 @@ export class Game {
     }
     car.lastLat = car.trk.lat;
     // Mot kanten: hörnen räknas ut i sidled — skrapar man tappar man fart och det gnistrar
-    if (!car.wrecked && v.grounded >= 2) {
+    if (!car.wrecked && !inGap && v.grounded >= 2) {
       const i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];
       const rr = v.right.x * rhx + v.right.z * rhz, fr = v.fwd.x * rhx + v.fwd.z * rhz;
       const reach = Math.abs(rr) * 0.98 + Math.abs(fr) * 2.45;
@@ -537,6 +578,7 @@ export class Game {
     if (car.flipT > 2.4 && v.speed < 9) this.respawn(car, 10, 'flip');
     // utanför banan
     if (Math.abs(car.trk.lat) > T.halfW + 5 || v.pos.y < car.trk.y - 12) car.offT += dt; else car.offT = 0;
+    if (v.pos.y < car.trk.y - 4 && (car.trk.f & F_GAP || T.flags[(car.trk.i + 4) % T.N] & F_GAP || T.flags[(car.trk.i - 4 + T.N) % T.N] & F_GAP)) car.offT += dt * 2.5;
     if (car.offT > 3.2 || v.pos.y < car.trk.y - 40) this.respawn(car, 15, 'off');
     if (car.wantReset) { car.wantReset = false; this.respawn(car, 12, 'stuck'); }
   }
@@ -659,6 +701,12 @@ export class Game {
       this.camera.lookAt(f.x + 20, f.y + 4, f.z);
       this.plate.mesh.visible = false;
     }
+    // inne i en tunnel: mörkare + eko
+    const tk = me ? me.trk : null;
+    const inTun = tk && (T.flags[tk.i] & F_TUNNEL) && Math.abs(tk.lat) < T.halfW + 2 && me.veh.pos.y < tk.y + 8 ? 1 : 0;
+    this.tunnelK = (this.tunnelK || 0) + (inTun - (this.tunnelK || 0)) * Math.min(1, dt * 4);
+    this.sceneApi.setTunnel?.(this.tunnelK);
+    this.audio?.setTunnel?.(this.tunnelK);
     this.sceneApi.follow(me ? me.view.group.position : this.camera.position, this.time);
     this.world3d.cull(this.camera.position, this.treeRange || 2300);
     if (!this.noRender) this.renderer.render(this.scene, this.camera);

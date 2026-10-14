@@ -112,6 +112,12 @@ export class GameAudio {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -12; comp.ratio.value = 4; comp.attack.value = 0.004;
     this.master.connect(comp); comp.connect(ctx.destination);
+    // eko i tunnlarna
+    this.echo = ctx.createDelay(1); this.echo.delayTime.value = 0.085;
+    const fb = ctx.createGain(); fb.gain.value = 0.42;
+    this.echoWet = ctx.createGain(); this.echoWet.gain.value = 0;
+    this.master.connect(this.echo); this.echo.connect(fb); fb.connect(this.echo);
+    this.echo.connect(this.echoWet); this.echoWet.connect(comp);
     document.addEventListener('visibilitychange', () => { if (document.hidden) ctx.suspend(); else ctx.resume(); });
     this.voices = [new SynthVoice(ctx, this.master), new SynthVoice(ctx, this.master), new SynthVoice(ctx, this.master)];
     try {
@@ -140,6 +146,11 @@ export class GameAudio {
     this.screechL = loop(B.screech);
     this.packL = loop(B.pack);
     this.samples = true;
+  }
+
+  setTunnel(k) {
+    if (!this.echoWet) return;
+    this.echoWet.gain.setTargetAtTime(k * 0.6, this.ctx.currentTime, 0.1);
   }
 
   setMuted(m) {

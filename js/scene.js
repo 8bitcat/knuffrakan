@@ -107,6 +107,8 @@ export function createScene(canvas) {
 
   return {
     renderer, scene, camera, sky, sun,
+    // inne i tunneln: mindre dagsljus
+    setTunnel(k) { hemi.intensity = 1.0 * (1 - 0.6 * k); sun.intensity = 1.45 * (1 - 0.85 * k); },
     // Skuggan och himlen följer det man tittar på
     follow(target, t) {
       sky.position.copy(camera.position);

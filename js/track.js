@@ -1,7 +1,7 @@
 // Banan: en lång slinga genom snöbergen med backar, krön och doserade kurvor.
 // Allt (väg, murar, terräng, AI, placeringar) utgår från samma sampling var 4:e meter.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=3';
+import { CONF } from './config.js?v=4';
 
 // Kontrollpunkter (x, z). Start/mål vid (0,0), körriktning +x.
 const CTRL = [

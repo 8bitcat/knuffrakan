@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,800;1,900&family=Michroma&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 <script type="importmap">
 {
   "imports": {
@@ -69,6 +69,17 @@
   <div id="place"><span id="placeN">–</span><span id="placeOf">/20</span><div class="plbl">PLATS</div></div>
   <div id="raceinfo"><div id="lap">STARTGRID</div><div id="timer">0:00.00</div><div class="hb"><div id="healthbar"></div></div><div id="draft">SUG ≫</div><div id="bonus"></div></div>
   <div id="status"></div>
+  <div id="lobby" class="hidden">
+    <div class="lhead"><span class="lt">LOBBY</span><span id="lroom"></span></div>
+    <div id="lshare"></div>
+    <div id="lplayers"></div>
+    <div id="ltimer"></div>
+    <div class="lbtns">
+      <button id="lready" class="chk">REDO</button>
+      <button id="lstart" class="big">STARTA RACE</button>
+    </div>
+    <div class="ltip">Kör runt och knuffas medan ni väntar · <b>Enter</b> = redo · bottar fyller ut till 20 bilar</div>
+  </div>
   <div id="flash"></div>
   <div id="toasts"></div>
   <canvas id="minimap" width="220" height="130"></canvas>
@@ -79,6 +90,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=3"></script>
+<script type="module" src="js/main.js?v=4"></script>
 </body>
 </html>

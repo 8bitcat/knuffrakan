@@ -1,13 +1,13 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=3';
-import { WHEEL_POS } from './carmodel.js?v=3';
+import { PROTO } from './config.js?v=4';
+import { WHEEL_POS } from './carmodel.js?v=4';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
 const ROW = 21;     // flyttal per bil i en ögonblicksbild
 const HEAD = 6;     // [tid, fas, t, raceT, closeT, antal]
-const PHASES = ['idle', 'grid', 'count', 'race', 'results'];
+const PHASES = ['idle', 'grid', 'count', 'race', 'results', 'lobby'];
 
 function loadPeer() {
   if (window.Peer) return Promise.resolve(window.Peer);
@@ -100,6 +100,7 @@ export class NetHost {
       const r = car.remoteInput;
       r.throttle = +d.a || 0; r.brake = +d.b || 0; r.steer = Math.max(-1, Math.min(1, +d.s || 0)); r.handbrake = +d.h || 0;
     } else if (d.t === 'reset') g.requestReset(car);
+    else if (d.t === 'ready') { g.setReady(car, d.on); this.lobbyT = 1; }
     else if (d.t === 'spec' && d.spec) { g.setSpec(car, d.spec); this.broadcast({ t: 'spec', id: car.id, spec: d.spec }, conn); }
   }
   drop(conn) {
@@ -118,6 +119,11 @@ export class NetHost {
   }
   update(dt) {
     if (!this.clients.size) return;
+    // lobbypanelen till gästerna två gånger i sekunden (direkt när någon trycker REDO)
+    if (this.game.race.phase === 'lobby') {
+      this.lobbyT = (this.lobbyT || 0) + dt;
+      if (this.lobbyT > 0.5) { this.lobbyT = 0; this.broadcast({ t: 'lobbystate', info: this.game.lobbyState() }); }
+    }
     this.snapT += dt;
     if (this.snapT < 0.05) return;
     this.snapT = 0;
@@ -136,7 +142,7 @@ export class NetHost {
       let f = 0;
       if (c.wrecked) f |= 1; if (c.ghostT > 0) f |= 2; if (c.drafting) f |= 4; if (c.finished) f |= 8;
       if (v.wheels[2].slip > 0.35) f |= 16; if (v.wheels[3].slip > 0.35) f |= 32; if (v.hold) f |= 64;
-      if (c.scrapeT > 0) f |= 128; if (c.grindT > 0) f |= 256;
+      if (c.scrapeT > 0) f |= 128; if (c.grindT > 0) f |= 256; if (c.hidden) f |= 512;
       a[o + 17] = f;
       a[o + 18] = c.place;
       a[o + 19] = c.prog;
@@ -217,6 +223,11 @@ export class NetClient {
       case 'unwreck': { const c = g.carById(d.id); if (c) c.view.resetDamage(); break; }
       case 'respawn': this.snapNext.add(d.id); break;
       case 'grid': g.clientGrid(); break;
+      case 'lobby': g.clientLobby(); break;
+      case 'lobbystate':
+        g.lobbyInfo = d.info;
+        for (const p of d.info.players || []) { const c = g.carById(p.id); if (c) c.ready = p.ready; }
+        break;
       case 'toast': g.hud?.toast(d.m, d.k); break;
       case 'flash': g.hud?.flash(d.m); if (d.beep) g.audio?.beep(true); break;
       case 'finish': g.clientFinish(d); break;
@@ -265,7 +276,7 @@ export class NetClient {
       car.health = rb[16];
       const f = rb[17];
       car.wrecked = !!(f & 1); car.ghostT = (f & 2) ? 1 : 0; car.drafting = !!(f & 4); car.finished = !!(f & 8);
-      car.scrapeT = (f & 128) ? 0.15 : 0; car.grindT = (f & 256) ? 0.15 : 0;
+      car.scrapeT = (f & 128) ? 0.15 : 0; car.grindT = (f & 256) ? 0.15 : 0; car.hidden = !!(f & 512);
       car.place = rb[18]; car.prog = rb[19]; car.veh.vmax = rb[20];
       car.trk.s = car.trk.s || 0;
       g.track.project(car.veh.pos.x, car.veh.pos.z, car.trk.i, car.trk);

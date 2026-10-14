@@ -1,15 +1,15 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, TITLES } from './config.js?v=3';
-import { Game } from './game.js?v=3';
-import { HUD } from './hud.js?v=3';
-import { GameAudio } from './audio.js?v=3';
-import { Input } from './input.js?v=3';
-import { CarView, SHAPES } from './carmodel.js?v=3';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=3';
-import { logoCanvas } from './world.js?v=3';
-import { BotBrain } from './ai.js?v=3';
-import { connectRoom, NetHost, NetClient } from './net.js?v=3';
+import { CONF, VERSION, TITLES } from './config.js?v=4';
+import { Game } from './game.js?v=4';
+import { HUD } from './hud.js?v=4';
+import { GameAudio } from './audio.js?v=4';
+import { Input } from './input.js?v=4';
+import { CarView, SHAPES } from './carmodel.js?v=4';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=4';
+import { logoCanvas } from './world.js?v=4';
+import { BotBrain } from './ai.js?v=4';
+import { connectRoom, NetHost, NetClient } from './net.js?v=4';
 
 const PUBLIC = 'PUBLIK';
 
@@ -66,8 +66,9 @@ async function boot() {
     } catch { /* ok */ }
   };
 
-  let busy = false;
+  let busy = false, inGame = false;
   const enterGame = () => {
+    inGame = true;
     closeGarage();
     $('menu').classList.add('hidden');
     hud.show(true);
@@ -87,7 +88,9 @@ async function boot() {
   const startLocal = () => {
     if (!game.me) game.addCar({ name, isPlayer: true, spec });
     if (params.has('bot')) game.me.brain = new BotBrain(Math.random); // testläge: AI kör spelarens bil
-    game.race.toGrid(params.has('auto') ? 2 : CONF.GRID_WAIT);
+    // online: samlas i lobbyn först; ensam: racet börjar direkt
+    if (game.net) game.race.toLobby();
+    else game.race.toGrid(params.has('auto') ? 2 : CONF.GRID_WAIT);
     enterGame();
   };
   const startSolo = () => { if (busy) return; readName(); audio.start(); startLocal(); };
@@ -104,12 +107,12 @@ async function boot() {
     if (!res) { hud.toast('Kunde inte ansluta — du kör med bottar', 'bad'); startLocal(); return; }
     if (res.role === 'host') {
       game.net = new NetHost(game, res.peer);
-      game.room = room;
+      game.room = room; game.isPublic = room === PUBLIC;
       startLocal();
-      hud.toast(room === PUBLIC ? 'Du startade ett nytt race — andra kan gå med' : `Rum ${room}: dela koden med dina kompisar!`, 'good');
+      hud.toast(room === PUBLIC ? 'Du är först här — andra kan gå med i lobbyn' : `Rum ${room}: dela koden med dina kompisar!`, 'good');
     } else {
       game.becomeClient();
-      game.room = room;
+      game.room = room; game.isPublic = room === PUBLIC;
       game.net = new NetClient(game, res.peer, res.conn, { name, spec });
       game.onHostLost = () => {
         hud.toast('Värden lämnade — letar nytt race…', 'bad');
@@ -117,7 +120,7 @@ async function boot() {
         setTimeout(() => location.reload(), 1500);
       };
       enterGame();
-      hud.toast(room === PUBLIC ? 'Du gick med i ett race!' : `Du är med i rum ${room}!`, 'good');
+      hud.toast(room === PUBLIC ? 'Du gick med i ett öppet race!' : `Du är med i rum ${room}!`, 'good');
     }
   };
   $('play').onclick = () => startOnline(PUBLIC);
@@ -173,6 +176,7 @@ async function boot() {
   function closeGarage() {
     $('garage').classList.add('hidden');
     $('menu').classList.remove('dim');
+    if (inGame) $('menu').classList.add('hidden'); // tillbaka till spelet, inte startmenyn
     if (showcase) { game.scene.remove(showcase.group); showcase.dispose(); showcase = null; game.showcase = null; }
     // uppdatera spelarens bil om den finns
     if (game.me) {
@@ -183,7 +187,22 @@ async function boot() {
   }
   buildGarage();
   $('garagebtn').onclick = openGarage;
-  $('sb-garage').onclick = () => { if (game.race.phase !== 'race') { $('menu').classList.remove('hidden'); openGarage(); } else hud.toast('Garaget öppnar efter racet'); };
+  $('sb-garage').onclick = () => {
+    const ph = game.race.phase;
+    if (ph === 'lobby' || ph === 'results' || ph === 'idle' || (ph === 'grid' && !game.net)) { $('menu').classList.remove('hidden'); openGarage(); }
+    else hud.toast(game.net ? 'Garaget öppnar i lobbyn' : 'Garaget öppnar efter racet');
+  };
+  // Lobbyn: redo / starta
+  const toggleReady = () => {
+    if (!game.me || game.race.phase !== 'lobby') return;
+    const on = !game.me.ready;
+    game.me.ready = on;
+    if (game.mode === 'client') game.net?.send({ t: 'ready', on });
+    else game.setReady(game.me, on);
+    hud.lobbyKey = '';
+  };
+  $('lready').onclick = toggleReady;
+  $('lstart').onclick = () => { if (game.mode === 'host') game.race.startFromLobby(); };
   $('sb-cam').onclick = () => game.cam.toggle();
   const muteBtn = $('sb-mute');
   const syncMute = () => { muteBtn.textContent = audio.muted ? 'LJUD AV' : 'LJUD PÅ'; };
@@ -195,6 +214,7 @@ async function boot() {
     if (code === 'KeyC') game.cam.toggle();
     if (code === 'KeyM') { audio.setMuted(!audio.muted); syncMute(); }
     if (code === 'KeyR') { if (game.mode === 'client') game.net?.send({ t: 'reset' }); else game.requestReset(game.me); }
+    if (code === 'Enter' && $('garage').classList.contains('hidden')) toggleReady();
   };
 
   $('loading').classList.add('hidden');
@@ -205,6 +225,7 @@ async function boot() {
   const loop = (now) => {
     const dt = (now - last) / 1000; last = now;
     input.update(Math.min(dt, 0.1));
+    if (!$('garage').classList.contains('hidden')) { const st = input.state; st.throttle = 0; st.brake = 0; st.steer = 0; st.handbrake = 0; }
     game.tick(dt);
     hud.update(Math.min(dt, 0.1), game);
     mapT += dt;
@@ -213,7 +234,7 @@ async function boot() {
       const me = game.me, others = [];
       let pack = 0;
       for (const c of game.cars) {
-        if (c === me) continue;
+        if (c === me || c.hidden) continue;
         const dx = me.veh.pos.x - c.veh.pos.x, dy = me.veh.pos.y - c.veh.pos.y, dz = me.veh.pos.z - c.veh.pos.z;
         const d = Math.hypot(dx, dy, dz) || 1;
         if (d < 45) pack++;

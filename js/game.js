@@ -1,17 +1,17 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=3';
-import { buildTrack } from './track.js?v=3';
-import { buildWorld } from './world.js?v=3';
-import { createScene, ChaseCam } from './scene.js?v=3';
-import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=3';
-import { makeLivery, randomSpec } from './livery.js?v=3';
-import { Vehicle, CP } from './vehicle.js?v=3';
-import { BotBrain } from './ai.js?v=3';
-import { Race } from './race.js?v=3';
-import { FX, Trails } from './fx.js?v=3';
-import { NameTag, SpeedPlate } from './tags.js?v=3';
-import { RemoteVeh, carInfo } from './net.js?v=3';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=4';
+import { buildTrack } from './track.js?v=4';
+import { buildWorld, gridSlots } from './world.js?v=4';
+import { createScene, ChaseCam } from './scene.js?v=4';
+import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=4';
+import { makeLivery, randomSpec } from './livery.js?v=4';
+import { Vehicle, CP } from './vehicle.js?v=4';
+import { BotBrain } from './ai.js?v=4';
+import { Race } from './race.js?v=4';
+import { FX, Trails } from './fx.js?v=4';
+import { NameTag, SpeedPlate } from './tags.js?v=4';
+import { RemoteVeh, carInfo } from './net.js?v=4';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const ord = (n) => n + ':' + (n === 1 || n === 2 ? 'a' : 'e');
@@ -132,6 +132,11 @@ export class Game {
   // Ny bil mitt i allt: ställ den bakom fältet (i racet) eller på griden
   placeLate(car) {
     const r = this.race, T = this.track;
+    if (r.phase === 'lobby') {
+      if (this.isHuman(car)) this.placeInLobby(car);
+      else this.parkBot(car, gridSlots(T, Math.max(24, this.cars.length))[this.cars.indexOf(car)]);
+      return;
+    }
     if (r.phase === 'grid' || r.phase === 'count' || r.phase === 'idle') { r.toGrid(Math.max(3, r.phase === 'grid' ? r.t : 3)); return; }
     const others = (r.order || this.cars).filter(c => c !== car && !c.finished);
     const last = others.length ? others[others.length - 1] : null;
@@ -143,8 +148,48 @@ export class Game {
     car.finished = false;
   }
   requestReset(car) {
-    if (!car || car.wrecked || this.race.phase !== 'race') return;
+    if (!car || car.wrecked || (this.race.phase !== 'race' && this.race.phase !== 'lobby')) return;
     this.respawn(car, 5, 'knapp');
+  }
+
+  // ---------- Lobbyn ----------
+  isHuman(car) { return !!(car.isPlayer || car.remote); }
+  // ledig plats strax efter startlinjen
+  placeInLobby(car) {
+    const T = this.track;
+    for (let s = 30; s < 400; s += 11) {
+      for (const lat of [-7, 0, 7, -12, 12]) {
+        const p = T.pointAt(s, lat, _v);
+        if (this.cars.every(o => o === car || o.hidden || o.veh.pos.distanceTo(p) > 7)) {
+          this.placeCar(car, s, lat, 0);
+          car.lap = 0; car.prevS = car.trk.s; car.prog = car.trk.s;
+          car.ghostT = 1.2; car.veh.setGhost?.(true);
+          return;
+        }
+      }
+    }
+    this.placeCar(car, 30, 0, 0);
+  }
+  // bot väntar osynlig på sin startruta (krockar inte med någon)
+  parkBot(car, slot) {
+    if (!slot) slot = { s: this.track.wrapS(-12), lat: 0 };
+    this.placeCar(car, slot.s, slot.lat, 0);
+    car.veh.hold = true; car.hidden = true; car.ghostT = 0; car.veh.setGhost?.(true);
+  }
+  setReady(car, on) {
+    if (!car || this.race.phase !== 'lobby') return;
+    car.ready = !!on;
+  }
+  // det alla ser i lobbypanelen (värden räknar fram den och skickar till gästerna)
+  lobbyState() {
+    const r = this.race;
+    return {
+      room: this.room || '', pub: !!this.isPublic, t: r.t, readyT: r.readyT ?? null,
+      players: this.cars.filter(c => this.isHuman(c)).map(c => ({
+        id: c.id, name: c.name, ready: !!c.ready, host: c === this.me, nr: c.spec.number,
+        c1: c.spec.colors?.[0] || '#888', c2: c.spec.colors?.[1] || '#444',
+      })),
+    };
   }
 
   // Racets händelser (anropas av Race)
@@ -201,6 +246,11 @@ export class Game {
     for (const c of this.cars) { c.view.resetDamage(); c.finishT = 0; }
     this.trails.clear(); this.skids.clear();
     this.hud?.hideResults();
+  }
+  clientLobby() {
+    for (const c of this.cars) { c.view.resetDamage(); c.finishT = 0; }
+    this.hud?.hideResults();
+    this.myReady = false;
   }
   clientFinish(d) { const c = this.carById(d.id); if (c) { c.finishT = d.time; c.finishPlace = d.place; } }
   clientResults(d) { this.showResults(d.res); }
@@ -309,7 +359,7 @@ export class Game {
     for (let i = 0; i < cars.length; i++) {
       for (let j = i + 1; j < cars.length; j++) {
         const A = cars[i], B = cars[j];
-        if (A.wrecked || B.wrecked || A.ghostT > 0 || B.ghostT > 0) continue;
+        if (A.wrecked || B.wrecked || A.ghostT > 0 || B.ghostT > 0 || A.hidden || B.hidden) continue;
         const a = A.veh.pos, b = B.veh.pos;
         if ((a.x - b.x) ** 2 + (a.z - b.z) ** 2 > 36 || Math.abs(a.y - b.y) > 1.6) continue;
         this.sidePress(A, B, dt, out);
@@ -374,13 +424,13 @@ export class Game {
       if (car.hitCD > 0 || !im || car.wrecked) continue;
       let other = null, od = 6.4;
       for (const o of this.cars) {
-        if (o === car || o.ghostT > 0) continue;
+        if (o === car || o.ghostT > 0 || o.hidden) continue;
         const d = car.veh.pos.distanceTo(o.veh.pos);
         if (d < od) { od = d; other = o; }
       }
       const vertical = Math.abs(im.dy) > im.horiz * 1.4;
       if (!other && vertical && im.dv < 15) continue; // landning
-      if (car.ghostT > 0) continue;
+      if (car.ghostT > 0 || car.hidden) continue;
       const inv = _q.copy(car.veh.quat).invert();
       const dl = _v.set(im.dx, im.dy * 0.4, im.dz).normalize().applyQuaternion(inv); // knuffens riktning, lokalt
       let dmg = Math.min(CONF.DMG_MAX, (im.dv - CONF.DV_MIN + 1.2) * CONF.DMG_SCALE) * (other ? CONF.DMG_CAR : CONF.DMG_WALL);
@@ -435,6 +485,7 @@ export class Game {
     const v = car.veh, T = this.track;
     if (car.hitCD > 0) car.hitCD -= dt;
     if (car.comebackT > 0) car.comebackT -= dt;
+    if (car.hidden) return; // bot som väntar osynlig i lobbyn
     if (car.ghostT > 0) { car.ghostT -= dt; if (car.ghostT <= 0) v.setGhost(false); }
     // Mot kanten: hörnen räknas ut i sidled — skrapar man tappar man fart och det gnistrar
     if (!car.wrecked && v.grounded >= 2) {
@@ -486,12 +537,14 @@ export class Game {
       const v = car.veh;
       v.wheels.forEach((w, k) => car.view.setWheel(k, (w.grounded ? w.dist : CP.rayLen) - 0.37, w.spin, w.front ? v.steer : 0));
       // spöke efter omstart: blinka
-      g.visible = !(car.ghostT > 0 && Math.floor(this.time * 10) % 2 === 0);
+      g.visible = !car.hidden && !(car.ghostT > 0 && Math.floor(this.time * 10) % 2 === 0);
       // namnskylt
-      const line2 = this.race.phase === 'race' || this.race.phase === 'results' ? `${ord(car.place)} plats` : (car.spec.title || 'Redo');
+      const ph = this.race.phase;
+      const line2 = ph === 'race' || ph === 'results' ? `${ord(car.place)} plats`
+        : ph === 'lobby' ? (car.ready ? 'REDO ✓' : 'väntar…') : (car.spec.title || 'Redo');
       const ring = car.place === 1 ? 'gold' : car.place === 2 ? 'silver' : car.place === 3 ? 'bronze' : 'green';
       car.tag.set(line2, this.race.phase === 'race' ? ring : 'green');
-      car.tag.place(g.position.x, g.position.y + car.tag.lift, g.position.z, !car.wrecked || car.wreckT > 1.2);
+      car.tag.place(g.position.x, g.position.y + car.tag.lift, g.position.z, !car.hidden && (!car.wrecked || car.wreckT > 1.2));
       // andras skyltar krymper nära kameran så de aldrig skymmer vägen
       if (car !== this.me) {
         const d = this.camera.position.distanceTo(g.position);
@@ -502,7 +555,7 @@ export class Game {
       // spår och sladdmärken (bakhjulen)
       for (const k of [2, 3]) {
         const w = v.wheels[k];
-        const on = w.grounded && v.speed > 6 && !car.wrecked && car.trk && Math.abs(car.trk.lat) < T.halfW + 0.5;
+        const on = w.grounded && v.speed > 6 && !car.wrecked && !car.hidden && car.trk && Math.abs(car.trk.lat) < T.halfW + 0.5;
         this.trails.feed(car.id + (k === 2 ? 'L' : 'R'), w.hit, w.normal, on, this.time);
         this.skids.feed(car.id + (k === 2 ? 'sL' : 'sR'), w.hit, w.normal, on && w.slip > 0.35, this.time);
       }
@@ -532,7 +585,8 @@ export class Game {
     if (this.screenT > 0.5) {
       this.screenT = 0;
       const r = this.race, sc = this.world3d.screen;
-      if (r.phase === 'grid' || r.phase === 'count') sc.set('NÄSTA START', r.phase === 'count' ? 'NU!' : '0:' + String(Math.max(0, Math.ceil(r.t + CONF.COUNTDOWN))).padStart(2, '0'));
+      if (r.phase === 'lobby') sc.set('LOBBY · RUM', this.isPublic ? 'ALLA' : (this.room || ''));
+      else if (r.phase === 'grid' || r.phase === 'count') sc.set('NÄSTA START', r.phase === 'count' ? 'NU!' : '0:' + String(Math.max(0, Math.ceil(r.t + CONF.COUNTDOWN))).padStart(2, '0'));
       else if (r.phase === 'race') sc.set('LEDER JUST NU', (r.order && r.order[0]?.name) || '');
       else if (r.phase === 'results') sc.set('VINNARE', r.lastWinner || (r.order && r.order[0]?.name) || '');
     }
@@ -608,6 +662,7 @@ export class Game {
     let n = 0;
     while (this.acc >= CONF.DT && n < 4) { this.step(CONF.DT); this.acc -= CONF.DT; n++; }
     if (n === 4) this.acc = 0;
+    this.lobbyInfo = this.race.phase === 'lobby' ? this.lobbyState() : null;
     this.net?.update(dt);
     this.frame(dt, this.acc / CONF.DT);
   }

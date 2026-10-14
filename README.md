@@ -11,6 +11,8 @@ tacklas, snurrar, voltar och brinner.
   Plåten bucklas där man träffas, lacken får repor.
 - **Packracing**: toppfarten styrs av placeringen + suget bakom bilar.
 - **Garage**: välj kaross, färger, mönster, nummer och sponsor.
+- **Lobby** (online): man samlas vid starten och kör runt fritt, trycker REDO; värden startar (eller alla redo → start om 3 s,
+  publika rummet startar själv efter 30 s). Efter racet tillbaka till lobbyn.
 
 ## Köra lokalt
 
@@ -34,5 +36,6 @@ commit, `git push` — GitHub Pages bygger om på någon minut. Utan ny `?v=` ka
     node tools/sim.mjs 150                           # simulera ett race utan rendering, mät dynamiken
     node tools/garage.mjs "0,sh1"                    # närbild i garaget
     BASE=https://8bitcat.github.io/knuffrakan/ node tools/mp.mjs   # tvåspelartest mot den riktiga sidan
+    node tools/lobby.mjs                             # lobbyn: gå med, redo, start, tillbaka till lobbyn
 
 `?auto` startar direkt, `?bot` låter AI:n köra spelarens bil.

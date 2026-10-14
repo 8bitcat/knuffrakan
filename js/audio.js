@@ -69,7 +69,7 @@ class RaceVoice {
       L.s.playbackRate.setTargetAtTime(clamp(f / L.f0, 0.6, 1.6), t, 0.03);
       L.g.gain.setTargetAtTime(Math.sqrt(w[k] / (sum || 1)), t, 0.05);
     });
-    this.lp.frequency.setTargetAtTime(1400 + throttle * 9000, t, 0.06);
+    this.lp.frequency.setTargetAtTime(Math.min(1400 + throttle * 9000, this.ctx.sampleRate * 0.45), t, 0.06);
     this.g.gain.setTargetAtTime(vol * (0.55 + 0.45 * throttle), t, 0.05);
     if (this.pan) this.pan.pan.setTargetAtTime(clamp(pan, -1, 1), t, 0.05);
   }
@@ -92,7 +92,7 @@ class SynthVoice {
     this.rpm += (rpmFor(this.st, v, throttle) - this.rpm) * 0.35;
     const f = this.rpm / 60 * 2;
     this.o1.frequency.setTargetAtTime(f, t, 0.03); this.o2.frequency.setTargetAtTime(f / 2, t, 0.03);
-    this.lp.frequency.setTargetAtTime(500 + throttle * 1800, t, 0.05);
+    this.lp.frequency.setTargetAtTime(Math.min(500 + throttle * 1800, this.ctx.sampleRate * 0.45), t, 0.05);
     this.g.gain.setTargetAtTime(vol * 0.5 * (0.4 + 0.6 * throttle), t, 0.05);
   }
 }

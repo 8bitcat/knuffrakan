@@ -1,4 +1,4 @@
-import { CONF } from './config.js?v=3';
+import { CONF } from './config.js?v=4';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -9,6 +9,7 @@ export class HUD {
       hud: $('hud'), place: $('place'), placeN: $('placeN'), placeOf: $('placeOf'), status: $('status'), lap: $('lap'),
       timer: $('timer'), flash: $('flash'), toasts: $('toasts'), results: $('results'), map: $('minimap'), health: $('healthbar'),
       boost: $('draft'), bonus: $('bonus'),
+      lobby: $('lobby'), lroom: $('lroom'), lshare: $('lshare'), lplayers: $('lplayers'), ltimer: $('ltimer'), lready: $('lready'), lstart: $('lstart'),
     };
     this.mapCtx = this.el.map.getContext('2d');
     this.flashT = 0;
@@ -39,12 +40,13 @@ export class HUD {
       if (this.el.flash.textContent !== txt && n > 0) { this.flash(txt); game.audio?.beep(false); }
     }
     this.el.status.textContent = r.statusText();
+    this.updateLobby(game);
     if (!me) return;
     const racing = r.phase === 'race' || r.phase === 'results';
     this.el.placeN.textContent = racing ? me.place : '–';
-    this.el.placeOf.textContent = '/' + game.cars.length;
+    this.el.placeOf.textContent = '/' + (r.phase === 'lobby' ? game.cars.filter(c => !c.hidden).length : game.cars.length);
     const km = (x) => (x / 1000).toFixed(1).replace('.', ',');
-    this.el.lap.textContent = racing ? (me.finished ? 'I MÅL' : `${km(Math.max(0, me.prog))} / ${km(r.dist)} km`) : 'STARTGRID';
+    this.el.lap.textContent = racing ? (me.finished ? 'I MÅL' : `${km(Math.max(0, me.prog))} / ${km(r.dist)} km`) : (r.phase === 'lobby' ? 'LOBBY' : 'STARTGRID');
     this.el.timer.textContent = racing ? fmt(me.finished ? me.finishT : r.raceT) : '0:00.00';
     this.el.health.style.width = Math.max(0, me.health) + '%';
     this.el.health.style.background = me.health > 60 ? '#5bff7a' : me.health > 30 ? '#ffc23a' : '#ff3b3b';
@@ -53,6 +55,36 @@ export class HUD {
     const bonus = r.phase === 'race' && !me.finished ? Math.round(me.veh.vmax * 3.6 - CONF.BASE_KMH) : 0;
     const bt = bonus > 2 ? `+${bonus} km/h bakifrån` : (r.phase === 'race' && me.place === 1 ? 'LEDARE – långsammast' : '');
     if (this.el.bonus.textContent !== bt) this.el.bonus.textContent = bt;
+  }
+
+  // Lobbypanelen: rumskod, vilka som är med, redo, start
+  updateLobby(game) {
+    const info = game.race.phase === 'lobby' ? game.lobbyInfo : null;
+    this.el.lobby.classList.toggle('hidden', !info || !game.me);
+    if (!info || !game.me) return;
+    const myId = game.me.id, isHost = game.mode === 'host';
+    const players = info.players || [];
+    const mine = players.find(p => p.id === myId);
+    const key = JSON.stringify(players) + isHost;
+    if (key !== this.lobbyKey) {
+      this.lobbyKey = key;
+      this.el.lroom.textContent = info.pub ? 'ÖPPET RACE' : 'RUM ' + info.room;
+      this.el.lshare.textContent = info.pub ? 'Alla som trycker KÖR! hamnar här' : `Kompisar skriver ${info.room} och trycker EGET RUM`;
+      this.el.lplayers.innerHTML = players.map(p => `<div class="lp${p.ready ? ' ready' : ''}${p.id === myId ? ' me' : ''}">
+        <span class="chip" style="background:linear-gradient(135deg,${esc(p.c1)} 55%,${esc(p.c2)} 55%)">${esc(String(p.nr ?? ""))}</span>
+        <span class="nm">${esc(p.name)}${p.host ? ' <span class="host">värd</span>' : ''}</span>
+        <span class="rd">${p.ready ? 'REDO ✓' : 'väntar…'}</span></div>`).join('');
+      this.el.lready.classList.toggle('on', !!mine?.ready);
+      this.el.lready.textContent = mine?.ready ? 'REDO ✓' : 'REDO';
+      this.el.lstart.classList.toggle('hidden', !isHost);
+    }
+    const n = players.length;
+    let tt;
+    if (info.readyT != null) tt = `Alla är redo — start om ${Math.max(1, Math.ceil(info.readyT))}`;
+    else if (info.pub && info.t > 0) tt = `Startar av sig själv om ${Math.ceil(info.t)} s`;
+    else if (isHost) tt = n > 1 ? 'Tryck STARTA RACE när alla är här' : 'Väntar på kompisar… eller starta direkt';
+    else tt = 'Väntar på att värden startar…';
+    if (this.el.ltimer.textContent !== tt) this.el.ltimer.textContent = tt;
   }
 
   drawMap(game) {
@@ -75,6 +107,7 @@ export class HUD {
     c.clearRect(0, 0, W, H);
     c.drawImage(this.mapBase, 0, 0);
     for (const car of game.cars) {
+      if (car.hidden) continue;
       const [x, y] = this.mapTf(car.veh.pos.x, car.veh.pos.z);
       c.fillStyle = car.isPlayer ? '#ffe23a' : (car.wrecked ? '#ff5b3b' : '#5b8cff');
       c.beginPath(); c.arc(x, y, car.isPlayer ? 5 : 3, 0, Math.PI * 2); c.fill();

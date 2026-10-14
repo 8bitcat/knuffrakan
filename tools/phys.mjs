@@ -5,6 +5,7 @@ const { chromium } = require('playwright');
 const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11'] });
 const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
+await page.addInitScript((b) => localStorage.setItem('knuff_bana', b), process.argv[2] || 'snoberget');
 await page.goto(`http://localhost:${process.env.PORT || 8810}/?auto`);
 await page.waitForFunction(() => window.ready === true && window.__game?.me, null, { timeout: 90000 });
 const res = await page.evaluate(() => {

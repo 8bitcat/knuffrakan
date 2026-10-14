@@ -3,7 +3,7 @@ import { createRequire } from 'module';
 const require = createRequire('D:/Qisy/QISYFrontend/QISYFrontend-1/package.json');
 const { chromium } = require('playwright');
 const room = process.argv[2] || ('T' + Math.floor(Math.random() * 90000 + 10000));
-const url = `http://localhost:${process.env.PORT || 8810}/?auto&online&room=${room}`;
+const url = (process.env.BASE || `http://localhost:${process.env.PORT || 8810}/`) + `?auto&online&room=${room}`;
 const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11'] });
 const mk = async (tag) => {
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 560 } });

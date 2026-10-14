@@ -1,8 +1,8 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=7';
-import { WHEEL_POS } from './carmodel.js?v=7';
+import { PROTO } from './config.js?v=8';
+import { VTYPES } from './vtypes.js?v=8';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
 const ROW = 21;     // flyttal per bil i en ögonblicksbild
@@ -154,12 +154,13 @@ export class NetHost {
 
 // Bil hos gästen: samma läsfält som Vehicle, men styrd av ögonblicksbilder
 export class RemoteVeh {
-  constructor() {
+  constructor(T = VTYPES.stock) {
+    this.T = T;
     this.pos = new THREE.Vector3(); this.quat = new THREE.Quaternion(); this.vel = new THREE.Vector3();
     this.fwd = new THREE.Vector3(0, 0, -1); this.up = new THREE.Vector3(0, 1, 0); this.right = new THREE.Vector3(1, 0, 0);
     this.speed = 0; this.vLong = 0; this.steer = 0; this.hold = false; this.vmax = 80; this.disabled = false;
     this.input = { throttle: 0, brake: 0, steer: 0, handbrake: 0 };
-    this.wheels = WHEEL_POS.map(w => ({ x: w.x, z: w.z, front: w.front, grounded: true, dist: 0.55, spin: 0, slip: 0,
+    this.wheels = T.wheels.map(w => ({ x: w.x, z: w.z, front: w.front, grounded: true, dist: T.rayLen * 0.8, spin: 0, slip: 0,
       hit: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0) }));
     this._q = new THREE.Quaternion(); this._a = new THREE.Vector3();
   }
@@ -181,12 +182,12 @@ export class RemoteVeh {
     this.wheels.forEach((w, k) => {
       const d = rb[12 + k];
       w.grounded = d >= 0;
-      w.dist = d >= 0 ? (ra[12 + k] >= 0 ? L(12 + k) : d) : 0.72;
+      w.dist = d >= 0 ? (ra[12 + k] >= 0 ? L(12 + k) : d) : this.T.rayLen;
       w.slip = k === 2 ? ((f & 16) ? 0.6 : 0) : k === 3 ? ((f & 32) ? 0.6 : 0) : 0;
       this._a.set(w.x, 0, w.z).applyQuaternion(this.quat).add(this.pos);
       w.hit.copy(this._a).addScaledVector(this.up, -w.dist);
       w.normal.copy(this.up);
-      w.spin += (this.vLong / 0.37) * dt;
+      w.spin += (this.vLong / this.T.wheelR) * dt;
     });
   }
 }

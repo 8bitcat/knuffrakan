@@ -41,7 +41,10 @@ const out = await page.evaluate(async (secs) => {
   const ovp = T.features.find(f => f.type === 'overpass');
   const offList = (g.respawnLog || []).filter(r => r[2] === 'off' && ovp && Math.abs(T.sdist(r[3], ovp.up)) < 500 || r[2] === 'off' && ovp && Math.abs(T.sdist(r[3], ovp.lo)) < 500).map(r => ({ s: r[3], lat: r[4], dy: r[5], kmh: r[6], globS: r[7], globLat: r[8], globDy: r[9] }));
   const allOff = (g.respawnLog || []).filter(r => r[2] === 'off').map(r => [r[3], r[4], r[5], r[6], T.flags[T.idx(r[3])]]);
-  return { allOff, offNaraKorsning: offList, ovp: { up: Math.round(ovp?.up), lo: Math.round(ovp?.lo) }, offVar: where, wallGuard: g.wallGuardN || 0, dmgAgg: agg, dvHist: [6,8,10,13,16,20,30].map((lim, i, a) => (i ? a[i-1] : 0) + '-' + lim + ':' + dl.filter(d => d[1] >= (i ? a[i-1] : 0) && d[1] < lim).length).join(' '), wallS: ((performance.now() - t0) / 1000).toFixed(1), wrecks, respawns: by, finishT, results: (g.race.results || []).slice(0, 5).map(r => r.name + ' ' + (r.time ? r.time.toFixed(1) : '-')), samples };
+  const kindOf = (n) => (g.cars.find(c => c.name === n)?.spec.kind) || 'stock';
+  const flipKind = {}; for (const r of (g.respawnLog || [])) if (r[2] === 'flip') { const k = kindOf(r[1]); flipKind[k] = (flipKind[k] || 0) + 1; }
+  const fleet = {}; for (const c of g.cars) { const k = c.spec.kind || 'stock'; fleet[k] = (fleet[k] || 0) + 1; }
+  return { flipKind, fleet, allOff, offNaraKorsning: offList, ovp: { up: Math.round(ovp?.up), lo: Math.round(ovp?.lo) }, offVar: where, wallGuard: g.wallGuardN || 0, dmgAgg: agg, dvHist: [6,8,10,13,16,20,30].map((lim, i, a) => (i ? a[i-1] : 0) + '-' + lim + ':' + dl.filter(d => d[1] >= (i ? a[i-1] : 0) && d[1] < lim).length).join(' '), wallS: ((performance.now() - t0) / 1000).toFixed(1), wrecks, respawns: by, finishT, results: (g.race.results || []).slice(0, 5).map(r => r.name + ' ' + (r.time ? r.time.toFixed(1) : '-')), samples };
 }, secs);
 console.log(JSON.stringify(out, null, 0).replace(/\{"t"/g, '\n {"t"'));
 if (errors.length) console.log(errors.join('\n'));

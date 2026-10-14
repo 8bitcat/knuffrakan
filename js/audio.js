@@ -163,6 +163,7 @@ export class GameAudio {
   update(me, others, wind, scrape, pack = 0, dt = 1 / 60) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    if (this.voices[0].detune !== undefined) this.voices[0].detune = me.detune || 0;
     this.voices[0].set(me.v, me.throttle, me.on ? 0.6 : 0, 0, 1);
     for (let k = 0; k < 2; k++) {
       const o = others[k];

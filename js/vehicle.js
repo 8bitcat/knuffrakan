@@ -2,24 +2,14 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=7';
-import { WHEEL_POS, WHEEL_R } from './carmodel.js?v=7';
+import { CONF } from './config.js?v=8';
+import { VTYPES } from './vtypes.js?v=8';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
 
-export const CP = {
-  mass: 1500,
-  half: { x: 0.97, y: 0.42, z: 2.42 },
-  colY: 0.2,
-  inertia: { x: 4500, y: 4300, z: 2100 },
-  rayLen: 0.72,          // fästet → marken vid fullt utfjädrat hjul (fjäder + hjulradie)
-  susK: 36000, susC: 4300,
-  muLat: 1.95, muLong: 1.8, rearGrip: 0.93,
-  driveMax: 16500, brake: 30000,
-  steerMax: 0.5,
-  downforce: 0.75,
-};
+// standardbilen (stockcar) — övriga typer i vtypes.js
+export const CP = VTYPES.stock;
 
 const _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _v = new THREE.Vector3(), _w = new THREE.Vector3();
 const _R = new THREE.Vector3(), _U = new THREE.Vector3(), _F = new THREE.Vector3();
@@ -27,25 +17,38 @@ const _a = new THREE.Vector3(), _c = new THREE.Vector3(), _n = new THREE.Vector3
 const _pv = new THREE.Vector3(), _r = new THREE.Vector3(), _j = new THREE.Vector3(), _t = new THREE.Vector3();
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 // största styrvinkel vid en viss fart (delas med AI:n)
-export const steerMaxAt = (v) => CP.steerMax / (1 + Math.abs(v) / 20);
+export const steerMaxAt = (v, T = CP) => T.steerMax / (1 + Math.abs(v) / 20);
 
 export class Vehicle {
-  constructor(sim, pos, quat) {
+  constructor(sim, pos, quat, type = CP) {
     const { RAPIER, world } = sim;
     this.sim = sim;
+    const T = this.T = type;
+    // OBS: CCD avstängt — kostade 17 av 18 ms per fysiksteg; väggvakten i game.js räcker
     const bd = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(pos.x, pos.y, pos.z).setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
-      .setCcdEnabled(false) // CCD kostade 17 av 18 ms per fysiksteg; väggvakten i game.js räcker.setLinearDamping(0.02).setAngularDamping(0.4).setCanSleep(false);
+      .setCcdEnabled(false).setLinearDamping(0.02).setAngularDamping(0.4).setCanSleep(false);
     this.body = world.createRigidBody(bd);
-    const cd = RAPIER.ColliderDesc.cuboid(CP.half.x, CP.half.y, CP.half.z)
-      .setTranslation(0, CP.colY, 0)
-      .setMassProperties(CP.mass, { x: 0, y: 0, z: 0 }, CP.inertia, { x: 0, y: 0, z: 0, w: 1 })
+    const cd = RAPIER.ColliderDesc.cuboid(T.half.x, T.half.y, T.half.z)
+      .setTranslation(0, T.colY, 0)
+      .setMassProperties(T.mass, { x: 0, y: 0, z: 0 }, T.inertia, { x: 0, y: 0, z: 0, w: 1 })
       .setFriction(0.22).setRestitution(0.28).setCollisionGroups(GROUP_CAR);
     this.collider = world.createCollider(cd, this.body);
+    this.colliders = [this.collider];
+    // bigfootens jättedäck är egna kroppsdelar: andra bilar studsar mot dem
+    if (T.bigWheels) {
+      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+      for (const w of T.wheels) {
+        const wd = RAPIER.ColliderDesc.cylinder(0.42, T.wheelR - 0.05).setDensity(0)
+          .setTranslation(w.x, T.modelY + T.wheelR + 0.12, w.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
+          .setFriction(0.5).setRestitution(0.35).setCollisionGroups(GROUP_CAR);
+        this.colliders.push(world.createCollider(wd, this.body));
+      }
+    }
     this.ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
-    this.wheels = WHEEL_POS.map(w => ({
+    this.wheels = T.wheels.map(w => ({
       x: w.x, z: w.z, front: w.front, comp: 0, prevComp: 0, grounded: false, load: 0,
-      dist: CP.rayLen, spin: 0, hit: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), slip: 0,
+      dist: T.rayLen, spin: 0, hit: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), slip: 0,
     }));
     this.input = { throttle: 0, brake: 0, steer: 0, handbrake: 0 };
     this.steer = 0;
@@ -86,7 +89,10 @@ export class Vehicle {
     this.J.x += jx; this.J.y += jy; this.J.z += jz;
   }
 
+  steerMaxAt(v) { return steerMaxAt(v, this.T); }
+
   preStep(dt) {
+    const T = this.T;
     this.readState();
     this.vBefore.copy(this.vel);
     this.J.set(0, 0, 0);
@@ -103,7 +109,7 @@ export class Vehicle {
     if (this.pressT > 0) this.pressT -= dt;
     if (this.wallT > 0) this.wallT -= dt;
     const inSteer = off ? 0 : inp.steer;
-    let dmax = steerMaxAt(sp);
+    let dmax = steerMaxAt(sp, T);
     // motstyrning: styr man åt glidriktningen får man större utslag och kan fånga sladden
     if (Math.sign(inSteer) === Math.sign(this.beta) && Math.abs(this.beta) > 0.08) dmax = Math.max(dmax, Math.min(0.45, Math.abs(this.beta) + 0.1));
     this.steer += clamp(inSteer * dmax - this.steer, -dt * 3.5, dt * 3.5);
@@ -113,9 +119,9 @@ export class Vehicle {
     if (!this.hold) {
       if (throttle > 0.02) {
         const x = Math.max(0, this.vLong) / this.vmax;
-        drive = throttle * CP.driveMax * this.powerMul * clamp(1 - x * x * x, -0.7, 1);
+        drive = throttle * T.driveMax * this.powerMul * clamp(1 - x * x * x, -0.7, 1);
       } else if (brake > 0.05 && this.vLong < 1.5) {
-        drive = -brake * CP.driveMax * 0.45 * (this.vLong > -16 ? 1 : 0); // back
+        drive = -brake * T.driveMax * 0.45 * (this.vLong > -16 ? 1 : 0); // back
       }
     }
 
@@ -124,26 +130,29 @@ export class Vehicle {
       _a.set(w.x, 0, w.z).applyQuaternion(this.quat).add(pos);
       this.ray.origin = { x: _a.x, y: _a.y, z: _a.z };
       this.ray.dir = { x: -up.x, y: -up.y, z: -up.z };
-      const hit = world.castRayAndGetNormal(this.ray, CP.rayLen, true, undefined, undefined, undefined, this.body);
+      const hit = world.castRayAndGetNormal(this.ray, T.rayLen, true, undefined, undefined, undefined, this.body);
+      w.hitBody = -1;
       if (!hit) {
-        w.grounded = false; w.comp = 0; w.prevComp = 0; w.load = 0; w.dist = CP.rayLen; w.slip = 0;
-        w.spin += (this.vLong / WHEEL_R) * dt * 0.98;
+        w.grounded = false; w.comp = 0; w.prevComp = 0; w.load = 0; w.dist = T.rayLen; w.slip = 0;
+        w.spin += (this.vLong / T.wheelR) * dt * 0.98;
         continue;
       }
       const toi = hit.toi ?? hit.timeOfImpact;
+      const hb = hit.collider?.parent?.();
+      if (hb && !hb.isFixed()) w.hitBody = hb.handle;   // står på en annan bil (bigfooten kör över)
       grounded++;
       w.grounded = true;
       w.dist = toi;
-      w.comp = CP.rayLen - toi;
+      w.comp = T.rayLen - toi;
       _c.copy(_a).addScaledVector(up, -toi);
       w.hit.copy(_c);
       _n.set(hit.normal.x, hit.normal.y, hit.normal.z);
       w.normal.copy(_n);
       const compVel = clamp((w.comp - w.prevComp) / dt, -12, 12);
       w.prevComp = w.comp;
-      let Fs = CP.susK * w.comp + CP.susC * compVel;
-      if (w.comp > 0.3) Fs += (w.comp - 0.3) * 350000;
-      Fs = clamp(Fs, 0, 140000);
+      let Fs = T.susK * w.comp + T.susC * compVel;
+      if (w.comp > T.bump) Fs += (w.comp - T.bump) * 350000 * T.mass / 1500;
+      Fs = clamp(Fs, 0, T.fsMax);
       w.load = Fs;
       this.applyJ(up.x * Fs * dt, up.y * Fs * dt, up.z * Fs * dt, _c.x, _c.y, _c.z);
 
@@ -156,19 +165,19 @@ export class Vehicle {
       _pv.copy(this.vel).add(_t.crossVectors(this.angv, _r));
       const vL = _pv.dot(_wf), vS = _pv.dot(_ws);
 
-      const grip = CP.muLat * (w.front
+      const grip = T.muLat * (w.front
         ? this.pressF
-        : CP.rearGrip * this.pressR * (1 - 0.55 * this.drift) * (hand > 0.5 ? 0.42 : 1));
+        : T.rearGrip * this.pressR * (1 - 0.55 * this.drift) * (hand > 0.5 ? 0.42 : 1));
       const maxJ = grip * Fs * dt;
-      let jS = clamp(-vS * CP.mass * 0.25, -maxJ, maxJ);
+      let jS = clamp(-vS * T.mass * 0.25, -maxJ, maxJ);
 
       let F = 0;
       if (!w.front) F += drive * 0.5;
-      if (brake > 0.05 && this.vLong > 1) F -= CP.brake * brake * 0.25 * Math.sign(vL);
-      if (this.hold) F -= vL * CP.mass * 0.25 / dt * 0.5;
-      if (hand > 0.5 && !w.front) F -= Math.sign(vL) * CP.muLong * Fs * 0.8;
-      F -= vL * 4; // rullmotstånd
-      const maxL = CP.muLong * Fs;
+      if (brake > 0.05 && this.vLong > 1) F -= T.brake * brake * 0.25 * Math.sign(vL);
+      if (this.hold) F -= vL * T.mass * 0.25 / dt * 0.5;
+      if (hand > 0.5 && !w.front) F -= Math.sign(vL) * T.muLong * Fs * 0.8;
+      F -= vL * 4 * T.mass / 1500; // rullmotstånd
+      const maxL = T.muLong * Fs;
       let jL = clamp(F, -maxL, maxL) * dt;
       // friktionscirkel
       const tot = Math.hypot(jS, jL), lim = Math.max(maxJ, maxL * dt);
@@ -176,11 +185,11 @@ export class Vehicle {
       w.slip = Math.abs(vS) > 4 || (hand > 0.5 && !w.front && sp > 6) ? Math.min(1, Math.abs(vS) / 12 + 0.3) : 0;
 
       // längsled i tyngdpunktshöjd (ingen nickning), sidled lite under (lätt krängning)
-      const lx = _c.x + up.x * 0.55, ly = _c.y + up.y * 0.55, lz = _c.z + up.z * 0.55;
+      const lx = _c.x + up.x * T.longH, ly = _c.y + up.y * T.longH, lz = _c.z + up.z * T.longH;
       this.applyJ(_wf.x * jL, _wf.y * jL, _wf.z * jL, lx, ly, lz);
-      const sx = _c.x + up.x * 0.45, sy = _c.y + up.y * 0.45, sz = _c.z + up.z * 0.45;
+      const sx = _c.x + up.x * T.sideH, sy = _c.y + up.y * T.sideH, sz = _c.z + up.z * T.sideH;
       this.applyJ(_ws.x * jS, _ws.y * jS, _ws.z * jS, sx, sy, sz);
-      w.spin += (vL / WHEEL_R) * dt;
+      w.spin += (vL / T.wheelR) * dt;
     }
     this.grounded = grounded;
 
@@ -191,7 +200,7 @@ export class Vehicle {
       // vridning som för bilens upp-vektor mot världens upp
       const tx = -up.z, tz = up.x; // axel = up × Y → vrider upp-vektorn mot lodrätt
       const tilt = Math.hypot(up.x, up.z);
-      const kR = 3.2 * near;
+      const kR = T.rightK * near;
       const av = this.angv;
       // dämpa rull/nick men inte gir
       const yawRate = av.dot(up);
@@ -207,7 +216,7 @@ export class Vehicle {
 
     if (grounded >= 2) {
       // marktryck
-      const df = CP.downforce * this.speed * this.speed * dt;
+      const df = T.downforce * this.speed * this.speed * dt;
       this.applyJ(-up.x * df, -up.y * df, -up.z * df, pos.x, pos.y, pos.z);
       // Girkontroll (arkad): bilen vrider sig så mycket ratten säger — släpper man ratten
       // rätar den upp sig (ingen "fortsätter svänga" med gasen i botten).
@@ -216,8 +225,8 @@ export class Vehicle {
         // önskad gir: hjulvinkeln, men aldrig mer än däcken klarar (~30 m/s² i sidled) —
         // annars vrids nosen runt fortare än bilen kan svänga och den snurrar
         const v = Math.max(1, Math.abs(this.vLong));
-        const dm = steerMaxAt(sp);
-        const wMax = Math.min(v * Math.tan(dm) / 2.94, 30 / v);
+        const dm = steerMaxAt(sp, T);
+        const wMax = Math.min(v * Math.tan(dm) / T.wb, 30 / v);
         const kin = -Math.sign(this.vLong || 1) * clamp(this.steer / dm, -1.6, 1.6) * wMax;   // höger = negativ gir
         // drift: hårt rattutslag i hög fart med gas (eller handbroms) → bakvagnen släpper
         const wantDrift = !this.assist && (hand > 0.5 ? sp > 12 : (Math.abs(inSteer) > 0.45 && sp > 30 && throttle > 0.3));
@@ -245,7 +254,7 @@ export class Vehicle {
           const lv = this.body.linvel();
           const c = Math.cos(th), sn = Math.sin(th), keep = 1 - 0.12 * this.drift * dt;
           const nx = (lv.x * c + lv.z * sn) * keep, nz = (-lv.x * sn + lv.z * c) * keep;
-          this.J.x += (nx - lv.x) * CP.mass; this.J.z += (nz - lv.z) * CP.mass;
+          this.J.x += (nx - lv.x) * T.mass; this.J.z += (nz - lv.z) * T.mass;
           this.body.setLinvel({ x: nx, y: lv.y, z: nz }, true);
         }
       }
@@ -255,7 +264,7 @@ export class Vehicle {
   // Efter world.step(): räkna ut Δv som inte kom från våra egna impulser/gravitationen
   postStep(dt) {
     const lv = this.body.linvel();
-    const m = CP.mass;
+    const m = this.T.mass;
     const dx = lv.x - this.vBefore.x - this.J.x / m;
     const dy = lv.y - this.vBefore.y - this.J.y / m + CONF.GRAV * dt;
     const dz = lv.z - this.vBefore.z - this.J.z / m;
@@ -280,7 +289,7 @@ export class Vehicle {
     this.readState();
   }
 
-  setGhost(on) { this.collider.setCollisionGroups(on ? GROUP_GHOST : GROUP_CAR); }
+  setGhost(on) { for (const c of this.colliders) c.setCollisionGroups(on ? GROUP_GHOST : GROUP_CAR); }
 
   destroy() { this.sim.world.removeRigidBody(this.body); }
 }

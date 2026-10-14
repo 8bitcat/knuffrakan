@@ -1,16 +1,18 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=7';
-import { Game } from './game.js?v=7';
-import { HUD } from './hud.js?v=7';
-import { GameAudio } from './audio.js?v=7';
-import { Input } from './input.js?v=7';
-import { CarView, SHAPES } from './carmodel.js?v=7';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=7';
-import { logoCanvas } from './world.js?v=7';
-import { BotBrain } from './ai.js?v=7';
-import { connectRoom, NetHost, NetClient } from './net.js?v=7';
-import { TRACKS } from './track.js?v=7';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=8';
+import { Game } from './game.js?v=8';
+import { HUD } from './hud.js?v=8';
+import { GameAudio } from './audio.js?v=8';
+import { Input } from './input.js?v=8';
+import { SHAPES } from './carmodel.js?v=8';
+import { makeCarView } from './vehicles3d.js?v=8';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=8';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=8';
+import { logoCanvas } from './world.js?v=8';
+import { BotBrain } from './ai.js?v=8';
+import { connectRoom, NetHost, NetClient } from './net.js?v=8';
+import { TRACKS } from './track.js?v=8';
 
 const PUBLIC = 'PUBLIK';
 
@@ -159,12 +161,12 @@ async function boot() {
   let showcase = null;
   const renderShowcase = () => {
     if (showcase) { game.scene.remove(showcase.group); showcase.dispose(); }
-    const sh = SHAPES[spec.shape % SHAPES.length];
-    showcase = new CarView(sh, makeLivery({ ...spec, driver: name || ($('namein').value || '') }, sh));
+    showcase = makeCarView({ ...spec, driver: name || ($('namein').value || '') });
     const f = game.track.sampleAt(30);
-    showcase.group.position.set(f.x, f.y + 0.55, f.z);
+    showcase.group.position.set(f.x, f.y - showcase.T.modelY, f.z);
     showcase.group.quaternion.copy(game.track.quatAt(30));
-    showcase.wheels.forEach((w, k) => showcase.setWheel(k, 0.18, 0, 0));
+    showcase.rest();
+    showcase.orbitR = 7.2 * Math.max(1, showcase.T.half.z / 2.42) * (showcase.T.id === 'bigfoot' ? 1.3 : 1);
     game.scene.add(showcase.group);
     game.showcase = showcase;
   };
@@ -173,6 +175,7 @@ async function boot() {
     const pal = PALETTES.map((p, i) => `<button class="sw" data-p="${i}" style="background:linear-gradient(135deg,${p[0]} 50%,${p[1]} 50%)"></button>`).join('');
     g.querySelector('#gpal').innerHTML = pal;
     g.querySelector('#gpat').innerHTML = PATTERNS.map(p => `<button data-pat="${p}">${({ split: 'Delad', swoosh: 'Svep', stripes: 'Ränder', fade: 'Tona', flames: 'Flammor', shards: 'Skärvor', tech: 'Linjer', halves: 'Halvor' })[p]}</button>`).join('');
+    g.querySelector('#gkind').innerHTML = KINDS.map(k => `<button data-kind="${k}">${VTYPES[k].namn}</button>`).join('');
     g.querySelector('#gshape').innerHTML = SHAPES.map((s, i) => `<button data-sh="${i}">${s.namn}</button>`).join('');
     g.querySelector('#gspon').innerHTML = SPONSORS.map(s => `<option>${s}</option>`).join('');
     g.onclick = (e) => {
@@ -181,6 +184,12 @@ async function boot() {
       if (b.dataset.p) { const p = PALETTES[+b.dataset.p]; spec.colors = spec.colors[0] === p[0] && spec.colors[1] === p[1] ? [p[0], p[2], p[1]] : p.slice(); }
       if (b.dataset.pat) spec.pattern = b.dataset.pat;
       if (b.dataset.sh) spec.shape = +b.dataset.sh;
+      if (b.dataset.kind) {
+        spec.kind = b.dataset.kind;
+        // skolbussen är gul från början (färgen går att byta)
+        if (spec.kind === 'bus' && !spec.busColored) { spec.colors = ['#ffc21a', '#16161a', '#ffffff']; }
+      }
+      if (b.dataset.p && spec.kind === 'bus') spec.busColored = true;
       if (b.id === 'gswap') spec.colors = [spec.colors[1], spec.colors[0], spec.colors[2]];
       if (b.id === 'grand') { const r = randomSpec(Math.floor(Math.random() * 1e6), ''); Object.assign(spec, { colors: r.colors, pattern: r.pattern, sponsor: r.sponsor, shape: r.shape }); syncInputs(); }
       if (b.id === 'gdone') { closeGarage(); return; }
@@ -282,7 +291,7 @@ async function boot() {
       }
       others.sort((a, b) => a.dist - b.dist);
       const scrape = (me.veh.up.y < 0.35 && me.veh.speed > 5) || me.scrapeT > 0 || me.grindT > 0;
-      audio.update({ v: me.veh.speed, throttle: me.veh.input.throttle, on: !me.wrecked, slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0 },
+      audio.update({ v: me.veh.speed, throttle: me.veh.input.throttle, on: !me.wrecked, slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0, detune: me.veh.T?.detune || 0 },
         others, me.veh.speed, scrape, pack, Math.min(dt, 0.1));
     }
     frames++;

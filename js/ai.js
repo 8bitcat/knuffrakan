@@ -1,6 +1,6 @@
 // Bottarna: kör i full gas i sin fil, byter fil, väjer för långsammare bilar och
 // tacklar ibland den som ligger bredvid.
-import { steerMaxAt } from './vehicle.js?v=7';
+import { steerMaxAt } from './vehicle.js?v=8';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -73,7 +73,7 @@ export class BotBrain {
     const alpha = Math.atan2(lat, fwd);
     const dist = Math.hypot(tx, tz);
     const delta = Math.atan(2 * 2.94 * Math.sin(alpha) / Math.max(8, dist));
-    const dmax = steerMaxAt(v.vLong);
+    const dmax = steerMaxAt(v.vLong, v.T);
     let steer = delta / dmax + Math.sin(this.wob * 1.7) * this.noise;
     // motstyr om bilen glider
     if (Math.abs(v.beta) > 0.1) steer += Math.max(-0.7, Math.min(0.7, v.beta * 2));

@@ -14,6 +14,7 @@ for (const [k, s] of steps.entries()) {
   if (s.startsWith('sh')) await page.click(`[data-sh="${s.slice(2)}"]`);
   if (s.startsWith('p')) await page.click(`[data-p="${s.slice(1)}"]`);
   if (s.startsWith('pat')) await page.click(`[data-pat="${s.slice(3)}"]`);
+  if (s.startsWith('k')) await page.click(`[data-kind="${s.slice(1)}"]`);
   await page.waitForTimeout(+(process.argv[3] || 1500));
   await page.screenshot({ path: `tools/out/garage-${k}.png` });
 }

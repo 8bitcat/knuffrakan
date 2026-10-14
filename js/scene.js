@@ -133,7 +133,9 @@ export class ChaseCam {
   }
   toggle() { this.mode = (this.mode + 1) % 3; }
   update(dt, pos, fwd, vel, kmh) {
-    const M = [{ d: 8.6, h: 3.1 }, { d: 14, h: 5.5 }, { d: 6, h: 2.1 }][this.mode];
+    const M0 = [{ d: 8.6, h: 3.1 }, { d: 14, h: 5.5 }, { d: 6, h: 2.1 }][this.mode];
+    const E = this.extra || { d: 0, h: 0 };
+    const M = { d: M0.d + E.d, h: M0.h + E.h };
     // riktning: framåt, men följ farten när bilen glider/snurrar
     let hx = fwd.x, hz = fwd.z;
     const hl = Math.hypot(hx, hz);

@@ -1,8 +1,8 @@
 // Racet: (lobby →) startgrid → nedräkning → race (ett varv) → resultat → lobby/ny grid.
 // Online samlas man i lobbyn (kör runt fritt) tills värden startar eller alla är redo.
 // Packracing: toppfarten styrs av placeringen (sist går fortast) + suget bakom bilar.
-import { CONF } from './config.js?v=7';
-import { gridSlots } from './world.js?v=7';
+import { CONF } from './config.js?v=8';
+import { gridSlots } from './world.js?v=8';
 
 export class Race {
   constructor(game) {

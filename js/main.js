@@ -1,15 +1,15 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=5';
-import { Game } from './game.js?v=5';
-import { HUD } from './hud.js?v=5';
-import { GameAudio } from './audio.js?v=5';
-import { Input } from './input.js?v=5';
-import { CarView, SHAPES } from './carmodel.js?v=5';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=5';
-import { logoCanvas } from './world.js?v=5';
-import { BotBrain } from './ai.js?v=5';
-import { connectRoom, NetHost, NetClient } from './net.js?v=5';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=6';
+import { Game } from './game.js?v=6';
+import { HUD } from './hud.js?v=6';
+import { GameAudio } from './audio.js?v=6';
+import { Input } from './input.js?v=6';
+import { CarView, SHAPES } from './carmodel.js?v=6';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=6';
+import { logoCanvas } from './world.js?v=6';
+import { BotBrain } from './ai.js?v=6';
+import { connectRoom, NetHost, NetClient } from './net.js?v=6';
 
 const PUBLIC = 'PUBLIK';
 

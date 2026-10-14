@@ -1,17 +1,17 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=5';
-import { buildTrack } from './track.js?v=5';
-import { buildWorld, gridSlots } from './world.js?v=5';
-import { createScene, ChaseCam } from './scene.js?v=5';
-import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=5';
-import { makeLivery, randomSpec } from './livery.js?v=5';
-import { Vehicle, CP } from './vehicle.js?v=5';
-import { BotBrain } from './ai.js?v=5';
-import { Race } from './race.js?v=5';
-import { FX, Trails } from './fx.js?v=5';
-import { NameTag, SpeedPlate } from './tags.js?v=5';
-import { RemoteVeh, carInfo } from './net.js?v=5';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=6';
+import { buildTrack } from './track.js?v=6';
+import { buildWorld, gridSlots } from './world.js?v=6';
+import { createScene, ChaseCam } from './scene.js?v=6';
+import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=6';
+import { makeLivery, randomSpec } from './livery.js?v=6';
+import { Vehicle, CP } from './vehicle.js?v=6';
+import { BotBrain } from './ai.js?v=6';
+import { Race } from './race.js?v=6';
+import { FX, Trails } from './fx.js?v=6';
+import { NameTag, SpeedPlate } from './tags.js?v=6';
+import { RemoteVeh, carInfo } from './net.js?v=6';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const ord = (n) => n + ':' + (n === 1 || n === 2 ? 'a' : 'e');
@@ -487,6 +487,21 @@ export class Game {
     if (car.comebackT > 0) car.comebackT -= dt;
     if (car.hidden) return; // bot som väntar osynlig i lobbyn
     if (car.ghostT > 0) { car.ghostT -= dt; if (car.ghostT <= 0) v.setGhost(false); }
+    // Väggvakt (i stället för CCD): har bilen ändå hamnat genom muren puttas den tillbaka
+    // innanför och sidofarten studsar — men inte om den flyger högt över muren
+    const wallOut = Math.abs(car.trk.lat) - T.halfW;
+    if (!car.wrecked && wallOut > 0.9 && wallOut < 12 && v.pos.y < car.trk.y + 2.6 && Math.abs(car.lastLat ?? 0) < T.halfW + 0.2) {
+      const sd = Math.sign(car.trk.lat), i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];
+      const lv = v.body.linvel(), vl = lv.x * rhx + lv.z * rhz;
+      const back = wallOut + 1.6;
+      const p = v.body.translation();
+      v.body.setTranslation({ x: p.x - rhx * sd * back, y: p.y, z: p.z - rhz * sd * back }, true);
+      this.wallGuardN = (this.wallGuardN || 0) + 1;
+      if (vl * sd > 0) v.body.setLinvel({ x: lv.x - rhx * vl * 1.3, y: lv.y, z: lv.z - rhz * vl * 1.3 }, true);
+      v.readState();
+      T.project(v.pos.x, v.pos.z, i, car.trk);
+    }
+    car.lastLat = car.trk.lat;
     // Mot kanten: hörnen räknas ut i sidled — skrapar man tappar man fart och det gnistrar
     if (!car.wrecked && v.grounded >= 2) {
       const i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];

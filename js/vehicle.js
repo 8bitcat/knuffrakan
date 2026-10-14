@@ -2,8 +2,8 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=5';
-import { WHEEL_POS, WHEEL_R } from './carmodel.js?v=5';
+import { CONF } from './config.js?v=6';
+import { WHEEL_POS, WHEEL_R } from './carmodel.js?v=6';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -35,7 +35,7 @@ export class Vehicle {
     this.sim = sim;
     const bd = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(pos.x, pos.y, pos.z).setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
-      .setCcdEnabled(true).setLinearDamping(0.02).setAngularDamping(0.4).setCanSleep(false);
+      .setCcdEnabled(false) // CCD kostade 17 av 18 ms per fysiksteg; väggvakten i game.js räcker.setLinearDamping(0.02).setAngularDamping(0.4).setCanSleep(false);
     this.body = world.createRigidBody(bd);
     const cd = RAPIER.ColliderDesc.cuboid(CP.half.x, CP.half.y, CP.half.z)
       .setTranslation(0, CP.colY, 0)

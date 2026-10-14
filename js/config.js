@@ -1,7 +1,7 @@
 // KNUFFRAKAN — global konfiguration.
 // PROTO bumpas vid varje släpp (nätkompatibilitet + cache-brytning).
-export const VERSION = '0.6.0';
-export const PROTO = 8;
+export const VERSION = '0.7.0';
+export const PROTO = 9;
 
 export const CONF = {
   DT: 1 / 60,
@@ -21,6 +21,9 @@ export const CONF = {
   COUNTDOWN: 3,
   CLOSE_AFTER_WIN: 25,  // racet stänger efter ettan
   RESULTS_T: 9,
+  SAVES: 3,             // R-räddningar per race när man står på banan
+  FLIP_WAIT: 1.5,       // på taket: så länge innan R går
+  FLIP_AUTO: 4.0,       // på taket: automatisk omstart
   LOBBY_AUTOSTART: 30,  // publika rummet: racet startar av sig självt efter 30 s i lobbyn
 
   // Packracing: ju längre bak, desto högre toppfart — fältet klumpar ihop sig

@@ -6,7 +6,7 @@ export const VTYPES = {
     id: 'stock', namn: 'Stockcar',
     mass: 1500, half: { x: 0.97, y: 0.42, z: 2.42 }, colY: 0.2, inertia: { x: 4500, y: 4300, z: 2100 },
     rayLen: 0.72, susK: 36000, susC: 4300, bump: 0.3, fsMax: 140000,
-    muLat: 1.95, muLong: 1.8, rearGrip: 0.93, driveMax: 16500, brake: 30000, steerMax: 0.5, wb: 2.94, downforce: 0.75,
+    muLat: 1.95, muLong: 1.8, rearGrip: 0.93, driveMax: 16500, accelK: 1, brake: 30000, steerMax: 0.5, wb: 2.94, downforce: 0.75,
     wheelR: 0.37, wheels: [
       { x: -0.84, z: -1.47, front: true }, { x: 0.84, z: -1.47, front: true },
       { x: -0.84, z: 1.47, front: false }, { x: 0.84, z: 1.47, front: false },
@@ -18,7 +18,7 @@ export const VTYPES = {
     id: 'bus', namn: 'Skolbuss',
     mass: 4000, half: { x: 1.25, y: 1.25, z: 4.5 }, colY: 0.875, inertia: { x: 32000, y: 30000, z: 14000 },
     rayLen: 1.05, susK: 80000, susC: 9500, bump: 0.45, fsMax: 380000,
-    muLat: 1.6, muLong: 1.5, rearGrip: 0.97, driveMax: 16500 * 4000 / 1500 * 0.82, brake: 64000, steerMax: 0.4, wb: 5.2, downforce: 2.0,
+    muLat: 1.6, muLong: 1.5, rearGrip: 0.97, driveMax: 16500 * 4000 / 1500 * 1.12, accelK: 0.4, brake: 64000, steerMax: 0.4, wb: 5.2, downforce: 2.0,
     wheelR: 0.52, wheels: [
       { x: -1.06, z: -2.9, front: true }, { x: 1.06, z: -2.9, front: true },
       { x: -1.02, z: 2.3, front: false }, { x: 1.02, z: 2.3, front: false },
@@ -30,7 +30,7 @@ export const VTYPES = {
     id: 'bigfoot', namn: 'Bigfoot',
     mass: 2600, half: { x: 1.0, y: 0.7, z: 2.3 }, colY: 0.34, inertia: { x: 9000, y: 8500, z: 5200 },
     rayLen: 1.9, susK: 47000, susC: 5200, bump: 0.75, fsMax: 300000,
-    muLat: 1.85, muLong: 1.75, rearGrip: 0.95, driveMax: 16500 * 2600 / 1500, brake: 52000, steerMax: 0.5, wb: 3.1, downforce: 1.3,
+    muLat: 1.85, muLong: 1.75, rearGrip: 0.95, driveMax: 16500 * 2600 / 1500, accelK: 0.55, brake: 52000, steerMax: 0.5, wb: 3.1, downforce: 1.3,
     wheelR: 0.95, wheels: [
       { x: -1.3, z: -1.55, front: true }, { x: 1.3, z: -1.55, front: true },
       { x: -1.3, z: 1.55, front: false }, { x: 1.3, z: 1.55, front: false },

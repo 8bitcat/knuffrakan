@@ -1,11 +1,11 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=8';
-import { VTYPES } from './vtypes.js?v=8';
+import { PROTO } from './config.js?v=9';
+import { VTYPES } from './vtypes.js?v=9';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
-const ROW = 21;     // flyttal per bil i en ögonblicksbild
+const ROW = 22;     // flyttal per bil i en ögonblicksbild
 const HEAD = 6;     // [tid, fas, t, raceT, closeT, antal]
 const PHASES = ['idle', 'grid', 'count', 'race', 'results', 'lobby'];
 
@@ -147,6 +147,7 @@ export class NetHost {
       a[o + 18] = c.place;
       a[o + 19] = c.prog;
       a[o + 20] = v.vmax;
+      a[o + 21] = c.saves ?? 3;
     });
     this.broadcast({ t: 's', b: a.buffer });
   }
@@ -279,7 +280,7 @@ export class NetClient {
       const f = rb[17];
       car.wrecked = !!(f & 1); car.ghostT = (f & 2) ? 1 : 0; car.drafting = !!(f & 4); car.finished = !!(f & 8);
       car.scrapeT = (f & 128) ? 0.15 : 0; car.grindT = (f & 256) ? 0.15 : 0; car.hidden = !!(f & 512);
-      car.place = rb[18]; car.prog = rb[19]; car.veh.vmax = rb[20];
+      car.place = rb[18]; car.prog = rb[19]; car.veh.vmax = rb[20]; car.saves = rb[21];
       car.trk.s = car.trk.s || 0;
       g.track.project(car.veh.pos.x, car.veh.pos.z, g.track.idx(((rb[19] % g.track.L) + g.track.L) % g.track.L), car.trk);
     }

@@ -1,8 +1,8 @@
 // Racet: (lobby →) startgrid → nedräkning → race (ett varv) → resultat → lobby/ny grid.
 // Online samlas man i lobbyn (kör runt fritt) tills värden startar eller alla är redo.
 // Packracing: toppfarten styrs av placeringen (sist går fortast) + suget bakom bilar.
-import { CONF } from './config.js?v=8';
-import { gridSlots } from './world.js?v=8';
+import { CONF } from './config.js?v=9';
+import { gridSlots } from './world.js?v=9';
 
 export class Race {
   constructor(game) {
@@ -32,7 +32,7 @@ export class Race {
     const slots = gridSlots(T, Math.max(24, g.cars.length));
     let k = 0;
     for (const car of g.cars) {
-      car.finished = false; car.finishT = 0; car.finishPlace = 0; car.ready = false;
+      car.finished = false; car.finishT = 0; car.finishPlace = 0; car.ready = false; car.saves = CONF.SAVES;
       if (car.wrecked) g.unwreck(car);
       car.health = 100; car.view.resetDamage();
       if (g.isHuman(car)) { car.hidden = false; car.veh.hold = false; car.veh.vmax = CONF.BASE_KMH * 0.85 / 3.6; car.veh.powerMul = 1; g.placeInLobby(car); }
@@ -68,6 +68,7 @@ export class Race {
       if (car.wrecked) g.unwreck(car);
       car.health = 100; car.view.resetDamage();
       car.raceStats = { kos: 0, hits: 0 };
+      car.saves = CONF.SAVES;
     });
     g.world3d.gantry.setLights(0, false);
     this.num++;

@@ -1,18 +1,18 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=8';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=8';
-import { buildWorld, gridSlots } from './world.js?v=8';
-import { createScene, ChaseCam } from './scene.js?v=8';
-import { makeCarView } from './vehicles3d.js?v=8';
-import { typeOf } from './vtypes.js?v=8';
-import { makeLivery, randomSpec } from './livery.js?v=8';
-import { Vehicle, CP } from './vehicle.js?v=8';
-import { BotBrain } from './ai.js?v=8';
-import { Race } from './race.js?v=8';
-import { FX, Trails } from './fx.js?v=8';
-import { NameTag, SpeedPlate } from './tags.js?v=8';
-import { RemoteVeh, carInfo } from './net.js?v=8';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=9';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=9';
+import { buildWorld, gridSlots } from './world.js?v=9';
+import { createScene, ChaseCam } from './scene.js?v=9';
+import { makeCarView } from './vehicles3d.js?v=9';
+import { typeOf } from './vtypes.js?v=9';
+import { makeLivery, randomSpec } from './livery.js?v=9';
+import { Vehicle, CP } from './vehicle.js?v=9';
+import { BotBrain } from './ai.js?v=9';
+import { Race } from './race.js?v=9';
+import { FX, Trails } from './fx.js?v=9';
+import { NameTag, SpeedPlate } from './tags.js?v=9';
+import { RemoteVeh, carInfo } from './net.js?v=9';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -186,13 +186,27 @@ export class Game {
     car.ghostT = 2.5; car.veh.setGhost?.(true);
     car.finished = false;
   }
+  // R = tillbaka på banan. På banan bara 3 räddningar per race, utanför banan fritt.
+  // I luften går det inte, och på taket måste man ligga 1,5 s först (mätaren).
   requestReset(car) {
-    if (!car || car.wrecked || (this.race.phase !== 'race' && this.race.phase !== 'lobby')) return;
+    const ph = this.race.phase;
+    if (!car || car.wrecked || (ph !== 'race' && ph !== 'lobby')) return;
+    const v = car.veh, T = this.track;
+    if (v.up.y < 0.3) {
+      if ((car.flipT || 0) < CONF.FLIP_WAIT) { this.notify(car, 'Vänta tills mätaren är full…', 'bad'); return; }
+      this.respawn(car, 5, 'knapp'); return;
+    }
+    if (v.grounded === 0) { this.notify(car, 'Inte i luften!', 'bad'); return; }
+    const off = Math.abs(car.trk.lat) > T.halfW + 1.2 || v.pos.y < car.trk.y - 3 || (car.trk.f & F_GAP);
+    if (off || ph === 'lobby') { this.respawn(car, 5, 'knapp'); return; }
+    if ((car.saves ?? CONF.SAVES) <= 0) { this.notify(car, 'Inga räddningar kvar det här racet!', 'bad'); return; }
+    car.saves = (car.saves ?? CONF.SAVES) - 1;
     this.respawn(car, 5, 'knapp');
+    this.notify(car, car.saves ? `Räddning använd — ${car.saves} kvar` : 'Sista räddningen använd!', car.saves ? '' : 'bad');
   }
 
   // ---------- Lobbyn ----------
-  isHuman(car) { return !!(car.isPlayer || car.remote); }
+  isHuman(car) { return !!(car.isPlayer || car.remote || car.human); }
   // ledig plats strax efter startlinjen
   placeInLobby(car) {
     const T = this.track;
@@ -264,7 +278,9 @@ export class Game {
     this.trails.clear(); this.skids.clear();
   }
   addCarFromInfo(info) {
-    return this.addCar({ id: info.id, name: info.name, isPlayer: info.id === this.myId, spec: info.spec });
+    const c = this.addCar({ id: info.id, name: info.name, isPlayer: info.id === this.myId, spec: info.spec });
+    c.human = !!info.human;
+    return c;
   }
   clientWelcome(d) {
     for (const c of this.cars.slice()) this.removeCar(c);
@@ -598,7 +614,9 @@ export class Game {
     // innanför och sidofarten studsar — men inte om den flyger högt över muren
     const wallOut = Math.abs(car.trk.lat) - T.halfW;
     const inGap = !!(car.trk.f & F_GAP);
-    if (!car.wrecked && !inGap && wallOut > 0.9 && wallOut < 12 && v.pos.y < car.trk.y + 2.6 && Math.abs(car.lastLat ?? 0) < T.halfW + 0.2) {
+    const dyRoad = v.pos.y - car.trk.y, inTunnel = !!(car.trk.f & F_TUNNEL);
+    const nearRoad = dyRoad > -2.5 && dyRoad < (inTunnel ? 9.5 : 12);
+    if (!car.wrecked && !inGap && wallOut > 0.9 && wallOut < 10 && nearRoad) {
       const sd = Math.sign(car.trk.lat), i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];
       const lv = v.body.linvel(), vl = lv.x * rhx + lv.z * rhz;
       const back = wallOut + 1.6;
@@ -642,7 +660,7 @@ export class Game {
     }
     // uppochner
     if (v.up.y < 0.3) car.flipT += dt; else car.flipT = 0;
-    if (car.flipT > 2.4 && v.speed < 9) this.respawn(car, 10, 'flip');
+    if (car.flipT > CONF.FLIP_AUTO && v.speed < 9) this.respawn(car, 10, 'flip');
     // utanför banan
     if (Math.abs(car.trk.lat) > T.halfW + 5 || v.pos.y < car.trk.y - 12) car.offT += dt; else car.offT = 0;
     if (v.pos.y < car.trk.y - 4 && (car.trk.f & F_GAP || T.flags[(car.trk.i + 4) % T.N] & F_GAP || T.flags[(car.trk.i - 4 + T.N) % T.N] & F_GAP)) car.offT += dt * 2.5;
@@ -788,6 +806,7 @@ export class Game {
     dt = Math.min(dt, 0.1);
     if (this.mode === 'client') {
       if (this.me) Object.assign(this.me.veh.input, this.input.state);
+      if (this.me) this.me.flipT = this.me.veh.up.y < 0.3 && !this.me.wrecked ? (this.me.flipT || 0) + dt : 0;
       this.net?.update(dt);
       this.frame(dt, 1);
       return;

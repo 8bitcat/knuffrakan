@@ -2,8 +2,8 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=8';
-import { VTYPES } from './vtypes.js?v=8';
+import { CONF } from './config.js?v=9';
+import { VTYPES } from './vtypes.js?v=9';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -16,6 +16,7 @@ const _R = new THREE.Vector3(), _U = new THREE.Vector3(), _F = new THREE.Vector3
 const _a = new THREE.Vector3(), _c = new THREE.Vector3(), _n = new THREE.Vector3(), _wf = new THREE.Vector3(), _ws = new THREE.Vector3();
 const _pv = new THREE.Vector3(), _r = new THREE.Vector3(), _j = new THREE.Vector3(), _t = new THREE.Vector3();
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 // största styrvinkel vid en viss fart (delas med AI:n)
 export const steerMaxAt = (v, T = CP) => T.steerMax / (1 + Math.abs(v) / 20);
 
@@ -119,7 +120,9 @@ export class Vehicle {
     if (!this.hold) {
       if (throttle > 0.02) {
         const x = Math.max(0, this.vLong) / this.vmax;
-        drive = throttle * T.driveMax * this.powerMul * clamp(1 - x * x * x, -0.7, 1);
+        // tunga fordon: seg start (accelK), full kraft först uppe i fart — samma toppfart
+        const lowK = T.accelK + (1 - T.accelK) * smooth(0.45, 0.9, x);
+        drive = throttle * T.driveMax * this.powerMul * lowK * clamp(1 - x * x * x, -0.7, 1);
       } else if (brake > 0.05 && this.vLong < 1.5) {
         drive = -brake * T.driveMax * 0.45 * (this.vLong > -16 ? 1 : 0); // back
       }

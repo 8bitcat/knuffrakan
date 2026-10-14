@@ -1,18 +1,18 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=8';
-import { Game } from './game.js?v=8';
-import { HUD } from './hud.js?v=8';
-import { GameAudio } from './audio.js?v=8';
-import { Input } from './input.js?v=8';
-import { SHAPES } from './carmodel.js?v=8';
-import { makeCarView } from './vehicles3d.js?v=8';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=8';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=8';
-import { logoCanvas } from './world.js?v=8';
-import { BotBrain } from './ai.js?v=8';
-import { connectRoom, NetHost, NetClient } from './net.js?v=8';
-import { TRACKS } from './track.js?v=8';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=9';
+import { Game } from './game.js?v=9';
+import { HUD } from './hud.js?v=9';
+import { GameAudio } from './audio.js?v=9';
+import { Input } from './input.js?v=9';
+import { SHAPES } from './carmodel.js?v=9';
+import { makeCarView } from './vehicles3d.js?v=9';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=9';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=9';
+import { logoCanvas } from './world.js?v=9';
+import { BotBrain } from './ai.js?v=9';
+import { connectRoom, NetHost, NetClient } from './net.js?v=9';
+import { TRACKS } from './track.js?v=9';
 
 const PUBLIC = 'PUBLIK';
 

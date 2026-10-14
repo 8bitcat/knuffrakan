@@ -3,8 +3,8 @@
 // det finns en fysikvärld (värden).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONF } from './config.js?v=8';
-import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, JUMP } from './track.js?v=8';
+import { CONF } from './config.js?v=9';
+import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, JUMP } from './track.js?v=9';
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const h2 = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -354,7 +354,9 @@ function buildBarriers(ctx) {
       for (const side of [-1, 1]) {
         const t = types[side][i];
         if (t < 0) continue;
-        const h = t === 1 ? 2.0 : t === 2 ? 3.6 : t === 3 ? 7.2 : 1.15, th = 0.5;
+        // fysiken är högre än betongen (osynlig vägg ovanför) — annars glider en bil som lyft lite rakt över;
+        // det blå stängslet i kurvorna är solitt ända upp, och i tunnlarna går väggen upp till taket
+        const h = (T.flags[i] & F_TUNNEL) ? 9.5 : t === 1 ? 5.0 : t === 2 ? 3.8 : t === 3 ? 7.4 : 4.0, th = 0.8;
         const lat = side * (base + th);
         R.set(T.rx[i], T.ry[i], T.rz[i]); U.set(T.ux[i], T.uy[i], T.uz[i]); B.set(-T.fx[i], -T.fy[i], -T.fz[i]);
         M.makeBasis(R, U, B); Q.setFromRotationMatrix(M);
@@ -961,6 +963,18 @@ function buildTunnels(ctx) {
     scene.add(tube);
     for (const sd of [-1, 1]) scene.add(new THREE.Mesh(extrudeAbs(T, list, [[sd * (W - 0.03), 1.2], [sd * (W - 0.03), 1.5]], 4), ledMat));
     for (let k = 1; k < list.length - 1; k += 3) for (const sd of [-0.45, 0.45]) lamps.push([list[k], sd * W]);
+    // tak med fysik (ingen flyger upp i berget)
+    if (ctx.world) {
+      const Rv = new THREE.Vector3(), Uv = new THREE.Vector3(), Bv = new THREE.Vector3(), Mx = new THREE.Matrix4(), Qt = new THREE.Quaternion();
+      for (let k = 0; k < list.length; k += 2) {
+        const i = list[k];
+        Rv.set(T.rx[i], T.ry[i], T.rz[i]); Uv.set(T.ux[i], T.uy[i], T.uz[i]); Bv.set(-T.fx[i], -T.fy[i], -T.fz[i]);
+        Mx.makeBasis(Rv, Uv, Bv); Qt.setFromRotationMatrix(Mx);
+        const c = new THREE.Vector3(T.px[i], T.py[i], T.pz[i]).addScaledVector(Uv, 9.6);
+        ctx.world.createCollider(ctx.RAPIER.ColliderDesc.cuboid(W, 0.4, T.ds + 0.4).setTranslation(c.x, c.y, c.z)
+          .setRotation({ x: Qt.x, y: Qt.y, z: Qt.z, w: Qt.w }).setFriction(0.1).setCollisionGroups(GROUP_WORLD), ctx.fixedBody);
+      }
+    }
     // mynningar: betongvägg med valvöppning
     const Wo = W + 16, top = 26;
     const sh = new THREE.Shape();

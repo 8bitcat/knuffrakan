@@ -90,6 +90,23 @@ button { font-family: inherit; cursor: pointer; }
   .big { font-size: 28px; }
 }
 
+/* Räddningar, vältmätare, kompisar */
+#saves { margin-top: 6px; font: 800 13px Montserrat, sans-serif; letter-spacing: 1px; }
+#saves b { color: var(--lime); font-size: 16px; letter-spacing: 3px; }
+#saves b.none { color: #ff5b5b; }
+#mates { margin-top: 10px; min-width: 210px; }
+#mates .mh { font: 800 11px Montserrat, sans-serif; letter-spacing: 2px; opacity: 0.8; margin-bottom: 3px; }
+#mates .m { display: flex; justify-content: flex-end; align-items: center; gap: 8px; font: 700 15px Montserrat, sans-serif; padding: 2px 0; }
+#mates .m .p { font: italic 900 22px "Exo 2", sans-serif; min-width: 34px; text-align: right; }
+#mates .m .g { font-size: 12px; opacity: 0.75; min-width: 62px; text-align: right; }
+#mates .m.me { color: var(--lime); }
+#mates .m .chip { width: 14px; height: 14px; border-radius: 4px; }
+#flipm { position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%); text-align: center; background: var(--card); border: 2px solid #ffb02e; border-radius: 16px; padding: 10px 18px; min-width: 240px; }
+#flipm .ft { font: italic 900 24px "Exo 2", sans-serif; }
+#flipm .fb { height: 14px; background: rgba(255, 255, 255, 0.15); border-radius: 8px; overflow: hidden; margin: 8px 0 6px; }
+#flipbar { height: 100%; width: 0; background: linear-gradient(90deg, #ffb02e, #c4ff3a); }
+#fliptxt { font: 800 15px Montserrat, sans-serif; }
+#fliptxt.go { color: var(--lime); font-size: 18px; }
 /* Banval */
 .tracks { display: flex; gap: 8px; flex-wrap: wrap; }
 .tbt { flex: 1; font: italic 900 17px "Exo 2", sans-serif; color: #fff; padding: 8px 10px; border-radius: 12px; border: 2px solid #334; background: rgba(10, 10, 20, 0.7); text-align: left; }

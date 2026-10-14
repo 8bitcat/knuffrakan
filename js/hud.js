@@ -1,4 +1,4 @@
-import { CONF } from './config.js?v=8';
+import { CONF } from './config.js?v=9';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -8,7 +8,7 @@ export class HUD {
     this.el = {
       hud: $('hud'), place: $('place'), placeN: $('placeN'), placeOf: $('placeOf'), status: $('status'), lap: $('lap'),
       timer: $('timer'), flash: $('flash'), toasts: $('toasts'), results: $('results'), map: $('minimap'), health: $('healthbar'),
-      boost: $('draft'), bonus: $('bonus'),
+      boost: $('draft'), bonus: $('bonus'), saves: $('saves'), mates: $('mates'), flipm: $('flipm'), flipbar: $('flipbar'), fliptxt: $('fliptxt'),
       lobby: $('lobby'), ltrack: $('ltrack'), lroom: $('lroom'), lshare: $('lshare'), lplayers: $('lplayers'), ltimer: $('ltimer'), lready: $('lready'), lstart: $('lstart'),
     };
     this.mapCtx = this.el.map.getContext('2d');
@@ -62,6 +62,24 @@ export class HUD {
     const bonus = r.phase === 'race' && !me.finished ? Math.round(me.veh.vmax * 3.6 - CONF.BASE_KMH) : 0;
     const bt = bonus > 2 ? `+${bonus} km/h bakifrån` : (r.phase === 'race' && me.place === 1 ? 'LEDARE – långsammast' : '');
     if (this.el.bonus.textContent !== bt) this.el.bonus.textContent = bt;
+    // räddningar (R) kvar
+    if (this.el.saves) {
+      const n = me.saves ?? CONF.SAVES;
+      const st = r.phase === 'race' ? `R-RÄDDNINGAR <b class="${n ? '' : 'none'}">${'●'.repeat(n)}${'○'.repeat(Math.max(0, CONF.SAVES - n))}</b>` : '';
+      if (this.savesKey !== st) { this.savesKey = st; this.el.saves.innerHTML = st; }
+    }
+    // på taket: mätaren
+    if (this.el.flipm) {
+      const ft = me.flipT || 0, show = ft > 0.15 && !me.wrecked && (r.phase === 'race' || r.phase === 'lobby');
+      this.el.flipm.classList.toggle('hidden', !show);
+      if (show) {
+        const k = Math.min(1, ft / CONF.FLIP_WAIT);
+        this.el.flipbar.style.width = (k * 100).toFixed(0) + '%';
+        const txt = k >= 1 ? 'Tryck R!' : 'Vänta…';
+        if (this.el.fliptxt.textContent !== txt) { this.el.fliptxt.textContent = txt; this.el.fliptxt.classList.toggle('go', k >= 1); }
+      }
+    }
+    this.updateMates(game, racing);
   }
 
   // Lobbypanelen: rumskod, vilka som är med, redo, start
@@ -94,6 +112,22 @@ export class HUD {
     else if (isHost) tt = n > 1 ? 'Tryck STARTA RACE när alla är här' : 'Väntar på kompisar… eller starta direkt';
     else tt = 'Väntar på att värden startar…';
     if (this.el.ltimer.textContent !== tt) this.el.ltimer.textContent = tt;
+  }
+
+  // Kompisarna (riktiga spelare) med placering och avstånd — uppe till höger
+  updateMates(game, racing) {
+    if (!this.el.mates) return;
+    const me = game.me;
+    const humans = game.cars.filter(c => game.isHuman(c) || c === me);
+    let html = '';
+    if (racing && humans.length > 1) {
+      const rows = humans.slice().sort((a, b) => (a.place || 99) - (b.place || 99)).map(c => {
+        const gap = c === me ? '' : (() => { const d = Math.round((c.prog || 0) - (me.prog || 0)); const km = Math.abs(d) >= 1000 ? (Math.abs(d) / 1000).toFixed(1).replace('.', ',') + ' km' : Math.abs(d) + ' m'; return (d >= 0 ? '+' : '−') + km; })();
+        return `<div class="m${c === me ? ' me' : ''}"><span class="chip" style="background:${esc(c.spec?.colors?.[0] || '#888')}"></span><span>${esc(c.name)}</span><span class="g">${c.finished ? 'I MÅL' : gap}</span><span class="p">${c.place || '–'}</span></div>`;
+      }).join('');
+      html = `<div class="mh">KOMPISAR</div>${rows}`;
+    }
+    if (this.matesKey !== html) { this.matesKey = html; this.el.mates.innerHTML = html; }
   }
 
   // banval: värden får knappar, gästerna ser vilken bana det blir

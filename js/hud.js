@@ -1,4 +1,4 @@
-import { CONF } from './config.js?v=4';
+import { CONF } from './config.js?v=5';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -59,6 +59,7 @@ export class HUD {
 
   // Lobbypanelen: rumskod, vilka som är med, redo, start
   updateLobby(game) {
+    if (!this.el.lobby) return;
     const info = game.race.phase === 'lobby' ? game.lobbyInfo : null;
     this.el.lobby.classList.toggle('hidden', !info || !game.me);
     if (!info || !game.me) return;

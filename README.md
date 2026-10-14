@@ -27,7 +27,8 @@ Handkontroll: RT/LT gas/broms, vänster spak styr, A handbroms, Y omstart, B kam
 
 ## Släppa en ny version
 
-Bumpa `VERSION` + `PROTO` i `js/config.js` och `?v=N` i alla imports (`sed -i 's/?v=GAMMAL/?v=NY/g' js/*.js index.html`),
+Bumpa `VERSION` + `PROTO` i `js/config.js`, `data-v="PROTO"` på `<html>` i index.html och `?v=N` i alla imports
+(`sed -i 's/?v=GAMMAL/?v=NY/g' js/*.js index.html`). Stämmer inte `data-v` med `PROTO` laddar sidan om sig själv förbi cachen,
 commit, `git push` — GitHub Pages bygger om på någon minut. Utan ny `?v=` kan gamla och nya filer blandas i webbläsarens cache.
 
 ## Test
@@ -37,5 +38,6 @@ commit, `git push` — GitHub Pages bygger om på någon minut. Utan ny `?v=` ka
     node tools/garage.mjs "0,sh1"                    # närbild i garaget
     BASE=https://8bitcat.github.io/knuffrakan/ node tools/mp.mjs   # tvåspelartest mot den riktiga sidan
     node tools/lobby.mjs                             # lobbyn: gå med, redo, start, tillbaka till lobbyn
+    node tools/stale.mjs                             # gammal index.html i cachen + ny kod → laddar om sig, inget fel
 
 `?auto` startar direkt, `?bot` låter AI:n köra spelarens bil.

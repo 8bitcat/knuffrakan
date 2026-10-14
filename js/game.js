@@ -1,17 +1,17 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=4';
-import { buildTrack } from './track.js?v=4';
-import { buildWorld, gridSlots } from './world.js?v=4';
-import { createScene, ChaseCam } from './scene.js?v=4';
-import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=4';
-import { makeLivery, randomSpec } from './livery.js?v=4';
-import { Vehicle, CP } from './vehicle.js?v=4';
-import { BotBrain } from './ai.js?v=4';
-import { Race } from './race.js?v=4';
-import { FX, Trails } from './fx.js?v=4';
-import { NameTag, SpeedPlate } from './tags.js?v=4';
-import { RemoteVeh, carInfo } from './net.js?v=4';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=5';
+import { buildTrack } from './track.js?v=5';
+import { buildWorld, gridSlots } from './world.js?v=5';
+import { createScene, ChaseCam } from './scene.js?v=5';
+import { CarView, SHAPES, MODEL_Y } from './carmodel.js?v=5';
+import { makeLivery, randomSpec } from './livery.js?v=5';
+import { Vehicle, CP } from './vehicle.js?v=5';
+import { BotBrain } from './ai.js?v=5';
+import { Race } from './race.js?v=5';
+import { FX, Trails } from './fx.js?v=5';
+import { NameTag, SpeedPlate } from './tags.js?v=5';
+import { RemoteVeh, carInfo } from './net.js?v=5';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const ord = (n) => n + ':' + (n === 1 || n === 2 ? 'a' : 'e');

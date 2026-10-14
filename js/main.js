@@ -1,19 +1,35 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, TITLES } from './config.js?v=4';
-import { Game } from './game.js?v=4';
-import { HUD } from './hud.js?v=4';
-import { GameAudio } from './audio.js?v=4';
-import { Input } from './input.js?v=4';
-import { CarView, SHAPES } from './carmodel.js?v=4';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=4';
-import { logoCanvas } from './world.js?v=4';
-import { BotBrain } from './ai.js?v=4';
-import { connectRoom, NetHost, NetClient } from './net.js?v=4';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=5';
+import { Game } from './game.js?v=5';
+import { HUD } from './hud.js?v=5';
+import { GameAudio } from './audio.js?v=5';
+import { Input } from './input.js?v=5';
+import { CarView, SHAPES } from './carmodel.js?v=5';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=5';
+import { logoCanvas } from './world.js?v=5';
+import { BotBrain } from './ai.js?v=5';
+import { connectRoom, NetHost, NetClient } from './net.js?v=5';
 
 const PUBLIC = 'PUBLIK';
 
 const $ = (id) => document.getElementById(id);
+// knapp-koppling som aldrig kraschar om elementet saknas
+const bind = (id, ev, fn) => { const el = $(id); if (el) el[ev] = fn; };
+
+// Versionsvakt: GitHub Pages låter webbläsaren spara index.html i 10 min. Precis efter ett
+// släpp kan en gammal sida (utan nya knappar) hämta ny kod → krasch. Märk det och ladda om
+// sidan förbi cachen (högst två gånger per flik).
+function staleHtml() {
+  if (document.documentElement.dataset.v === String(PROTO)) { try { sessionStorage.removeItem('knuff_rl'); } catch { /* ok */ } return false; }
+  let n = 0;
+  try { n = +(sessionStorage.getItem('knuff_rl') || 0); sessionStorage.setItem('knuff_rl', String(n + 1)); } catch { /* ok */ }
+  if (n >= 2) return false;
+  const u = new URL(location.href);
+  u.searchParams.set('_v', PROTO + '-' + Date.now().toString(36));
+  location.replace(u.toString());
+  return true;
+}
 const params = new URLSearchParams(location.search);
 const loadTxt = (t) => { $('loadtxt').textContent = t; };
 
@@ -123,13 +139,13 @@ async function boot() {
       hud.toast(room === PUBLIC ? 'Du gick med i ett öppet race!' : `Du är med i rum ${room}!`, 'good');
     }
   };
-  $('play').onclick = () => startOnline(PUBLIC);
-  $('solo').onclick = startSolo;
-  $('roombtn').onclick = () => {
+  bind('play', 'onclick', () => startOnline(PUBLIC));
+  bind('solo', 'onclick', startSolo);
+  bind('roombtn', 'onclick', () => {
     const code = ($('roomin').value || '').toUpperCase().replace(/[^A-ZÅÄÖ0-9]/g, '').slice(0, 6);
     if (code.length < 3) { $('roomin').focus(); $('netstatus').textContent = 'Skriv en kod på minst 3 tecken'; return; }
     startOnline(code);
-  };
+  });
   const start = () => startOnline(PUBLIC);
 
   // ---------- Garage ----------
@@ -163,8 +179,8 @@ async function boot() {
       if (b.id === 'gdone') { closeGarage(); return; }
       saveSpec(spec); renderShowcase();
     };
-    $('gnum').oninput = () => { const n = Math.max(0, Math.min(99, parseInt($('gnum').value, 10) || 0)); spec.number = n; saveSpec(spec); renderShowcase(); };
-    $('gspon').onchange = () => { spec.sponsor = $('gspon').value; saveSpec(spec); renderShowcase(); };
+    bind('gnum', 'oninput', () => { const n = Math.max(0, Math.min(99, parseInt($('gnum').value, 10) || 0)); spec.number = n; saveSpec(spec); renderShowcase(); });
+    bind('gspon', 'onchange', () => { spec.sponsor = $('gspon').value; saveSpec(spec); renderShowcase(); });
   };
   const syncInputs = () => { $('gnum').value = spec.number; $('gspon').value = spec.sponsor; };
   const openGarage = () => {
@@ -186,12 +202,12 @@ async function boot() {
     }
   }
   buildGarage();
-  $('garagebtn').onclick = openGarage;
-  $('sb-garage').onclick = () => {
+  bind('garagebtn', 'onclick', openGarage);
+  bind('sb-garage', 'onclick', () => {
     const ph = game.race.phase;
     if (ph === 'lobby' || ph === 'results' || ph === 'idle' || (ph === 'grid' && !game.net)) { $('menu').classList.remove('hidden'); openGarage(); }
     else hud.toast(game.net ? 'Garaget öppnar i lobbyn' : 'Garaget öppnar efter racet');
-  };
+  });
   // Lobbyn: redo / starta
   const toggleReady = () => {
     if (!game.me || game.race.phase !== 'lobby') return;
@@ -201,9 +217,9 @@ async function boot() {
     else game.setReady(game.me, on);
     hud.lobbyKey = '';
   };
-  $('lready').onclick = toggleReady;
-  $('lstart').onclick = () => { if (game.mode === 'host') game.race.startFromLobby(); };
-  $('sb-cam').onclick = () => game.cam.toggle();
+  bind('lready', 'onclick', toggleReady);
+  bind('lstart', 'onclick', () => { if (game.mode === 'host') game.race.startFromLobby(); });
+  bind('sb-cam', 'onclick', () => game.cam.toggle());
   const muteBtn = $('sb-mute');
   const syncMute = () => { muteBtn.textContent = audio.muted ? 'LJUD AV' : 'LJUD PÅ'; };
   muteBtn.onclick = () => { audio.setMuted(!audio.muted); syncMute(); };
@@ -297,7 +313,7 @@ function _pan(camera, p) {
   return _r.dot(_d);
 }
 
-boot().catch((e) => {
+if (!staleHtml()) boot().catch((e) => {
   console.error(e);
-  loadTxt('Något gick fel: ' + e.message);
+  loadTxt('Något gick fel: ' + e.message + ' — ladda om sidan med Ctrl+Shift+R');
 });

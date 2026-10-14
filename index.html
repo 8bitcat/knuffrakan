@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="sv" data-v="9">
+<html lang="sv" data-v="10">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,800;1,900&family=Michroma&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
 <script type="importmap">
 {
   "imports": {
@@ -38,6 +38,7 @@
     <div class="row2">
       <button id="solo" class="chk">SPELA SJÄLV</button>
       <button id="garagebtn" class="chk">GARAGE</button>
+      <button id="labbtn" class="chk">LJUD</button>
     </div>
     <div class="row2 room">
       <input id="roomin" maxlength="6" placeholder="Rumskod" autocomplete="off">
@@ -49,6 +50,32 @@
     </div>
     <div id="ver"></div>
   </div>
+</div>
+
+<div id="ljudlabb" class="hidden">
+  <h2>LJUDLABBET</h2>
+  <p class="lsub">Lyssna och välj — det du väljer används direkt i spelet.</p>
+  <div class="lsec">
+    <label>Motor</label>
+    <div id="lkind" class="opts"></div>
+    <div id="lmotor" class="opts"></div>
+    <div class="lctl">
+      <span>Fart</span><input id="lfart" type="range" min="0" max="110" value="25">
+      <b id="lfartv">90 km/h</b>
+    </div>
+    <div class="lctl"><button id="lplay" class="small">▶ STARTA MOTORN</button><button id="lgas" class="small">GASA (håll)</button><button id="lauto" class="small">🏁 ACCELERERA</button></div>
+  </div>
+  <div class="lsec">
+    <label>Skrap (plåt mot vägg / mot bil)</label>
+    <div id="lscrape" class="opts"></div>
+    <div class="lctl"><button id="lscrw" class="small">SKRAPA VÄGG (håll)</button><button id="lscrc" class="small">SKRAPA BIL (håll)</button></div>
+  </div>
+  <div class="lsec">
+    <label>Krockar</label>
+    <div id="lcrash" class="opts"></div>
+    <div class="lctl"><button id="lc1" class="small">LITEN SMÄLL</button><button id="lc2" class="small">STOR SMÄLL</button><button id="lc3" class="small">VRAK</button></div>
+  </div>
+  <div class="grow end"><span></span><button id="ldone" class="big">KLAR</button></div>
 </div>
 
 <div id="garage" class="hidden">
@@ -94,6 +121,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=9"></script>
+<script type="module" src="js/main.js?v=10"></script>
 </body>
 </html>

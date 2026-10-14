@@ -1,0 +1,12 @@
+import { createRequire } from 'module';
+const require = createRequire('D:/Qisy/QISYFrontend/QISYFrontend-1/package.json');
+const { chromium } = require('playwright');
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 812, height: 375 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+await page.goto(`http://localhost:8810/`);
+await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
+await page.click('#labbtn'); await page.waitForTimeout(1500);
+const r = await page.evaluate(() => { const b = document.getElementById('ljudlabb').getBoundingClientRect(); const d = document.getElementById('ldone').getBoundingClientRect(); const p = document.getElementById('ljudlabb'); return { top: b.top, bottom: b.bottom, h: innerHeight, scroll: p.scrollHeight > p.clientHeight, klar: d.bottom }; });
+console.log(JSON.stringify(r));
+await page.screenshot({ path: 'tools/out/lab-mob.png' });
+await browser.close();

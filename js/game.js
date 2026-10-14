@@ -1,18 +1,18 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=9';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=9';
-import { buildWorld, gridSlots } from './world.js?v=9';
-import { createScene, ChaseCam } from './scene.js?v=9';
-import { makeCarView } from './vehicles3d.js?v=9';
-import { typeOf } from './vtypes.js?v=9';
-import { makeLivery, randomSpec } from './livery.js?v=9';
-import { Vehicle, CP } from './vehicle.js?v=9';
-import { BotBrain } from './ai.js?v=9';
-import { Race } from './race.js?v=9';
-import { FX, Trails } from './fx.js?v=9';
-import { NameTag, SpeedPlate } from './tags.js?v=9';
-import { RemoteVeh, carInfo } from './net.js?v=9';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=10';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=10';
+import { buildWorld, gridSlots } from './world.js?v=10';
+import { createScene, ChaseCam } from './scene.js?v=10';
+import { makeCarView } from './vehicles3d.js?v=10';
+import { typeOf } from './vtypes.js?v=10';
+import { makeLivery, randomSpec } from './livery.js?v=10';
+import { Vehicle, CP } from './vehicle.js?v=10';
+import { BotBrain } from './ai.js?v=10';
+import { Race } from './race.js?v=10';
+import { FX, Trails } from './fx.js?v=10';
+import { NameTag, SpeedPlate } from './tags.js?v=10';
+import { RemoteVeh, carInfo } from './net.js?v=10';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';

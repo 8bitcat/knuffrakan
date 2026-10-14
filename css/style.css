@@ -107,6 +107,18 @@ button { font-family: inherit; cursor: pointer; }
 #flipbar { height: 100%; width: 0; background: linear-gradient(90deg, #ffb02e, #c4ff3a); }
 #fliptxt { font: 800 15px Montserrat, sans-serif; }
 #fliptxt.go { color: var(--lime); font-size: 18px; }
+/* Ljudlabbet */
+#ljudlabb { position: fixed; right: 3vw; top: 50%; transform: translateY(-50%); width: min(470px, 94vw); max-height: 92vh; overflow: auto; z-index: 31; background: var(--card); border: 2px solid var(--blue); border-radius: 18px; padding: 16px 18px; }
+#ljudlabb h2 { margin: 0; font: italic 900 32px "Exo 2", sans-serif; }
+#ljudlabb .lsub { margin: 2px 0 8px; font-size: 13px; opacity: 0.85; }
+.lsec { margin: 12px 0; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+.lsec > label { display: block; font-weight: 800; font-size: 13px; opacity: 0.85; text-transform: uppercase; margin-bottom: 6px; }
+.lsec .opts { margin-bottom: 6px; }
+.opts button.on { border-color: var(--lime); color: var(--lime); }
+.lctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.lctl input[type=range] { flex: 1; }
+.lctl b { min-width: 80px; text-align: right; }
+.lctl .small.on { border-color: var(--lime); color: var(--lime); }
 /* Banval */
 .tracks { display: flex; gap: 8px; flex-wrap: wrap; }
 .tbt { flex: 1; font: italic 900 17px "Exo 2", sans-serif; color: #fff; padding: 8px 10px; border-radius: 12px; border: 2px solid #334; background: rgba(10, 10, 20, 0.7); text-align: left; }

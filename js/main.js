@@ -1,18 +1,19 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=9';
-import { Game } from './game.js?v=9';
-import { HUD } from './hud.js?v=9';
-import { GameAudio } from './audio.js?v=9';
-import { Input } from './input.js?v=9';
-import { SHAPES } from './carmodel.js?v=9';
-import { makeCarView } from './vehicles3d.js?v=9';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=9';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=9';
-import { logoCanvas } from './world.js?v=9';
-import { BotBrain } from './ai.js?v=9';
-import { connectRoom, NetHost, NetClient } from './net.js?v=9';
-import { TRACKS } from './track.js?v=9';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=10';
+import { Game } from './game.js?v=10';
+import { HUD } from './hud.js?v=10';
+import { GameAudio } from './audio.js?v=10';
+import { Input } from './input.js?v=10';
+import { SHAPES } from './carmodel.js?v=10';
+import { makeCarView } from './vehicles3d.js?v=10';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=10';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=10';
+import { logoCanvas } from './world.js?v=10';
+import { BotBrain } from './ai.js?v=10';
+import { connectRoom, NetHost, NetClient } from './net.js?v=10';
+import { TRACKS } from './track.js?v=10';
+import { SOUND_OPTS } from './sounds.js?v=10';
 
 const PUBLIC = 'PUBLIK';
 
@@ -249,6 +250,64 @@ async function boot() {
   bind('ltrack', 'onclick', pickTrack);
   bind('lstart', 'onclick', () => { if (game.mode === 'host') game.race.startFromLobby(); });
   bind('sb-cam', 'onclick', () => game.cam.toggle());
+  // ---------- Ljudlabbet ----------
+  const lab = { open: false, kind: 'stock', on: false, gas: false, auto: false, v: 25, scrW: false, scrC: false };
+  const KIND_NAMN = { stock: 'NASCAR', bus: 'Skolbuss', bigfoot: 'Bigfoot' };
+  const optBtns = (cat, attr) => SOUND_OPTS[cat].map(o => `<button data-${attr}="${o.id}" class="${audio.choice[cat] === o.id ? 'on' : ''}">${o.namn}</button>`).join('');
+  const renderLab = () => {
+    $('lkind').innerHTML = Object.keys(KIND_NAMN).map(k => `<button data-lk="${k}" class="${lab.kind === k ? 'on' : ''}">${KIND_NAMN[k]}</button>`).join('');
+    $('lmotor').innerHTML = optBtns(lab.kind, 'lm');
+    $('lscrape').innerHTML = optBtns('scrape', 'ls');
+    $('lcrash').innerHTML = optBtns('crash', 'lc');
+    $('lplay').textContent = lab.on ? '■ STÄNG AV' : '▶ STARTA MOTORN';
+    $('lplay').classList.toggle('on', lab.on);
+  };
+  const openLab = async () => {
+    await audio.start();
+    lab.open = true;
+    $('ljudlabb').classList.remove('hidden');
+    $('menu').classList.add('dim');
+    renderLab();
+    for (const cat of Object.keys(SOUND_OPTS)) audio.preload(cat);
+  };
+  const closeLab = () => {
+    lab.open = false; lab.on = false; lab.gas = false; lab.scrW = lab.scrC = false;
+    audio.preview?.(lab.kind, 0, 0, false); audio.scrape?.(0, 0, 0);
+    $('ljudlabb').classList.add('hidden');
+    $('menu').classList.remove('dim');
+    if (inGame) $('menu').classList.add('hidden');
+  };
+  bind('labbtn', 'onclick', openLab);
+  bind('ldone', 'onclick', closeLab);
+  $('ljudlabb').onclick = async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.lk) lab.kind = b.dataset.lk;
+    if (b.dataset.lm) await audio.setChoice(lab.kind, b.dataset.lm);
+    if (b.dataset.ls) await audio.setChoice('scrape', b.dataset.ls);
+    if (b.dataset.lc) { await audio.setChoice('crash', b.dataset.lc); audio.crash(16, 1); }
+    if (b.id === 'lplay') lab.on = !lab.on;
+    if (b.id === 'lauto') { lab.on = true; lab.auto = true; lab.v = 0; }
+    if (b.id === 'lc1') audio.crash(8, 1);
+    if (b.id === 'lc2') audio.crash(20, 1);
+    if (b.id === 'lc3') audio.boom(1);
+    renderLab();
+  };
+  const hold = (id, key) => {
+    const el = $(id); if (!el) return;
+    const on = (e) => { e.preventDefault(); lab[key] = true; el.classList.add('on'); };
+    const off = () => { lab[key] = false; el.classList.remove('on'); };
+    el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointerleave', off); el.addEventListener('pointercancel', off);
+  };
+  hold('lgas', 'gas'); hold('lscrw', 'scrW'); hold('lscrc', 'scrC');
+  bind('lfart', 'oninput', () => { lab.v = +$('lfart').value; lab.auto = false; });
+  game.labTick = (dt) => {
+    if (!lab.open) return;
+    if (lab.auto) { lab.v = Math.min(110, lab.v + dt * (lab.kind === 'bus' ? 3.5 : lab.kind === 'bigfoot' ? 5 : 8)); if (lab.v >= 110) lab.auto = false; $('lfart').value = Math.round(lab.v); }
+    $('lfartv').textContent = Math.round(lab.v * 3.6) + ' km/h';
+    audio.preview(lab.kind, lab.v, lab.gas || lab.auto ? 1 : 0.15, lab.on);
+    audio.scrape(lab.scrW ? 1 : 0, lab.scrC ? 1 : 0, lab.scrW || lab.scrC ? Math.max(15, lab.v) : 0);
+  };
+
   const muteBtn = $('sb-mute');
   const syncMute = () => { muteBtn.textContent = audio.muted ? 'LJUD AV' : 'LJUD PÅ'; };
   muteBtn.onclick = () => { audio.setMuted(!audio.muted); syncMute(); };
@@ -286,14 +345,20 @@ async function boot() {
         if (d < 80) {
           // närmar sig bilen mig? (för dopplereffekten)
           const closing = ((c.veh.vel.x - me.veh.vel.x) * dx + (c.veh.vel.y - me.veh.vel.y) * dy + (c.veh.vel.z - me.veh.vel.z) * dz) / d;
-          others.push({ v: c.veh.speed, throttle: c.veh.input.throttle || 1, dist: d, pan: _pan(game.camera, c.veh.pos), closing });
+          others.push({ kind: c.spec?.kind || 'stock', v: c.veh.speed, throttle: c.veh.input.throttle || 1, dist: d, pan: _pan(game.camera, c.veh.pos), closing });
         }
       }
       others.sort((a, b) => a.dist - b.dist);
-      const scrape = (me.veh.up.y < 0.35 && me.veh.speed > 5) || me.scrapeT > 0 || me.grindT > 0;
-      audio.update({ v: me.veh.speed, throttle: me.veh.input.throttle, on: !me.wrecked, slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0, detune: me.veh.T?.detune || 0 },
-        others, me.veh.speed, scrape, pack, Math.min(dt, 0.1));
+      // skrap: mot vägg (kanten eller taket mot asfalten) eller mot en annan bil — med glidfarten
+      const scrWall = (me.veh.up.y < 0.35 && me.veh.speed > 3) || me.scrapeT > 0;
+      const scrCar = me.grindT > 0;
+      let slide = me.veh.speed;
+      if (scrCar && me.contactWith) { const o = me.contactWith.veh; slide = Math.hypot(me.veh.vel.x - o.vel.x, me.veh.vel.z - o.vel.z) + 4; }
+      audio.update({ kind: me.spec?.kind || 'stock', v: me.veh.speed, throttle: me.veh.input.throttle, brake: me.veh.input.brake || 0, on: !me.wrecked,
+        slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0, scrWall, scrCar, slide },
+        others, me.veh.speed, pack, Math.min(dt, 0.1));
     }
+    game.labTick?.(Math.min(dt, 0.1));
     frames++;
     if (frames === 30) window.ready = true;
     fpsN++; fpsT += dt;

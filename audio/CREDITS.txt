@@ -31,3 +31,24 @@ wreck.mp3 — magnuswaker — Car Crash (with Glass) — https://freesound.org/p
 grind1.mp3 — qubodup — Longer Grinding Scrape Sound — https://freesound.org/people/qubodup/sounds/743238/
 grind2.mp3 — qubodup — Metal Grinding 2 — https://freesound.org/people/qubodup/sounds/743239/
 grind3.mp3 — qubodup — Short Rusty Metal Scrape — https://freesound.org/people/qubodup/sounds/743259/
+
+Tillagda i v0.8 (alla CC0 1.0, Freesound; varvnivåer/loopar urklippta och normaliserade, väljs i Ljudlabbet):
+nas_lo.mp3, nas_mid.mp3, nas_hi.mp3, nas_top.mp3 — Superhollyward — Muscle car sounds — https://freesound.org/people/Superhollyward/sounds/332636/
+bus_lo.mp3, bus_mid.mp3, bus_hi.mp3 — Syphon64 — Mercedes Benz 709D Mini Bus.Driving On Hard Icy Road — https://freesound.org/people/Syphon64/sounds/135208/
+busb_loop.mp3 — qubodup — Bus Motor/Engine Sound Loop — https://freesound.org/people/qubodup/sounds/54909/
+bf_lo.mp3, bf_mid.mp3, bf_hi.mp3 — Ears68 — Rough Idle-V-8HotRod-Startup-Idle-and Burnout — https://freesound.org/people/Ears68/sounds/213976/
+bfb_lo.mp3, bfb_hi.mp3 — myeclecticself — Car Engine: Maserati GranTurismo Switch to Sport Mode and Launch — https://freesound.org/people/myeclecticself/sounds/585215/
+scr_belly.mp3 — craigsmith — S37-35 Car skids on its belly on cement — https://freesound.org/people/craigsmith/sounds/675481/
+scr_drum.mp3 — kyles — metal heavy drag concrete oil drum — https://freesound.org/people/kyles/sounds/452647/
+scr_spark.mp3 — weaveofkev — Welding_Electric Sparks — https://freesound.org/people/weaveofkev/sounds/396240/
+scr_pipe.mp3 — RutgerMuller — Metal Pipe Scraped on Concrete in Basement — https://freesound.org/people/RutgerMuller/sounds/104361/
+scr_rad.mp3 — BuddhaMaster — Radiatior Hit and Scraping DYNAMIC PROCESSED — https://freesound.org/people/BuddhaMaster/sounds/63109/
+kb_light1.mp3 — Rickplayer — Metal Impact — https://freesound.org/people/Rickplayer/sounds/530486/
+kb_light2.mp3 — Logicogonist — car crash long 1 — https://freesound.org/people/Logicogonist/sounds/807437/
+kb_light3.mp3, kb_heavy2.mp3 — CogFireStudios — Crash.wav — https://freesound.org/people/CogFireStudios/sounds/420356/
+kb_heavy1.mp3 — moxobna — crash.wav — https://freesound.org/people/moxobna/sounds/40158/
+kb_heavy3.mp3 — Johnnyfarmer — Metal Boom — https://freesound.org/people/Johnnyfarmer/sounds/209772/
+kb_wreck2.mp3 — Werra — Bang/Explosion Metallic — https://freesound.org/people/Werra/sounds/244394/
+pop1.mp3, pop2.mp3 — nsstudios — backfiring vehicle — https://freesound.org/people/nsstudios/sounds/351738/
+pop3.mp3 — CeebFrack — BACKFIRE.ogg — https://freesound.org/people/CeebFrack/sounds/105351/
+airbrake.mp3 — rabbydaw — air_brakes_loud_fade_out — https://freesound.org/people/rabbydaw/sounds/504865/

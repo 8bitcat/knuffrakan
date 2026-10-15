@@ -2,11 +2,14 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=10';
-import { VTYPES } from './vtypes.js?v=10';
+import { CONF } from './config.js?v=11';
+import { VTYPES } from './vtypes.js?v=11';
+import { frontParts } from './gear.js?v=11';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
+export const GROUP_GEAR = (0x0004 << 16) | 0x0001;    // plog/kil/murbräcka: bara mot andra bilar (inte väg och murar)
+const GEAR_GHOST = (0x0004 << 16) | 0x0000;
 
 // standardbilen (stockcar) — övriga typer i vtypes.js
 export const CP = VTYPES.stock;
@@ -46,6 +49,16 @@ export class Vehicle {
         this.colliders.push(world.createCollider(wd, this.body));
       }
     }
+    // tillbehör fram: riktiga kroppsdelar (utan egen massa)
+    for (const p of frontParts(T)) {
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rx, p.ry, 0));
+      const gd = RAPIER.ColliderDesc.cuboid(p.hx, p.hy, p.hz).setDensity(0)
+        .setTranslation(p.x, p.y, p.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
+        .setFriction(p.fr).setRestitution(0.15).setCollisionGroups(GROUP_GEAR);
+      const c = world.createCollider(gd, this.body);
+      c.isGear = true;
+      this.colliders.push(c);
+    }
     this.ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
     this.wheels = T.wheels.map(w => ({
       x: w.x, z: w.z, front: w.front, comp: 0, prevComp: 0, grounded: false, load: 0,
@@ -63,6 +76,7 @@ export class Vehicle {
     this.beta = 0;           // driftvinkel: hastighetens riktning mot nosen (+ = glider åt höger)
     this.pressF = 1; this.pressR = 1; // sidogrepp när en annan bil trycker på (sätts av spelet varje steg)
     this.pressT = 0; this.pressHold = 0;
+    this.antiSpin = T.gear?.includes('pushbar') ? 1 : 0;   // bakskydd: håller emot spinn efter knuffar
     this.wallT = 0;          // skrapar mot kanten: väggen får vrida bilen parallellt
     // läs-värden
     this.pos = new THREE.Vector3(); this.quat = new THREE.Quaternion();
@@ -72,6 +86,15 @@ export class Vehicle {
     this.vBefore = new THREE.Vector3(); this.J = new THREE.Vector3();
     this.impact = null;
     this.readState();
+  }
+
+  // ligger karossen mot marken (taket/sidan)? stråle rakt ned från lådans mitt
+  nearGround(extra = 0.9) {
+    const T = this.T;
+    _a.set(0, T.colY, 0).applyQuaternion(this.quat).add(this.pos);
+    this.ray.origin = { x: _a.x, y: _a.y, z: _a.z };
+    this.ray.dir = { x: 0, y: -1, z: 0 };
+    return !!this.sim.world.castRay(this.ray, Math.max(T.half.x, T.half.y) + extra, true, undefined, undefined, undefined, this.body);
   }
 
   readState() {
@@ -239,7 +262,7 @@ export class Vehicle {
         // knuffad/tacklad: lös gir så bilen kan spinna — men den som motstyr tar tillbaka kontrollen
         const hold = Math.max(0, inSteer * Math.sign(yaw)); // motstyrning mot snurret
         if (this.spinT > 0 || this.pressT > 0) {
-          gain = (this.assist ? 0.6 : 0.45) + 4.5 * Math.max(hold, this.pressHold);
+          gain = (this.assist ? 0.6 : 0.45) + 4.5 * Math.max(hold, this.pressHold, this.antiSpin);
           target = kin;
         } else if (Math.abs(this.beta) > 0.6) gain = Math.max(gain, 5); // max ~35° drift
         // mot kanten: låt väggen vrida bilen längs med sig (annars plöjer den rakt in)
@@ -292,7 +315,7 @@ export class Vehicle {
     this.readState();
   }
 
-  setGhost(on) { for (const c of this.colliders) c.setCollisionGroups(on ? GROUP_GHOST : GROUP_CAR); }
+  setGhost(on) { for (const c of this.colliders) c.setCollisionGroups(c.isGear ? (on ? GEAR_GHOST : GROUP_GEAR) : on ? GROUP_GHOST : GROUP_CAR); }
 
   destroy() { this.sim.world.removeRigidBody(this.body); }
 }

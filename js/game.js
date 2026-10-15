@@ -1,18 +1,19 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=10';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=10';
-import { buildWorld, gridSlots } from './world.js?v=10';
-import { createScene, ChaseCam } from './scene.js?v=10';
-import { makeCarView } from './vehicles3d.js?v=10';
-import { typeOf } from './vtypes.js?v=10';
-import { makeLivery, randomSpec } from './livery.js?v=10';
-import { Vehicle, CP } from './vehicle.js?v=10';
-import { BotBrain } from './ai.js?v=10';
-import { Race } from './race.js?v=10';
-import { FX, Trails } from './fx.js?v=10';
-import { NameTag, SpeedPlate } from './tags.js?v=10';
-import { RemoteVeh, carInfo } from './net.js?v=10';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=11';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=11';
+import { buildWorld, gridSlots } from './world.js?v=11';
+import { createScene, ChaseCam } from './scene.js?v=11';
+import { makeCarView } from './vehicles3d.js?v=11';
+import { typeOf } from './vtypes.js?v=11';
+import { randomGear, cleanGear, mountOf } from './gear.js?v=11';
+import { makeLivery, randomSpec } from './livery.js?v=11';
+import { Vehicle, CP } from './vehicle.js?v=11';
+import { BotBrain } from './ai.js?v=11';
+import { Race } from './race.js?v=11';
+import { FX, Trails } from './fx.js?v=11';
+import { NameTag, SpeedPlate } from './tags.js?v=11';
+import { RemoteVeh, carInfo } from './net.js?v=11';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -88,7 +89,7 @@ export class Game {
       brain: isPlayer || remote || client ? null : new BotBrain(mulberry(id * 97 + 3)),
       trk: { i: 0, s: 0, lat: 0, y: 0 }, lap: 0, prog: 0, prevS: 0, place: 0,
       finished: false, finishT: 0, finishPlace: 0,
-      health: 100, wrecked: false, wreckT: 0, flipT: 0, offT: 0, ghostT: 0, hitCD: 0, comebackT: 0,
+      health: 100, wrecked: false, wreckT: 0, flipT: 0, airT: 0, lockT: 0, rstate: 0, offT: 0, ghostT: 0, hitCD: 0, comebackT: 0,
       p0: new THREE.Vector3(), p1: new THREE.Vector3(), q0: new THREE.Quaternion(), q1: new THREE.Quaternion(),
       emitAcc: 0, lastHitBy: null, raceStats: { kos: 0, hits: 0 },
     };
@@ -187,16 +188,18 @@ export class Game {
     car.finished = false;
   }
   // R = tillbaka på banan. På banan bara 3 räddningar per race, utanför banan fritt.
-  // I luften går det inte, och på taket måste man ligga 1,5 s först (mätaren).
+  // I luften går det inte (och inte förrän AIR_LOCK s efter att bilen lämnade marken),
+  // på taket måste man ligga FLIP_WAIT s först (mätaren).
   requestReset(car) {
     const ph = this.race.phase;
     if (!car || car.wrecked || (ph !== 'race' && ph !== 'lobby')) return;
     const v = car.veh, T = this.track;
+    if (car.rstate === 1 || (v.grounded === 0 && v.up.y >= 0.3)) { this.notify(car, 'Inte i luften!', 'bad'); return; }
     if (v.up.y < 0.3) {
       if ((car.flipT || 0) < CONF.FLIP_WAIT) { this.notify(car, 'Vänta tills mätaren är full…', 'bad'); return; }
       this.respawn(car, 5, 'knapp'); return;
     }
-    if (v.grounded === 0) { this.notify(car, 'Inte i luften!', 'bad'); return; }
+    if (car.lockT > 0) { this.notify(car, 'Vänta tills mätaren är full…', 'bad'); return; }
     const off = Math.abs(car.trk.lat) > T.halfW + 1.2 || v.pos.y < car.trk.y - 3 || (car.trk.f & F_GAP);
     if (off || ph === 'lobby') { this.respawn(car, 5, 'knapp'); return; }
     if ((car.saves ?? CONF.SAVES) <= 0) { this.notify(car, 'Inga räddningar kvar det här racet!', 'bad'); return; }
@@ -246,7 +249,7 @@ export class Game {
       room: this.room || '', pub: !!this.isPublic, t: r.t, readyT: r.readyT ?? null, track: this.trackId, laps: this.track.def.laps || 1,
       players: this.cars.filter(c => this.isHuman(c)).map(c => ({
         id: c.id, name: c.name, ready: !!c.ready, host: c === this.me, nr: c.spec.number,
-        c1: c.spec.colors?.[0] || '#888', c2: c.spec.colors?.[1] || '#444',
+        c1: c.spec.colors?.[0] || '#888', c2: c.spec.colors?.[1] || '#444', gear: cleanGear(c.spec.gear),
       })),
     };
   }
@@ -334,6 +337,7 @@ export class Game {
       const r = Math.random();
       spec.kind = r < 0.11 ? 'bus' : r < 0.22 ? 'bigfoot' : 'stock';
       if (spec.kind === 'bus' && Math.random() < 0.7) spec.colors = ['#ffc21a', '#16161a', '#ffffff'];
+      spec.gear = randomGear();
       this.addCar({ name, isPlayer: false, spec });
     }
   }
@@ -370,7 +374,7 @@ export class Game {
     const packV = racing ? Math.min(75, car.veh.vmax * 0.7) : 0;
     this.placeCar(car, s, best, packV);
     car.ghostT = 2.2; car.veh.setGhost(true);
-    car.flipT = 0; car.offT = 0;
+    car.flipT = 0; car.offT = 0; car.airT = 0; car.lockT = 0; car.wasAir = false; car.rstate = 0;
     if (racing) car.comebackT = 3;
   }
 
@@ -434,6 +438,8 @@ export class Game {
         this.sidePress(B, A, dt, out);
         this.climb(A, B, dt, out);
         this.climb(B, A, dt, out);
+        this.gearFront(A, B, dt, out);
+        this.gearFront(B, A, dt, out);
       }
     }
     return out;
@@ -454,6 +460,77 @@ export class Game {
     const J = a.T.mass * (closing > 2.5 ? Math.min(20, 11 + closing * 0.35) : 12) * dt;
     const fp = a.T.wheels[0].z;   // framaxeln
     out.push({ veh: a, jx: a.up.x * J, jy: a.up.y * J, jz: a.up.z * J, px: a.pos.x + a.fwd.x * -fp, py: a.pos.y, pz: a.pos.z + a.fwd.z * -fp });
+  }
+
+  // Tillbehör fram: A kör in i B med nosen. Plogen knuffar undan B åt sidan, kilen lyfter
+  // den närmaste änden så B åker upp och välter, murbräckan smäller till. (Plog/kil/murbräcka
+  // finns också som riktiga kroppar fram — det här är extra knuff ovanpå.)
+  gearFront(A, B, dt, out) {
+    const a = A.veh, b = B.veh, G = a.T.gear;
+    if (!G || A.wrecked || B.wrecked) return;
+    const plow = G.includes('plog'), wedge = G.includes('kil'), ram = G.includes('ram');
+    if (!plow && !wedge && !ram) return;
+    const M = mountOf(a.T);
+    const rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
+    const lz = rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z, lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;
+    // glipan mellan spetsen på tillbehöret och B:s närmaste kant
+    const tip = M.fz + (plow ? M.plowL : wedge ? M.wedgeL : 1.0);
+    const gap = lz - b.T.half.z - tip;
+    if (lz < a.T.half.z * 0.5 || gap > 0.6 || Math.abs(lx) > a.T.half.x + b.T.half.x * 0.85 || a.up.y < 0.5) return;
+    const closing = (a.vel.x - b.vel.x) * a.fwd.x + (a.vel.z - b.vel.z) * a.fwd.z;
+    const touching = gap < 0.3, pushing = touching && (a.input.throttle || 0) > 0.4;
+    if (closing < 2 && !pushing) return;
+    // lätta bilar rår inte på tunga: bussen plogar allt, stockcaren lyfter inte bussen
+    const heavy = Math.min(1.4, Math.max(0.3, a.T.mass / b.T.mass));
+    const k = heavy * Math.min(1.2, 0.5 + Math.max(0, closing) / 14);
+    const m = b.T.mass;
+    if (ram && touching && closing > 3 && !(B.ramCD > this.time)) {
+      // murbräckan: en rejäl smäll + knuff framåt
+      B.ramCD = this.time + 0.5;
+      const dmg = Math.min(34, (closing - 1.5) * 2.8) / b.T.armor * (b.T.gear?.includes('pushbar') ? 0.5 : 1);
+      B.health -= dmg; B.lastDmgT = this.simT;
+      const J = m * Math.min(7, 1.5 + closing * 0.35) * heavy;
+      out.push({ veh: b, jx: a.fwd.x * J, jy: m * 0.8 * heavy, jz: a.fwd.z * J, px: b.pos.x, py: b.pos.y - 0.2, pz: b.pos.z });
+      b.spinT = Math.max(b.spinT, 0.8);
+      const hp = _v2.set(a.pos.x + a.fwd.x * tip, a.pos.y, a.pos.z + a.fwd.z * tip);
+      this.fx.tackle(hp, b.vel, _v3.set(a.fwd.x, 0, a.fwd.z), Math.min(2, closing / 6));
+      if (A === this.me || B === this.me) this.audio?.crash(8 + closing, 1);
+      if (!B.ramMsgT || this.time - B.ramMsgT > 2.5) {
+        B.ramMsgT = this.time;
+        this.notify(A, `🔨 Murbräckan smällde in i ${B.name}!`, 'good');
+        this.notify(B, `🔨 ${A.name} rammade dig!`, 'bad');
+      }
+      if (B.health <= 0) this.wreck(B);
+    }
+    if (wedge) {
+      // lyft B:s ände närmast kilen (lite åt den sida B sitter på, så den rullar över)
+      const J = m * 15 * Math.min(1, heavy) * Math.min(1.2, 0.5 + Math.max(0, closing) / 14) * (closing > 2 ? 1 : 0.5) * dt, sd = Math.sign(lx) || 1;
+      const px = b.pos.x - a.fwd.x * b.T.half.z * 0.7 - a.right.x * sd * 0.4, pz = b.pos.z - a.fwd.z * b.T.half.z * 0.7 - a.right.z * sd * 0.4;
+      out.push({ veh: b, jx: a.fwd.x * J * 0.25, jy: J, jz: a.fwd.z * J * 0.25, px, py: b.pos.y, pz });
+      // kilbilen trycks ner i nosen i stället för att själv välta
+      out.push({ veh: a, jx: 0, jy: -J * 0.35, jz: 0, px: a.pos.x + a.fwd.x * a.T.half.z, py: a.pos.y, pz: a.pos.z + a.fwd.z * a.T.half.z });
+      b.pressF = Math.min(b.pressF, 0.35); b.pressR = Math.min(b.pressR, 0.35);
+      b.spinT = Math.max(b.spinT, 0.6);
+    }
+    if (plow) {
+      // V-plogen: åt den sida B sitter på (mitt framför: slumpa en gång per kontakt)
+      if (Math.abs(lx) > 0.25 || !B.plowSide || this.time - (B.plowT || 0) > 1) B.plowSide = Math.sign(lx) || (Math.random() < 0.5 ? -1 : 1);
+      B.plowT = this.time;
+      // knuffen tar i B:s närmaste ände: den vrids och glider undan (en ren sidoknuff äter däcken upp)
+      const side = B.plowSide, J = m * 20 * k * dt, near = b.T.half.z * 0.55;
+      out.push({ veh: b, jx: a.right.x * side * J + a.fwd.x * J * 0.25, jy: J * 0.08, jz: a.right.z * side * J + a.fwd.z * J * 0.25,
+        px: b.pos.x - a.fwd.x * near, py: b.pos.y + 0.1, pz: b.pos.z - a.fwd.z * near });
+      b.pressF = Math.min(b.pressF, 0.5); b.pressR = Math.min(b.pressR, 0.3);
+      b.spinT = Math.max(b.spinT, 0.7);
+    }
+    if (plow || wedge) {
+      B.lastHitBy = A; B.lastHitT = this.time;
+      if (closing > 3 && (!B.gearMsgT || this.time - B.gearMsgT > 3)) {
+        B.gearMsgT = this.time;
+        this.notify(A, `${wedge ? '📐 Du kilade' : '🚜 Du plogade'} ${B.name}!`, 'good');
+        this.notify(B, `${A.name} ${wedge ? '📐 kilade' : '🚜 plogade'} dig!`, 'bad');
+      }
+    }
   }
 
   // Bigfootens hjul står på en annan bil: den krossas (skada + trycks ner)
@@ -507,8 +584,10 @@ export class Game {
     const holdEff = holdA * (1 - rearW);
     let press = Math.min(1, tight * Math.min(1, 0.25 + pushB * 0.85 + Math.max(0, closing) * 0.1) * (1 - 0.65 * holdEff) * heavy);
     if (a.assist) press *= 0.8;
+    const armorA = a.T.gear?.includes('sidopansar'), barA = a.T.gear?.includes('pushbar');
+    if (armorA) press *= 0.45;                                       // sidopansar: svår att flytta
     if (press > 0.03) {
-      a.pressR = Math.min(a.pressR, 1 - 0.65 * press * (0.3 + 0.7 * rearW));
+      a.pressR = Math.min(a.pressR, 1 - 0.65 * press * (0.3 + 0.7 * rearW * (barA ? 0.35 : 1)));   // bakskydd: svår att PIT:a
       a.pressF = Math.min(a.pressF, 1 - 0.45 * press * (0.3 + 0.7 * frontW));
       a.pressHold = Math.max(a.pressHold, holdEff);
       if (press > 0.3) a.pressT = Math.max(a.pressT, 0.45);
@@ -517,7 +596,7 @@ export class Game {
     }
     // B lutar sig in i A: kraft vid kontaktpunkten (lika stor åt andra hållet på B)
     if (pushB > 0.05 && tight > 0.3) {
-      const J = 12000 * (b.T.mass / 1500) * pushB * tight * (1 - 0.5 * holdEff) * dt;
+      const J = 12000 * (b.T.mass / 1500) * pushB * tight * (1 - 0.5 * holdEff) * (armorA ? 0.5 : 1) * dt;
       const px = a.pos.x + a.fwd.x * zc + a.right.x * side * wa, py = a.pos.y + 0.05, pz = a.pos.z + a.fwd.z * zc + a.right.z * side * wa;
       const dx = -side * a.right.x, dz = -side * a.right.z;
       out.push({ veh: a, jx: dx * J, jy: 0, jz: dz * J, px, py, pz });
@@ -530,6 +609,19 @@ export class Game {
       (this.scrapes ||= []).push([a.pos.x + a.fwd.x * zc + a.right.x * side * wa, a.pos.y + 0.05, a.pos.z + a.fwd.z * zc + a.right.z * side * wa, a.vel.x, a.vel.y, a.vel.z, -side * a.right.x, -side * a.right.z]);
     }
     if (tight > 0.55 && grind) A.grindT = 0.15;
+    // fälgspikar på B: A rivs upp och tappar greppet när de nöter mot varandra
+    if (b.T.gear?.includes('spikar') && tight > 0.4 && (grind || pushB > 0.1) && !A.wrecked && A.ghostT <= 0) {
+      A.health -= 9 * tight * dt / a.T.armor / (armorA ? 1.6 : 1);
+      A.lastDmgT = this.simT; A.lastHitBy = B; A.lastHitT = this.time;
+      a.pressR = Math.min(a.pressR, armorA ? 0.85 : 0.7);
+      if (Math.random() < dt * 25) (this.scrapes ||= []).push([a.pos.x + a.fwd.x * zc + a.right.x * side * wa, a.pos.y - 0.2, a.pos.z + a.fwd.z * zc + a.right.z * side * wa, a.vel.x, a.vel.y, a.vel.z, -side * a.right.x, -side * a.right.z]);
+      if (!A.spikeMsgT || this.time - A.spikeMsgT > 4) {
+        A.spikeMsgT = this.time;
+        this.notify(B, `🌵 Spikarna river upp ${A.name}!`, 'good');
+        this.notify(A, `🌵 ${B.name} har fälgspikar!`, 'bad');
+      }
+      if (A.health <= 0) this.wreck(A);
+    }
   }
 
   handleImpacts() {
@@ -558,6 +650,7 @@ export class Game {
       if (Math.abs(dl.z) > 0.65) dmg *= other ? 0.4 : 0.6; // knuff fram/bak = bumpdrafting, tål mer
       dmg /= car.veh.T.armor;                                // bussen tål mest
       if (other) dmg *= Math.min(1.8, Math.max(0.6, other.veh.T.mass / car.veh.T.mass) ** 0.5);
+      dmg *= this.gearDamage(car, other, dl);
       car.health -= dmg;
       car.hitCD = 0.2;
       car.lastDmgT = this.simT;
@@ -602,6 +695,33 @@ export class Game {
       else if (near > 0.05) this.audio?.crash(im.dv, near * 0.6);
       if (car.health <= 0) this.wreck(car);
     }
+  }
+
+  // Tillbehörens inverkan på en smäll: var sitter smällen på mig, och slog den andra med nosen?
+  gearDamage(car, other, dl) {
+    const v = car.veh, G = v.T.gear;
+    let k = 1;
+    if (!other) {
+      // mot muren: framifrån tål tjurfångare/plog/kil/murbräcka mer
+      if (G && dl.z > 0.65 && (G.includes('bullbar') || G.includes('ram') || G.includes('plog') || G.includes('kil'))) k *= 0.55;
+      if (G && Math.abs(dl.x) > 0.55 && G.includes('sidopansar')) k *= 0.6;
+      return k;
+    }
+    const o = other.veh;
+    const rx = o.pos.x - v.pos.x, rz = o.pos.z - v.pos.z;
+    const mz = rx * v.fwd.x + rz * v.fwd.z, mx = rx * v.right.x + rz * v.right.z;    // den andra sett från mig
+    const wide = v.T.half.x + o.T.half.x;
+    const myFront = mz > v.T.half.z * 0.55 && Math.abs(mx) < wide, myRear = mz < -v.T.half.z * 0.55 && Math.abs(mx) < wide;
+    const oz = -(rx * o.fwd.x + rz * o.fwd.z), ox = -(rx * o.right.x + rz * o.right.z);   // jag sett från den andra
+    const byFront = oz > o.T.half.z * 0.55 && Math.abs(ox) < wide;
+    if (byFront && o.T.gear?.includes('ram')) k *= 3;            // murbräckan (stora smällar; knuffen sitter i gearFront)
+    if (G) {
+      if (myFront && G.includes('bullbar')) k *= 0.45;
+      if (myFront && (G.includes('ram') || G.includes('plog') || G.includes('kil'))) k *= 0.6;
+      if (myRear && G.includes('pushbar')) k *= 0.5;
+      if (Math.abs(dl.x) > 0.55 && G.includes('sidopansar')) k *= 0.55;
+    }
+    return k;
   }
 
   carState(car, dt) {
@@ -658,8 +778,18 @@ export class Game {
       if (car.wreckT <= 0) { this.unwreck(car); this.respawn(car, 40, 'wreck'); }
       return;
     }
-    // uppochner
-    if (v.up.y < 0.3) car.flipT += dt; else car.flipT = 0;
+    // R-spärren: i luften går R inte, och låset gäller AIR_LOCK s från att bilen lämnade marken;
+    // på taket räknas tiden bara när bilen faktiskt ligger mot marken (inte när den voltar i luften)
+    const upside = v.up.y < 0.3;
+    const lying = upside && v.nearGround();
+    car.airT = v.grounded > 0 || lying ? 0 : (car.airT || 0) + dt;
+    const air = car.airT > 0.5;   // gupp och små skutt räknas inte
+    // låset räknas från första avfärden — en studs efter landningen startar inte om mätaren
+    if (air && !car.wasAir && !(car.lockT > 0)) car.lockT = CONF.AIR_LOCK - car.airT;
+    car.wasAir = air;
+    if (car.lockT > 0) car.lockT = Math.max(0, car.lockT - dt);
+    if (lying) car.flipT += dt; else if (!upside || car.airT > 0.7) car.flipT = 0;
+    car.rstate = air ? 1 : upside ? 2 : 0;
     if (car.flipT > CONF.FLIP_AUTO && v.speed < 9) this.respawn(car, 10, 'flip');
     // utanför banan
     if (Math.abs(car.trk.lat) > T.halfW + 5 || v.pos.y < car.trk.y - 12) car.offT += dt; else car.offT = 0;
@@ -806,7 +936,6 @@ export class Game {
     dt = Math.min(dt, 0.1);
     if (this.mode === 'client') {
       if (this.me) Object.assign(this.me.veh.input, this.input.state);
-      if (this.me) this.me.flipT = this.me.veh.up.y < 0.3 && !this.me.wrecked ? (this.me.flipT || 0) + dt : 0;
       this.net?.update(dt);
       this.frame(dt, 1);
       return;

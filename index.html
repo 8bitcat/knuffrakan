@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="sv" data-v="10">
+<html lang="sv" data-v="11">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,800;1,900&family=Michroma&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=10">
+<link rel="stylesheet" href="css/style.css?v=11">
 <script type="importmap">
 {
   "imports": {
@@ -38,6 +38,7 @@
     <div class="row2">
       <button id="solo" class="chk">SPELA SJÄLV</button>
       <button id="garagebtn" class="chk">GARAGE</button>
+      <button id="gearbtn" class="chk">TILLBEHÖR</button>
       <button id="labbtn" class="chk">LJUD</button>
     </div>
     <div class="row2 room">
@@ -80,12 +81,20 @@
 
 <div id="garage" class="hidden">
   <h2>GARAGE</h2>
+  <div class="gtabs"><button data-tab="look" class="on">UTSEENDE</button><button data-tab="gear">🔧 TILLBEHÖR</button></div>
+  <div id="ggear" class="hidden">
+    <div class="budget"><span>BUDGET</span><div class="bb"><div id="gbudbar"></div></div><b id="gbudtxt"></b></div>
+    <div id="gslots"></div>
+    <div id="gdesc">En sak per plats, inom budgeten. Bottarna har också handlat — vissa inget alls, vissa fullt utrustade!</div>
+  </div>
+  <div id="glook">
   <div class="grow"><label>Fordon</label><div id="gkind" class="opts"></div></div>
   <div class="grow"><label>Kaross (stockcar och bigfoot)</label><div id="gshape" class="opts"></div></div>
   <div class="grow"><label>Färger</label><div id="gpal" class="opts sws"></div><button id="gswap" class="small">⇄ byt</button></div>
   <div class="grow"><label>Mönster</label><div id="gpat" class="opts"></div></div>
   <div class="grow"><label>Nummer</label><input id="gnum" type="number" min="0" max="99"></div>
   <div class="grow"><label>Sponsor</label><select id="gspon"></select></div>
+  </div>
   <div class="grow end"><button id="grand" class="small">🎲 Slumpa</button><button id="gdone" class="big">KLAR</button></div>
 </div>
 
@@ -105,6 +114,7 @@
     <div id="lplayers"></div>
     <div id="ltimer"></div>
     <div class="lbtns">
+      <button id="lgear" class="chk">🔧 TILLBEHÖR</button>
       <button id="lready" class="chk">REDO</button>
       <button id="lstart" class="big">STARTA RACE</button>
     </div>
@@ -121,6 +131,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=10"></script>
+<script type="module" src="js/main.js?v=11"></script>
 </body>
 </html>

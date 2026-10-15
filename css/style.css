@@ -152,3 +152,20 @@ button { font-family: inherit; cursor: pointer; }
   .lhead .lt { font-size: 22px; } #lroom { font-size: 17px; }
   .lbtns .chk, .lbtns .big { font-size: 15px; }
 }
+
+/* Tillbehör (garaget) */
+.gtabs { display: flex; gap: 6px; margin: 4px 0 10px; }
+.gtabs button { flex: 1; font: 800 14px Montserrat, sans-serif; padding: 9px 8px; border-radius: 10px; border: 2px solid #334; background: #1a1c2a; color: #fff; }
+.gtabs button.on { border-color: var(--lime); color: var(--lime); }
+.budget { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; font: 800 13px Montserrat, sans-serif; }
+.budget .bb { flex: 1; height: 12px; border-radius: 6px; background: #12131c; border: 1px solid #334; overflow: hidden; }
+#gbudbar { height: 100%; width: 0; background: linear-gradient(90deg, var(--lime), #ffc23a); transition: width .2s; }
+#gbudtxt { min-width: 110px; text-align: right; color: var(--lime); }
+.gslot { margin: 9px 0; }
+.gslot label { display: block; font-weight: 700; font-size: 12px; opacity: .8; text-transform: uppercase; margin-bottom: 4px; }
+.gslot .opts button { display: flex; align-items: center; gap: 5px; padding: 6px 9px; }
+.gslot .opts button .gi { font-size: 17px; }
+.gslot .opts button em { font-style: normal; font-weight: 800; font-size: 12px; opacity: .75; margin-left: 2px; }
+.gslot .opts button.poor { opacity: .38; }
+#gdesc { min-height: 38px; margin-top: 8px; font: 600 13px/1.35 Montserrat, sans-serif; opacity: .9; background: #12131c; border-radius: 10px; padding: 8px 10px; }
+.lp .gear { font-size: 13px; margin-left: 4px; letter-spacing: 1px; }

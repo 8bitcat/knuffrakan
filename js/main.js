@@ -1,19 +1,20 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=10';
-import { Game } from './game.js?v=10';
-import { HUD } from './hud.js?v=10';
-import { GameAudio } from './audio.js?v=10';
-import { Input } from './input.js?v=10';
-import { SHAPES } from './carmodel.js?v=10';
-import { makeCarView } from './vehicles3d.js?v=10';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=10';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=10';
-import { logoCanvas } from './world.js?v=10';
-import { BotBrain } from './ai.js?v=10';
-import { connectRoom, NetHost, NetClient } from './net.js?v=10';
-import { TRACKS } from './track.js?v=10';
-import { SOUND_OPTS } from './sounds.js?v=10';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=11';
+import { Game } from './game.js?v=11';
+import { HUD } from './hud.js?v=11';
+import { GameAudio } from './audio.js?v=11';
+import { Input } from './input.js?v=11';
+import { SHAPES } from './carmodel.js?v=11';
+import { makeCarView } from './vehicles3d.js?v=11';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=11';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=11';
+import { logoCanvas } from './world.js?v=11';
+import { BotBrain } from './ai.js?v=11';
+import { connectRoom, NetHost, NetClient } from './net.js?v=11';
+import { TRACKS } from './track.js?v=11';
+import { SOUND_OPTS } from './sounds.js?v=11';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear } from './gear.js?v=11';
 
 const PUBLIC = 'PUBLIK';
 
@@ -76,6 +77,7 @@ async function boot() {
   const game = new Game(RAPIER, $('game'), { hud, audio, input, track: trackChoice });
   window.__game = game;
   game.setupBots(CONF.BOTS);
+  if (params.has('nogear')) for (const c of game.cars) game.setSpec(c, { ...c.spec, gear: [] });   // test: bottar utan tillbehör
   game.race.toGrid(99999);
 
   let spec = loadSpec();
@@ -171,6 +173,29 @@ async function boot() {
     game.scene.add(showcase.group);
     game.showcase = showcase;
   };
+  // tillbehör: en sak per plats inom budgeten
+  let gtab = 'look';
+  const setTab = (t) => {
+    gtab = t;
+    $('glook').classList.toggle('hidden', t !== 'look');
+    $('ggear').classList.toggle('hidden', t !== 'gear');
+    for (const b of document.querySelectorAll('.gtabs button')) b.classList.toggle('on', b.dataset.tab === t);
+    $('grand').textContent = t === 'gear' ? '🎲 Slumpa grejer' : '🎲 Slumpa';
+    if (t === 'gear') renderGear();
+  };
+  const renderGear = () => {
+    const mine = cleanGear(spec.gear), used = gearCost(mine);
+    $('gbudbar').style.width = (used / BUDGET * 100).toFixed(0) + '%';
+    $('gbudtxt').textContent = `${BUDGET - used} kr kvar`;
+    $('gslots').innerHTML = SLOTS.map(sl => {
+      const cur = mine.find(x => GEAR[x].slot === sl.id);
+      const btns = GEAR_IDS.filter(id => GEAR[id].slot === sl.id).map(id => {
+        const it = GEAR[id], on = mine.includes(id), afford = on || used - (cur ? GEAR[cur].pris : 0) + it.pris <= BUDGET;
+        return `<button data-gear="${id}" class="${on ? 'on' : ''}${afford ? '' : ' poor'}"><span class="gi">${it.ikon}</span>${it.namn}<em>${it.pris} kr</em></button>`;
+      }).join('');
+      return `<div class="gslot"><label>${sl.namn}</label><div class="opts">${btns}</div></div>`;
+    }).join('');
+  };
   const buildGarage = () => {
     const g = $('garage');
     const pal = PALETTES.map((p, i) => `<button class="sw" data-p="${i}" style="background:linear-gradient(135deg,${p[0]} 50%,${p[1]} 50%)"></button>`).join('');
@@ -192,7 +217,16 @@ async function boot() {
       }
       if (b.dataset.p && spec.kind === 'bus') spec.busColored = true;
       if (b.id === 'gswap') spec.colors = [spec.colors[1], spec.colors[0], spec.colors[2]];
-      if (b.id === 'grand') { const r = randomSpec(Math.floor(Math.random() * 1e6), ''); Object.assign(spec, { colors: r.colors, pattern: r.pattern, sponsor: r.sponsor, shape: r.shape }); syncInputs(); }
+      if (b.dataset.tab) { setTab(b.dataset.tab); return; }
+      if (b.dataset.gear) {
+        const id = b.dataset.gear, it = GEAR[id], before = cleanGear(spec.gear), next = toggleGear(before, id);
+        if (next.join() === before.join() && !before.includes(id)) { $('gdesc').textContent = `💸 ${it.namn} kostar ${it.pris} kr — du har inte råd. Ta bort något först!`; return; }
+        spec.gear = next;
+        $('gdesc').textContent = next.includes(id) ? `${it.ikon} ${it.namn}: ${it.besk}` : `${it.namn} borttagen.`;
+        renderGear();
+      }
+      if (b.id === 'grand' && gtab === 'gear') { let r = []; while (!r.length) r = randomGear(); spec.gear = r; $('gdesc').textContent = r.map(id => GEAR[id].ikon + ' ' + GEAR[id].namn).join(' · '); renderGear(); }
+      else if (b.id === 'grand') { const r = randomSpec(Math.floor(Math.random() * 1e6), ''); Object.assign(spec, { colors: r.colors, pattern: r.pattern, sponsor: r.sponsor, shape: r.shape }); syncInputs(); }
       if (b.id === 'gdone') { closeGarage(); return; }
       saveSpec(spec); renderShowcase();
     };
@@ -200,9 +234,10 @@ async function boot() {
     bind('gspon', 'onchange', () => { spec.sponsor = $('gspon').value; saveSpec(spec); renderShowcase(); });
   };
   const syncInputs = () => { $('gnum').value = spec.number; $('gspon').value = spec.sponsor; };
-  const openGarage = () => {
+  const openGarage = (tab = 'look') => {
     $('garage').classList.remove('hidden');
     $('menu').classList.add('dim');
+    setTab(typeof tab === 'string' ? tab : 'look');
     syncInputs();
     renderShowcase();
   };
@@ -219,12 +254,15 @@ async function boot() {
     }
   }
   buildGarage();
-  bind('garagebtn', 'onclick', openGarage);
-  bind('sb-garage', 'onclick', () => {
+  bind('garagebtn', 'onclick', () => openGarage('look'));
+  bind('gearbtn', 'onclick', () => openGarage('gear'));
+  const garageInGame = (tab) => {
     const ph = game.race.phase;
-    if (ph === 'lobby' || ph === 'results' || ph === 'idle' || (ph === 'grid' && !game.net)) { $('menu').classList.remove('hidden'); openGarage(); }
+    if (ph === 'lobby' || ph === 'results' || ph === 'idle' || (ph === 'grid' && !game.net)) { $('menu').classList.remove('hidden'); openGarage(tab); }
     else hud.toast(game.net ? 'Garaget öppnar i lobbyn' : 'Garaget öppnar efter racet');
-  });
+  };
+  bind('sb-garage', 'onclick', () => garageInGame('look'));
+  bind('lgear', 'onclick', () => garageInGame('gear'));
   // Lobbyn: redo / starta
   const toggleReady = () => {
     if (!game.me || game.race.phase !== 'lobby') return;
@@ -317,7 +355,7 @@ async function boot() {
     if (!game.me) { if (code === 'Enter' && !$('menu').classList.contains('hidden') && $('garage').classList.contains('hidden')) start(); return; }
     if (code === 'KeyC') game.cam.toggle();
     if (code === 'KeyM') { audio.setMuted(!audio.muted); syncMute(); }
-    if (code === 'KeyR') { if (game.mode === 'client') game.net?.send({ t: 'reset' }); else game.requestReset(game.me); }
+    if (code === 'KeyR') { game.me.rTry = game.time; if (game.mode === 'client') game.net?.send({ t: 'reset' }); else game.requestReset(game.me); }
     if (code === 'Enter' && $('garage').classList.contains('hidden')) toggleReady();
   };
 

@@ -1,4 +1,5 @@
-import { CONF } from './config.js?v=10';
+import { CONF } from './config.js?v=11';
+import { GEAR } from './gear.js?v=11';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -68,14 +69,19 @@ export class HUD {
       const st = r.phase === 'race' ? `R-RÄDDNINGAR <b class="${n ? '' : 'none'}">${'●'.repeat(n)}${'○'.repeat(Math.max(0, CONF.SAVES - n))}</b>` : '';
       if (this.savesKey !== st) { this.savesKey = st; this.el.saves.innerHTML = st; }
     }
-    // på taket: mätaren
+    // R-mätaren: på taket alltid, efter luftfärd bara när man nyss försökt trycka R
     if (this.el.flipm) {
-      const ft = me.flipT || 0, show = ft > 0.15 && !me.wrecked && (r.phase === 'race' || r.phase === 'lobby');
+      const ft = me.flipT || 0, upside = me.rstate === 2, air = me.rstate === 1;
+      const tried = game.time - (me.rTry ?? -9) < 2.5;
+      const show = !me.wrecked && (r.phase === 'race' || r.phase === 'lobby') &&
+        ((upside && ft > 0.15) || (tried && (air || me.lockT > 0)));
       this.el.flipm.classList.toggle('hidden', !show);
       if (show) {
-        const k = Math.min(1, ft / CONF.FLIP_WAIT);
+        const k = upside ? Math.min(1, ft / CONF.FLIP_WAIT) : air ? 0 : 1 - (me.lockT || 0) / CONF.AIR_LOCK;
         this.el.flipbar.style.width = (k * 100).toFixed(0) + '%';
-        const txt = k >= 1 ? 'Tryck R!' : 'Vänta…';
+        const head = upside ? 'PÅ TAKET' : air ? 'I LUFTEN' : 'R LÅST EFTER HOPPET';
+        const ft = this.el.flipm.firstElementChild; if (ft && ft.textContent !== head) ft.textContent = head;
+        const txt = air ? 'I luften…' : k >= 1 ? 'Tryck R!' : 'Vänta…';
         if (this.el.fliptxt.textContent !== txt) { this.el.fliptxt.textContent = txt; this.el.fliptxt.classList.toggle('go', k >= 1); }
       }
     }
@@ -99,7 +105,7 @@ export class HUD {
       this.el.lshare.textContent = info.pub ? 'Alla som trycker KÖR! hamnar här' : `Kompisar skriver ${info.room} och trycker EGET RUM`;
       this.el.lplayers.innerHTML = players.map(p => `<div class="lp${p.ready ? ' ready' : ''}${p.id === myId ? ' me' : ''}">
         <span class="chip" style="background:linear-gradient(135deg,${esc(p.c1)} 55%,${esc(p.c2)} 55%)">${esc(String(p.nr ?? ""))}</span>
-        <span class="nm">${esc(p.name)}${p.host ? ' <span class="host">värd</span>' : ''}</span>
+        <span class="nm">${esc(p.name)}${p.host ? ' <span class="host">värd</span>' : ''}<span class="gear">${(p.gear || []).map(g => GEAR[g]?.ikon || '').join('')}</span></span>
         <span class="rd">${p.ready ? 'REDO ✓' : 'väntar…'}</span></div>`).join('');
       this.el.lready.classList.toggle('on', !!mine?.ready);
       this.el.lready.textContent = mine?.ready ? 'REDO ✓' : 'REDO';

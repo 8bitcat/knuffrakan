@@ -1,6 +1,8 @@
 // Fordonstyper: vanlig stockcar, skolbussen och bigfooten.
 // Allt fysikaliskt per typ: mått, vikt, hjul, fjädring, grepp, styrning — plus kamera och tålighet.
 // Kroppens origo = tyngdpunkten. modelY = markens höjd i kroppens ram när bilen står still.
+import { withGear } from './gear.js?v=11';
+
 export const VTYPES = {
   stock: {
     id: 'stock', namn: 'Stockcar',
@@ -40,4 +42,5 @@ export const VTYPES = {
   },
 };
 export const KINDS = ['stock', 'bus', 'bigfoot'];
-export const typeOf = (spec) => VTYPES[spec?.kind] || VTYPES.stock;
+// fordonets värden inklusive tillbehören (samma kombination ⇒ samma objekt)
+export const typeOf = (spec) => withGear(VTYPES[spec?.kind] || VTYPES.stock, spec?.gear);

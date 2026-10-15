@@ -1,5 +1,5 @@
-import { CONF } from './config.js?v=11';
-import { GEAR } from './gear.js?v=11';
+import { CONF } from './config.js?v=12';
+import { GEAR } from './gear.js?v=12';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };

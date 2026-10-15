@@ -1,20 +1,20 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=11';
-import { Game } from './game.js?v=11';
-import { HUD } from './hud.js?v=11';
-import { GameAudio } from './audio.js?v=11';
-import { Input } from './input.js?v=11';
-import { SHAPES } from './carmodel.js?v=11';
-import { makeCarView } from './vehicles3d.js?v=11';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=11';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=11';
-import { logoCanvas } from './world.js?v=11';
-import { BotBrain } from './ai.js?v=11';
-import { connectRoom, NetHost, NetClient } from './net.js?v=11';
-import { TRACKS } from './track.js?v=11';
-import { SOUND_OPTS } from './sounds.js?v=11';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear } from './gear.js?v=11';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=12';
+import { Game } from './game.js?v=12';
+import { HUD } from './hud.js?v=12';
+import { GameAudio } from './audio.js?v=12';
+import { Input } from './input.js?v=12';
+import { SHAPES } from './carmodel.js?v=12';
+import { makeCarView } from './vehicles3d.js?v=12';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=12';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=12';
+import { logoCanvas } from './world.js?v=12';
+import { BotBrain } from './ai.js?v=12';
+import { connectRoom, NetHost, NetClient } from './net.js?v=12';
+import { TRACKS } from './track.js?v=12';
+import { SOUND_OPTS } from './sounds.js?v=12';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear } from './gear.js?v=12';
 
 const PUBLIC = 'PUBLIK';
 
@@ -32,6 +32,26 @@ function staleHtml() {
   if (n >= 2) return false;
   const u = new URL(location.href);
   u.searchParams.set('_v', PROTO + '-' + Date.now().toString(36));
+  location.replace(u.toString());
+  return true;
+}
+// Uppdateringskoll: en flik som står öppen hämtar aldrig ny kod själv, och GitHub Pages låter
+// webbläsaren spara sidan i 10 min. version.json hämtas förbi cachen; finns en nyare version
+// laddas sidan om (i menyn direkt — i lobbyn/racet via en knapp, så ingen kastas ut mitt i).
+async function newerVersion() {
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j.proto > PROTO ? j : null;
+  } catch { return null; }
+}
+function reloadFresh() {
+  let n = 0;
+  try { n = +(sessionStorage.getItem('knuff_upd') || 0); sessionStorage.setItem('knuff_upd', String(n + 1)); } catch { /* ok */ }
+  if (n >= 3) return false;                       // vill inte fastna i en omladdningsloop
+  const u = new URL(location.href);
+  u.searchParams.set('_v', 'u' + Date.now().toString(36));
   location.replace(u.toString());
   return true;
 }
@@ -431,6 +451,19 @@ async function boot() {
       hud.toast('Grafiken sänktes för att flyta bättre');
     }
   }, 1000);
+  // ny version ute? i menyn: ladda om direkt; i spelet: visa en knapp
+  const updBtn = $('updbtn');
+  if (updBtn) updBtn.onclick = () => { try { sessionStorage.removeItem('knuff_upd'); } catch { /* ok */ } reloadFresh(); };
+  const pollUpdate = async () => {
+    const nv = await newerVersion();
+    if (!nv) { try { sessionStorage.removeItem('knuff_upd'); } catch { /* ok */ } return; }
+    if (!inGame && !busy) { loadTxt('Ny version — laddar om…'); reloadFresh(); return; }
+    if (updBtn && updBtn.classList.contains('hidden')) {
+      updBtn.textContent = `🔄 NY VERSION v${nv.version} — TRYCK FÖR ATT UPPDATERA`;
+      updBtn.classList.remove('hidden');
+    }
+  };
+  if (!params.has('auto')) { pollUpdate(); setInterval(pollUpdate, 60000); }
   // automatisk start: tester (?auto), eller återanslutning efter att värden försvann
   let rejoin = null;
   try { rejoin = sessionStorage.getItem('knuff_auto'); sessionStorage.removeItem('knuff_auto'); } catch { /* ok */ }

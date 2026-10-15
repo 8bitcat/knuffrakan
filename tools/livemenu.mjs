@@ -1,0 +1,11 @@
+import { createRequire } from 'module';
+const require = createRequire('D:/Qisy/QISYFrontend/QISYFrontend-1/package.json');
+const { chromium } = require('playwright');
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11'] });
+const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+await page.goto('https://8bitcat.github.io/knuffrakan/');
+await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
+const r = await page.evaluate(() => { const v = document.getElementById('ver'); const b = v.getBoundingClientRect(); return { ver: v.textContent, x: Math.round(b.x), y: Math.round(b.y) }; });
+console.log(JSON.stringify(r));
+await page.screenshot({ path: 'tools/out/live-menu.png' });
+await browser.close();

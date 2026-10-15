@@ -1,5 +1,5 @@
-import { CONF } from './config.js?v=12';
-import { GEAR } from './gear.js?v=12';
+import { CONF } from './config.js?v=13';
+import { GEAR } from './gear.js?v=13';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -80,7 +80,7 @@ export class HUD {
         const k = upside ? Math.min(1, ft / CONF.FLIP_WAIT) : air ? 0 : 1 - (me.lockT || 0) / CONF.AIR_LOCK;
         this.el.flipbar.style.width = (k * 100).toFixed(0) + '%';
         const head = upside ? 'PÅ TAKET' : air ? 'I LUFTEN' : 'R LÅST EFTER HOPPET';
-        const ft = this.el.flipm.firstElementChild; if (ft && ft.textContent !== head) ft.textContent = head;
+        const headEl = this.el.flipm.firstElementChild; if (headEl && headEl.textContent !== head) headEl.textContent = head;
         const txt = air ? 'I luften…' : k >= 1 ? 'Tryck R!' : 'Vänta…';
         if (this.el.fliptxt.textContent !== txt) { this.el.fliptxt.textContent = txt; this.el.fliptxt.classList.toggle('go', k >= 1); }
       }

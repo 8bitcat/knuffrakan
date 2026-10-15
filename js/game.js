@@ -1,19 +1,19 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=12';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=12';
-import { buildWorld, gridSlots } from './world.js?v=12';
-import { createScene, ChaseCam } from './scene.js?v=12';
-import { makeCarView } from './vehicles3d.js?v=12';
-import { typeOf } from './vtypes.js?v=12';
-import { randomGear, cleanGear, mountOf } from './gear.js?v=12';
-import { makeLivery, randomSpec } from './livery.js?v=12';
-import { Vehicle, CP } from './vehicle.js?v=12';
-import { BotBrain } from './ai.js?v=12';
-import { Race } from './race.js?v=12';
-import { FX, Trails } from './fx.js?v=12';
-import { NameTag, SpeedPlate } from './tags.js?v=12';
-import { RemoteVeh, carInfo } from './net.js?v=12';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=13';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=13';
+import { buildWorld, gridSlots } from './world.js?v=13';
+import { createScene, ChaseCam } from './scene.js?v=13';
+import { makeCarView } from './vehicles3d.js?v=13';
+import { typeOf } from './vtypes.js?v=13';
+import { randomGear, cleanGear, mountOf } from './gear.js?v=13';
+import { makeLivery, randomSpec } from './livery.js?v=13';
+import { Vehicle, CP } from './vehicle.js?v=13';
+import { BotBrain } from './ai.js?v=13';
+import { Race } from './race.js?v=13';
+import { FX, Trails } from './fx.js?v=13';
+import { NameTag, SpeedPlate } from './tags.js?v=13';
+import { RemoteVeh, carInfo } from './net.js?v=13';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -249,7 +249,7 @@ export class Game {
       room: this.room || '', pub: !!this.isPublic, t: r.t, readyT: r.readyT ?? null, track: this.trackId, laps: this.track.def.laps || 1,
       players: this.cars.filter(c => this.isHuman(c)).map(c => ({
         id: c.id, name: c.name, ready: !!c.ready, host: c === this.me, nr: c.spec.number,
-        c1: c.spec.colors?.[0] || '#888', c2: c.spec.colors?.[1] || '#444', gear: cleanGear(c.spec.gear),
+        c1: c.spec.colors?.[0] || '#888', c2: c.spec.colors?.[1] || '#444', gear: cleanGear(c.spec.gear, c.spec.kind),
       })),
     };
   }
@@ -335,9 +335,9 @@ export class Game {
       const spec = randomSpec(1000 + k * 17 + Math.floor(Math.random() * 1e5), name);
       spec.title = TITLES[Math.floor(Math.random() * TITLES.length)];
       const r = Math.random();
-      spec.kind = r < 0.11 ? 'bus' : r < 0.22 ? 'bigfoot' : 'stock';
+      spec.kind = r < 0.1 ? 'bus' : r < 0.2 ? 'bigfoot' : r < 0.28 ? 'formel' : r < 0.34 ? 'traktor' : r < 0.41 ? 'glass' : 'stock';
       if (spec.kind === 'bus' && Math.random() < 0.7) spec.colors = ['#ffc21a', '#16161a', '#ffffff'];
-      spec.gear = randomGear();
+      spec.gear = randomGear(Math.random, spec.kind);
       this.addCar({ name, isPlayer: false, spec });
     }
   }
@@ -466,15 +466,15 @@ export class Game {
   // den närmaste änden så B åker upp och välter, murbräckan smäller till. (Plog/kil/murbräcka
   // finns också som riktiga kroppar fram — det här är extra knuff ovanpå.)
   gearFront(A, B, dt, out) {
-    const a = A.veh, b = B.veh, G = a.T.gear;
-    if (!G || A.wrecked || B.wrecked) return;
-    const plow = G.includes('plog'), wedge = G.includes('kil'), ram = G.includes('ram');
+    const a = A.veh, b = B.veh, G = a.T.gear || [], loader = !!a.T.loader;
+    if ((!G.length && !loader) || A.wrecked || B.wrecked) return;
+    const plow = G.includes('plog') || loader, wedge = G.includes('kil'), ram = G.includes('ram');
     if (!plow && !wedge && !ram) return;
     const M = mountOf(a.T);
     const rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
     const lz = rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z, lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;
     // glipan mellan spetsen på tillbehöret och B:s närmaste kant
-    const tip = M.fz + (plow ? M.plowL : wedge ? M.wedgeL : 1.0);
+    const tip = M.fz + (loader ? M.loaderZ + 0.25 : plow ? M.plowL : wedge ? M.wedgeL : 1.0);
     const gap = lz - b.T.half.z - tip;
     if (lz < a.T.half.z * 0.5 || gap > 0.6 || Math.abs(lx) > a.T.half.x + b.T.half.x * 0.85 || a.up.y < 0.5) return;
     const closing = (a.vel.x - b.vel.x) * a.fwd.x + (a.vel.z - b.vel.z) * a.fwd.z;
@@ -517,7 +517,7 @@ export class Game {
       if (Math.abs(lx) > 0.25 || !B.plowSide || this.time - (B.plowT || 0) > 1) B.plowSide = Math.sign(lx) || (Math.random() < 0.5 ? -1 : 1);
       B.plowT = this.time;
       // knuffen tar i B:s närmaste ände: den vrids och glider undan (en ren sidoknuff äter däcken upp)
-      const side = B.plowSide, J = m * 20 * k * dt, near = b.T.half.z * 0.55;
+      const side = B.plowSide, J = m * 20 * k * (loader ? 0.75 : 1) * dt, near = b.T.half.z * 0.55;
       out.push({ veh: b, jx: a.right.x * side * J + a.fwd.x * J * 0.25, jy: J * 0.08, jz: a.right.z * side * J + a.fwd.z * J * 0.25,
         px: b.pos.x - a.fwd.x * near, py: b.pos.y + 0.1, pz: b.pos.z - a.fwd.z * near });
       b.pressF = Math.min(b.pressF, 0.5); b.pressR = Math.min(b.pressR, 0.3);
@@ -527,8 +527,8 @@ export class Game {
       B.lastHitBy = A; B.lastHitT = this.time;
       if (closing > 3 && (!B.gearMsgT || this.time - B.gearMsgT > 3)) {
         B.gearMsgT = this.time;
-        this.notify(A, `${wedge ? '📐 Du kilade' : '🚜 Du plogade'} ${B.name}!`, 'good');
-        this.notify(B, `${A.name} ${wedge ? '📐 kilade' : '🚜 plogade'} dig!`, 'bad');
+        this.notify(A, `${wedge ? '📐 Du kilade' : loader ? '🚜 Du skopade undan' : '🚜 Du plogade'} ${B.name}!`, 'good');
+        this.notify(B, `${A.name} ${wedge ? '📐 kilade' : loader ? '🚜 skopade undan' : '🚜 plogade'} dig!`, 'bad');
       }
     }
   }
@@ -718,6 +718,9 @@ export class Game {
     if (G) {
       if (myFront && G.includes('bullbar')) k *= 0.45;
       if (myFront && (G.includes('ram') || G.includes('plog') || G.includes('kil'))) k *= 0.6;
+    }
+    if (myFront && v.T.loader) k *= 0.6;
+    if (G) {
       if (myRear && G.includes('pushbar')) k *= 0.5;
       if (Math.abs(dl.x) > 0.55 && G.includes('sidopansar')) k *= 0.55;
     }

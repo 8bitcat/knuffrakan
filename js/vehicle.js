@@ -2,9 +2,9 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=12';
-import { VTYPES } from './vtypes.js?v=12';
-import { frontParts } from './gear.js?v=12';
+import { CONF } from './config.js?v=13';
+import { VTYPES } from './vtypes.js?v=13';
+import { frontParts } from './gear.js?v=13';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen

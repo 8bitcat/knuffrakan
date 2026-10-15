@@ -24,37 +24,41 @@ export const GEAR = {
 };
 export const GEAR_IDS = Object.keys(GEAR);
 
+// platser som fordonet redan har fyllt (traktorns frontlastare sitter fram)
+export const blockedSlot = (kind, slot) => kind === 'traktor' && slot === 'front';
+
 // giltig lista: kända saker, en per plats, inom budget (i den ordning de valdes)
-export function cleanGear(list) {
+export function cleanGear(list, kind) {
   const out = [], slots = new Set();
   let cost = 0;
   for (const id of Array.isArray(list) ? list : []) {
     const g = GEAR[id];
-    if (!g || slots.has(g.slot) || cost + g.pris > BUDGET) continue;
+    if (!g || slots.has(g.slot) || blockedSlot(kind, g.slot) || cost + g.pris > BUDGET) continue;
     out.push(id); slots.add(g.slot); cost += g.pris;
   }
   return out;
 }
-export const gearCost = (list) => cleanGear(list).reduce((s, id) => s + GEAR[id].pris, 0);
+export const gearCost = (list, kind) => cleanGear(list, kind).reduce((s, id) => s + GEAR[id].pris, 0);
 
 // välj/avvälj en sak: byter ut det som satt på samma plats
-export function toggleGear(list, id) {
-  const cur = cleanGear(list);
+export function toggleGear(list, id, kind) {
+  const cur = cleanGear(list, kind);
   if (cur.includes(id)) return cur.filter(x => x !== id);
   const g = GEAR[id];
+  if (blockedSlot(kind, g.slot)) return cur;
   const next = cur.filter(x => GEAR[x].slot !== g.slot);
   if (gearCost(next) + g.pris > BUDGET) return cur;   // har inte råd
   return [...next, id];
 }
 
 // bottar: en del kör helt utan, en del köper lite, en del fyller varje plats
-export function randomGear(rand = Math.random) {
+export function randomGear(rand = Math.random, kind) {
   const r = rand();
   const shuffled = (arr) => arr.map(x => [rand(), x]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
   if (r < 0.28) return [];
   const want = r < 0.62 ? 1 + Math.floor(rand() * 2) : 4;          // 1–2 saker, eller fullt utrustad
   let out = [];
-  const order = shuffled(SLOTS.map(s => s.id));
+  const order = shuffled(SLOTS.map(s => s.id).filter(sl => !blockedSlot(kind, sl)));
   const cheapest = (slot) => Math.min(...GEAR_IDS.filter(id => GEAR[id].slot === slot).map(id => GEAR[id].pris));
   order.forEach((slot, k) => {
     if (out.length >= want) return;
@@ -64,13 +68,13 @@ export function randomGear(rand = Math.random) {
       if (gearCost([...out, id]) + reserve <= BUDGET) { out = [...out, id]; break; }
     }
   });
-  return cleanGear(out);
+  return cleanGear(out, kind);
 }
 
 // Fordonets värden med tillbehören (samma objekt för samma kombination → jämförbart med ===)
 const cache = new Map();
 export function withGear(T, list) {
-  const gear = cleanGear(list);
+  const gear = cleanGear(list, T.id);
   if (!gear.length) return T;
   const key = T.id + ':' + gear.slice().sort().join(',');
   if (cache.has(key)) return cache.get(key);
@@ -100,7 +104,14 @@ export const MOUNT = {
     plow: [0.15, 1.15], plowL: 1.15, wedge: [0.14, 0.78], wedgeL: 1.6 },
   bigfoot: { fz: 2.6, w: 1.0, bump: 1.3, roof: 2.38, rear: 2.6, deck: 2.04, sideY: 1.62, sideL: 1.9, cab: [-0.55, 0.95], belt: 1.96,
     plow: [0.4, 1.5], plowL: 1.05, wedge: [0.14, 1.25], wedgeL: 1.75 },
+  formel: { fz: 2.5, w: 0.92, bump: 0.3, roof: 0.95, rear: 2.15, deck: 1.02, sideY: 0.36, sideL: 1.5, cab: [-0.8, 0.2], belt: 0.55,
+    plow: [0.07, 0.7], plowL: 0.9, wedge: [0.07, 0.46], wedgeL: 1.3 },
+  traktor: { fz: 2.15, w: 1.05, bump: 0.75, roof: 2.72, rear: 2.05, deck: 2.72, sideY: 1.05, sideL: 1.3, cab: [-0.1, 1.5], belt: 1.5,
+    plow: [0.12, 1.0], plowL: 1.0, wedge: [0.12, 0.7], wedgeL: 1.4, loaderZ: 0.62 },
+  glass: { fz: 2.95, w: 1.1, bump: 0.55, roof: 3.02, rear: 2.95, deck: 3.02, sideY: 0.92, sideL: 3.8, cab: [-1.6, 2.7], belt: 1.4,
+    plow: [0.12, 1.05], plowL: 1.05, wedge: [0.12, 0.72], wedgeL: 1.5, wind: [1.32, -3.0, 2.42, -2.62], roofCage: true, noHood: true },
 };
+MOUNT.bus.roofCage = true;
 export const mountOf = (T) => MOUNT[T.id] || MOUNT.stock;
 
 // Fysikdelarna fram i kroppens ram (y = T.modelY + höjd över marken). Samma mått används till utseendet.
@@ -118,5 +129,7 @@ export function frontParts(T) {
     out.push({ id: 'kil', hx: M.w * 0.96, hy: 0.05, hz: Math.hypot(L, hb - ht) / 2, x: 0, y: y0 + (ht + hb) / 2, z: -(M.fz + M.wedgeL - L / 2), rx: -th, ry: 0, fr: 0.1 });
   }
   if (g.includes('ram')) out.push({ id: 'ram', hx: 0.16, hy: 0.16, hz: 0.55, x: 0, y: y0 + M.bump, z: -(M.fz + 0.45), rx: 0, ry: 0, fr: 0.3 });
+  // traktorns frontlastare: skopan längst fram (0,24–1,0 m över marken)
+  if (T.loader) out.push({ id: 'skopa', hx: 1.18, hy: 0.38, hz: 0.24, x: 0, y: y0 + 0.62, z: -(M.fz + M.loaderZ), rx: 0, ry: 0, fr: 0.15 });
   return out;
 }

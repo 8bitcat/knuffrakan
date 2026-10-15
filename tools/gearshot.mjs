@@ -18,7 +18,7 @@ for (const kind of kinds) {
   await page.click('[data-tab="gear"]');
   for (const set of sets) {
     for (let n = 0; n < 6 && await page.$('#gslots button.on'); n++) await page.click('#gslots button.on');   // listan ritas om efter varje klick
-    for (const id of SETS[set]) await page.click(`[data-gear="${id}"]`);
+    for (const id of SETS[set]) if (await page.$(`[data-gear="${id}"]`)) await page.click(`[data-gear="${id}"]`);
     const on = await page.$$eval('#gslots button.on', bs => bs.map(b => b.dataset.gear).join(','));
     const kvar = await page.textContent('#gbudtxt');
     console.log(kind, set, '→', on, '|', kvar);

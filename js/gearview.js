@@ -1,8 +1,8 @@
 // Tillbehörens utseende på bilarna. Mått och lägen ur MOUNT/frontParts i gear.js —
 // samma som fysiken, så det man ser är det som knuffas.
 import * as THREE from 'three';
-import { cleanGear, frontParts, MOUNT } from './gear.js?v=12';
-import { VTYPES } from './vtypes.js?v=12';
+import { cleanGear, frontParts, MOUNT } from './gear.js?v=13';
+import { VTYPES } from './vtypes.js?v=13';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const tex = (c, rx = 1, ry = 1) => {
@@ -46,9 +46,9 @@ function mats() {
 
 // Lägg tillbehören på en bilvy (CarView/BusView/BigfootView). spec.kind + spec.gear.
 export function addGear(view, spec) {
-  const gear = cleanGear(spec?.gear);
+  const kind = MOUNT[spec?.kind] ? spec.kind : 'stock';
+  const gear = cleanGear(spec?.gear, kind);
   if (!gear.length) return;
-  const kind = MOUNT[spec.kind] ? spec.kind : 'stock';
   const VT = VTYPES[kind], P = MOUNT[kind], m = mats();
   const grp = new THREE.Group();
   grp.position.y = VT.modelY;        // y = 0 är marken
@@ -64,7 +64,7 @@ export function addGear(view, spec) {
     return o;
   };
   const parts = frontParts({ ...VT, modelY: 0, gear });
-  const big = kind === 'bus' ? 1.35 : 1;
+  const big = { bus: 1.35, traktor: 1.3, glass: 1.15 }[kind] || 1;
 
   // --- fram ---
   if (gear.includes('plog')) {
@@ -110,7 +110,7 @@ export function addGear(view, spec) {
 
   // --- sidor ---
   if (gear.includes('sidopansar')) {
-    const hgt = kind === 'bus' ? 0.75 : 0.42;
+    const hgt = { bus: 0.75, traktor: 0.6, glass: 0.7, formel: 0.3 }[kind] || 0.42;
     for (const s of [-1, 1]) {
       const pl = box(0.07, hgt, P.sideL, m.plate, s * (P.w + 0.05), P.sideY, 0.1);
       pl.material = m.plate;
@@ -118,15 +118,17 @@ export function addGear(view, spec) {
     }
   }
   if (gear.includes('spikar')) {
-    const cone = new THREE.ConeGeometry(kind === 'stock' ? 0.07 : 0.1, kind === 'stock' ? 0.42 : 0.55, 10);
-    const hub = new THREE.CylinderGeometry(kind === 'stock' ? 0.16 : 0.24, kind === 'stock' ? 0.16 : 0.24, 0.06, 14);
+    const small = kind === 'stock' || kind === 'formel';
+    const cone = new THREE.ConeGeometry(small ? 0.07 : 0.1, small ? 0.42 : 0.55, 10);
+    const hub = new THREE.CylinderGeometry(small ? 0.16 : 0.24, small ? 0.16 : 0.24, 0.06, 14);
     geos.push(cone, hub);
-    const tireHalf = kind === 'bigfoot' ? 0.47 : kind === 'bus' ? 0.19 : 0.16;
+    // halva däckbredden per fordon (fram, bak)
+    const tireHalf = { bigfoot: [0.47, 0.47], bus: [0.19, 0.39], formel: [0.16, 0.2], traktor: [0.16, 0.27], glass: [0.15, 0.15] }[kind] || [0.16, 0.16];
     view.wheels?.forEach((w) => {
       const s = Math.sign(w.base.x) || 1;
-      const off = tireHalf + (kind === 'bus' && !w.base.front ? 0.2 : 0);
-      const c = new THREE.Mesh(cone, m.chrome); c.rotation.z = -s * Math.PI / 2; c.position.x = s * (off + (kind === 'stock' ? 0.22 : 0.28));
-      const hb = new THREE.Mesh(hub, m.steel); hb.rotation.z = Math.PI / 2; hb.position.x = s * (off + 0.03);
+      const off = tireHalf[w.base.front ? 0 : 1];
+      const c = new THREE.Mesh(cone, m.chrome); c.rotation.z = -s * Math.PI / 2; c.position.set(s * (off + (small ? 0.22 : 0.28)), w.hubY || 0, 0);
+      const hb = new THREE.Mesh(hub, m.steel); hb.rotation.z = Math.PI / 2; hb.position.set(s * (off + 0.03), w.hubY || 0, 0);
       w.holder.add(c, hb); extra.push([w.holder, c], [w.holder, hb]);
     });
   }
@@ -153,24 +155,26 @@ export function addGear(view, spec) {
   // --- kaross ---
   if (gear.includes('pansar')) {
     const cabL = P.cab[1] - P.cab[0];
-    box(P.w * (kind === 'bus' ? 1.9 : 1.45), 0.06, cabL * (kind === 'bus' ? 0.95 : 0.85), m.plate, 0, P.roof + 0.04, (P.cab[0] + P.cab[1]) / 2);
+    box(P.w * (P.roofCage ? 1.9 : 1.45), 0.06, cabL * (P.roofCage ? 0.95 : 0.85), m.plate, 0, P.roof + 0.04, (P.cab[0] + P.cab[1]) / 2);
     if (kind === 'bus') {
       for (const s of [-1, 1]) for (const y of [2.12, 2.5]) box(0.05, 0.06, 7.6, m.steel, s * (P.w + 0.04), y, 0);
     } else {
       // huven + gallret framför vindrutan
-      const hood = box(P.w * 1.3, 0.05, 1.05, m.plate, 0, P.belt + 0.02, P.cab[0] - 0.75); hood.rotation.x = -0.08;
-      for (let k = -2; k <= 2; k++) tube(0.025, [k * 0.28, P.belt + 0.05, P.cab[0] - 0.1], [k * 0.28, P.roof - 0.05, P.cab[0] + 0.25], m.steel);
+      if (!P.noHood) { const hood = box(P.w * 1.3, 0.05, 1.05, m.plate, 0, P.belt + 0.02, P.cab[0] - 0.75); hood.rotation.x = -0.08; }
+      const [y0, z0, y1, z1] = P.wind || [P.belt + 0.05, P.cab[0] - 0.1, P.roof - 0.05, P.cab[0] + 0.25];
+      for (let k = -2; k <= 2; k++) tube(0.025 * big, [k * 0.28 * big, y0, z0 - 0.04], [k * 0.28 * big, y1, z1 - 0.04], m.steel);
     }
   }
   if (gear.includes('bur')) {
     const r = 0.05 * big;
-    if (kind === 'bus') {
-      const y = P.roof + 0.3;
+    if (P.roofCage) {
+      // takbur (buss, glassbil): räcken runt taket
+      const y = P.roof + 0.3, [za, zb] = P.cab, step = (zb - za) / 4;
       for (const s of [-1, 1]) {
-        tube(r, [s * P.w * 0.85, y, -3.6], [s * P.w * 0.85, y, 3.6], m.cage);
-        for (let z = -3.6; z <= 3.61; z += 1.8) tube(r, [s * P.w * 0.85, P.roof, z], [s * P.w * 0.85, y, z], m.cage);
+        tube(r, [s * P.w * 0.85, y, za], [s * P.w * 0.85, y, zb], m.cage);
+        for (let z = za; z <= zb + 0.01; z += step) tube(r, [s * P.w * 0.85, P.roof, z], [s * P.w * 0.85, y, z], m.cage);
       }
-      for (const z of [-3.6, 0, 3.6]) tube(r, [-P.w * 0.85, y, z], [P.w * 0.85, y, z], m.cage);
+      for (const z of [za, (za + zb) / 2, zb]) tube(r, [-P.w * 0.85, y, z], [P.w * 0.85, y, z], m.cage);
     } else {
       const x = P.w * 0.9, y = P.roof + 0.1, [z0, z1] = P.cab;
       for (const s of [-1, 1]) {

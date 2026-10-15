@@ -1,12 +1,19 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice } from './engines.js?v=12';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=12';
+import { EngineVoice } from './engines.js?v=13';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=13';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const KINDS = ['stock', 'bus', 'bigfoot'];
+const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass'];
+// Glassbilens melodi: egen (inte någon glassbilsfirmas), speldosa i C-dur. [midi, åttondelar], 0 = paus
+const JINGLE = [
+  [76, 1], [79, 1], [84, 1], [79, 1], [81, 1], [79, 1], [76, 2],
+  [74, 1], [76, 1], [77, 1], [74, 1], [79, 3], [0, 1],
+  [76, 1], [79, 1], [84, 1], [79, 1], [81, 1], [84, 1], [83, 2],
+  [81, 1], [79, 1], [77, 1], [74, 1], [72, 3], [0, 3],
+];
 
 // Sömlös loop: klipp bort kodarens tystnad i ändarna och korsblanda slutet in i början
 function makeLoop(ctx, buf, trim = 0.05, fade = 0.2) {
@@ -174,6 +181,34 @@ export class GameAudio {
       this.screechL.g.gain.setTargetAtTime(sk * 0.28, t, 0.06);
     }
     this.scrape(me.scrWall ? 1 : 0, me.scrCar ? 1 : 0, me.slide ?? me.v);
+    this.jingle(me.glassNear || 0);
+  }
+
+  // Glassbilen i närheten: melodin på speldosa, level 0..1 (schemaläggs en bit i förväg)
+  jingle(level) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.jg) { this.jg = ctx.createGain(); this.jg.gain.value = 0; this.jg.connect(this.master); this.jNext = 0; this.jIdx = 0; }
+    this.jg.gain.setTargetAtTime(level * 0.34, t, 0.25);
+    if (level < 0.02) { if (t > this.jNext + 1) this.jIdx = 0; return; }   // tyst en stund: börja om från början
+    if (this.jNext < t) this.jNext = t + 0.05;
+    while (this.jNext < t + 0.35) {
+      const [midi, n] = JINGLE[this.jIdx % JINGLE.length];
+      if (midi) this.bell(midi, this.jNext);
+      this.jNext += n * 0.2;
+      this.jIdx++;
+    }
+  }
+  bell(midi, at) {
+    const ctx = this.ctx, f = 440 * 2 ** ((midi - 69) / 12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.5, at + 0.006); g.gain.exponentialRampToValueAtTime(0.001, at + 0.7);
+    for (const [mul, vol, type] of [[1, 1, 'triangle'], [2, 0.32, 'sine'], [3.01, 0.1, 'sine'], [4.2, 0.05, 'sine']]) {
+      const o = ctx.createOscillator(); o.type = type; o.frequency.value = f * mul;
+      const og = ctx.createGain(); og.gain.value = vol;
+      o.connect(og); og.connect(g); o.start(at); o.stop(at + 0.75);
+    }
+    g.connect(this.jg);
   }
 
   // skrap: jämn slipning vars styrka och tonhöjd följer glidfarten (ingen kulspruta av korta ljud)
@@ -258,5 +293,6 @@ export class GameAudio {
     if (!this.ready) return;
     for (const k of KINDS) { const p = this.pool[k]?.[3]; if (p && k !== kind) p.set(0, 0, 0); }
     this.voice(kind, 3).set(v, throttle, on ? 0.65 : 0, 0, 1, 0);
+    this.jingle(on && kind === 'glass' ? 0.6 : 0);
   }
 }

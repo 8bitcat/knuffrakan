@@ -1,20 +1,20 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=12';
-import { Game } from './game.js?v=12';
-import { HUD } from './hud.js?v=12';
-import { GameAudio } from './audio.js?v=12';
-import { Input } from './input.js?v=12';
-import { SHAPES } from './carmodel.js?v=12';
-import { makeCarView } from './vehicles3d.js?v=12';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=12';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=12';
-import { logoCanvas } from './world.js?v=12';
-import { BotBrain } from './ai.js?v=12';
-import { connectRoom, NetHost, NetClient } from './net.js?v=12';
-import { TRACKS } from './track.js?v=12';
-import { SOUND_OPTS } from './sounds.js?v=12';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear } from './gear.js?v=12';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=13';
+import { Game } from './game.js?v=13';
+import { HUD } from './hud.js?v=13';
+import { GameAudio } from './audio.js?v=13';
+import { Input } from './input.js?v=13';
+import { SHAPES } from './carmodel.js?v=13';
+import { makeCarView } from './vehicles3d.js?v=13';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=13';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=13';
+import { logoCanvas } from './world.js?v=13';
+import { BotBrain } from './ai.js?v=13';
+import { connectRoom, NetHost, NetClient } from './net.js?v=13';
+import { TRACKS } from './track.js?v=13';
+import { SOUND_OPTS } from './sounds.js?v=13';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=13';
 
 const PUBLIC = 'PUBLIK';
 
@@ -189,7 +189,7 @@ async function boot() {
     showcase.group.position.set(f.x, f.y - showcase.T.modelY, f.z);
     showcase.group.quaternion.copy(game.track.quatAt(30));
     showcase.rest();
-    showcase.orbitR = 7.2 * Math.max(1, showcase.T.half.z / 2.42) * (showcase.T.id === 'bigfoot' ? 1.3 : 1);
+    showcase.orbitR = 7.2 * Math.max(1, showcase.T.half.z / 2.42) * ({ bigfoot: 1.3, traktor: 1.25, glass: 1.1 }[showcase.T.id] || 1);
     game.scene.add(showcase.group);
     game.showcase = showcase;
   };
@@ -204,11 +204,12 @@ async function boot() {
     if (t === 'gear') renderGear();
   };
   const renderGear = () => {
-    const mine = cleanGear(spec.gear), used = gearCost(mine);
+    const mine = cleanGear(spec.gear, spec.kind), used = gearCost(mine, spec.kind);
     $('gbudbar').style.width = (used / BUDGET * 100).toFixed(0) + '%';
     $('gbudtxt').textContent = `${BUDGET - used} kr kvar`;
     $('gslots').innerHTML = SLOTS.map(sl => {
       const cur = mine.find(x => GEAR[x].slot === sl.id);
+      if (blockedSlot(spec.kind, sl.id)) return `<div class="gslot"><label>${sl.namn}</label><div class="gfull">🚜 Frontlastaren sitter redan här — den knuffar undan allt framför traktorn</div></div>`;
       const btns = GEAR_IDS.filter(id => GEAR[id].slot === sl.id).map(id => {
         const it = GEAR[id], on = mine.includes(id), afford = on || used - (cur ? GEAR[cur].pris : 0) + it.pris <= BUDGET;
         return `<button data-gear="${id}" class="${on ? 'on' : ''}${afford ? '' : ' poor'}"><span class="gi">${it.ikon}</span>${it.namn}<em>${it.pris} kr</em></button>`;
@@ -239,13 +240,13 @@ async function boot() {
       if (b.id === 'gswap') spec.colors = [spec.colors[1], spec.colors[0], spec.colors[2]];
       if (b.dataset.tab) { setTab(b.dataset.tab); return; }
       if (b.dataset.gear) {
-        const id = b.dataset.gear, it = GEAR[id], before = cleanGear(spec.gear), next = toggleGear(before, id);
+        const id = b.dataset.gear, it = GEAR[id], before = cleanGear(spec.gear, spec.kind), next = toggleGear(before, id, spec.kind);
         if (next.join() === before.join() && !before.includes(id)) { $('gdesc').textContent = `💸 ${it.namn} kostar ${it.pris} kr — du har inte råd. Ta bort något först!`; return; }
         spec.gear = next;
         $('gdesc').textContent = next.includes(id) ? `${it.ikon} ${it.namn}: ${it.besk}` : `${it.namn} borttagen.`;
         renderGear();
       }
-      if (b.id === 'grand' && gtab === 'gear') { let r = []; while (!r.length) r = randomGear(); spec.gear = r; $('gdesc').textContent = r.map(id => GEAR[id].ikon + ' ' + GEAR[id].namn).join(' · '); renderGear(); }
+      if (b.id === 'grand' && gtab === 'gear') { let r = []; while (!r.length) r = randomGear(Math.random, spec.kind); spec.gear = r; $('gdesc').textContent = r.map(id => GEAR[id].ikon + ' ' + GEAR[id].namn).join(' · '); renderGear(); }
       else if (b.id === 'grand') { const r = randomSpec(Math.floor(Math.random() * 1e6), ''); Object.assign(spec, { colors: r.colors, pattern: r.pattern, sponsor: r.sponsor, shape: r.shape }); syncInputs(); }
       if (b.id === 'gdone') { closeGarage(); return; }
       saveSpec(spec); renderShowcase();
@@ -310,7 +311,7 @@ async function boot() {
   bind('sb-cam', 'onclick', () => game.cam.toggle());
   // ---------- Ljudlabbet ----------
   const lab = { open: false, kind: 'stock', on: false, gas: false, auto: false, v: 25, scrW: false, scrC: false };
-  const KIND_NAMN = { stock: 'NASCAR', bus: 'Skolbuss', bigfoot: 'Bigfoot' };
+  const KIND_NAMN = Object.fromEntries(KINDS.map(k => [k, k === 'stock' ? 'NASCAR' : VTYPES[k].namn]));
   const optBtns = (cat, attr) => SOUND_OPTS[cat].map(o => `<button data-${attr}="${o.id}" class="${audio.choice[cat] === o.id ? 'on' : ''}">${o.namn}</button>`).join('');
   const renderLab = () => {
     $('lkind').innerHTML = Object.keys(KIND_NAMN).map(k => `<button data-lk="${k}" class="${lab.kind === k ? 'on' : ''}">${KIND_NAMN[k]}</button>`).join('');
@@ -360,7 +361,7 @@ async function boot() {
   bind('lfart', 'oninput', () => { lab.v = +$('lfart').value; lab.auto = false; });
   game.labTick = (dt) => {
     if (!lab.open) return;
-    if (lab.auto) { lab.v = Math.min(110, lab.v + dt * (lab.kind === 'bus' ? 3.5 : lab.kind === 'bigfoot' ? 5 : 8)); if (lab.v >= 110) lab.auto = false; $('lfart').value = Math.round(lab.v); }
+    if (lab.auto) { lab.v = Math.min(110, lab.v + dt * ({ bus: 3.5, traktor: 3, bigfoot: 5, glass: 5.5, formel: 10 }[lab.kind] || 8)); if (lab.v >= 110) lab.auto = false; $('lfart').value = Math.round(lab.v); }
     $('lfartv').textContent = Math.round(lab.v * 3.6) + ' km/h';
     audio.preview(lab.kind, lab.v, lab.gas || lab.auto ? 1 : 0.15, lab.on);
     audio.scrape(lab.scrW ? 1 : 0, lab.scrC ? 1 : 0, lab.scrW || lab.scrC ? Math.max(15, lab.v) : 0);
@@ -384,7 +385,16 @@ async function boot() {
 
   // ---------- Loop ----------
   let last = performance.now(), mapT = 0, frames = 0, fpsN = 0, fpsT = 0;
+  // Ett fel i en bildruta får aldrig frysa spelet: nästa ruta beställs först, felet rapporteras
+  // (högst var 5:e s, som ett vanligt sidfel så testerna ser det) och spelet rullar vidare.
+  let errT = -1e9;
   const loop = (now) => {
+    requestAnimationFrame(loop);
+    try { frame(now); } catch (e) {
+      if (now - errT > 5000) { errT = now; setTimeout(() => { throw e; }); }
+    }
+  };
+  const frame = (now) => {
     const dt = (now - last) / 1000; last = now;
     input.update(Math.min(dt, 0.1));
     if (!$('garage').classList.contains('hidden')) { const st = input.state; st.throttle = 0; st.brake = 0; st.steer = 0; st.handbrake = 0; }
@@ -394,12 +404,14 @@ async function boot() {
     if (game.me && mapT > 0.1) { mapT = 0; hud.drawMap(game); }
     if (game.me) {
       const me = game.me, others = [];
-      let pack = 0;
+      let pack = 0, glassNear = me.spec?.kind === 'glass' && !me.wrecked ? 0.3 : 0;
       for (const c of game.cars) {
         if (c === me || c.hidden) continue;
         const dx = me.veh.pos.x - c.veh.pos.x, dy = me.veh.pos.y - c.veh.pos.y, dz = me.veh.pos.z - c.veh.pos.z;
         const d = Math.hypot(dx, dy, dz) || 1;
         if (d < 45) pack++;
+        // glassbilen spelar sin melodi — ju närmare, desto starkare
+        if (c.spec?.kind === 'glass' && !c.wrecked && d < 110) glassNear = Math.max(glassNear, (1 - d / 110) ** 1.4);
         if (d < 80) {
           // närmar sig bilen mig? (för dopplereffekten)
           const closing = ((c.veh.vel.x - me.veh.vel.x) * dx + (c.veh.vel.y - me.veh.vel.y) * dy + (c.veh.vel.z - me.veh.vel.z) * dz) / d;
@@ -413,7 +425,7 @@ async function boot() {
       let slide = me.veh.speed;
       if (scrCar && me.contactWith) { const o = me.contactWith.veh; slide = Math.hypot(me.veh.vel.x - o.vel.x, me.veh.vel.z - o.vel.z) + 4; }
       audio.update({ kind: me.spec?.kind || 'stock', v: me.veh.speed, throttle: me.veh.input.throttle, brake: me.veh.input.brake || 0, on: !me.wrecked,
-        slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0, scrWall, scrCar, slide },
+        slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0, scrWall, scrCar, slide, glassNear },
         others, me.veh.speed, pack, Math.min(dt, 0.1));
     }
     game.labTick?.(Math.min(dt, 0.1));
@@ -421,7 +433,6 @@ async function boot() {
     if (frames === 30) window.ready = true;
     fpsN++; fpsT += dt;
     if (fpsT > 1) { window.__fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; }
-    requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
 

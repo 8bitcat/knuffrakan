@@ -1,6 +1,6 @@
 // Bottarna: kör i full gas i sin fil, byter fil, väjer för långsammare bilar och
 // tacklar ibland den som ligger bredvid.
-import { steerMaxAt } from './vehicle.js?v=12';
+import { steerMaxAt } from './vehicle.js?v=13';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 

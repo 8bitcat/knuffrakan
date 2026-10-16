@@ -2,7 +2,7 @@
 // hopp med glipa, tunnlar genom berg, en dalbro och en bro där banan korsar sig själv.
 // Allt (väg, murar, terräng, AI, placeringar) utgår från samma sampling var 4:e meter.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=19';
+import { CONF } from './config.js?v=20';
 
 // ---------- Banorna ----------
 // SNÖBERGET: start/mål vid (0,0), körriktning +x.
@@ -54,6 +54,13 @@ const CTRL_OKEN = [
   [1100, -1500], [300, -1500], [-500, -1450], [-1200, -1250], [-1650, -850], [-1700, -400], [-1300, -100], [-700, 0],
 ];
 
+// STADSBANAN: kvarter med en sicksack genom stadens mitt
+const CTRL_STAD = [
+  [0, 0], [600, 0], [1100, 0], [1400, 150], [1450, 500], [1400, 850], [1100, 1000], [700, 1000], [450, 850],
+  [300, 600], [50, 500], [-300, 600], [-450, 850], [-700, 1000], [-1100, 1000], [-1400, 850], [-1450, 500],
+  [-1400, 150], [-1100, 0], [-600, 0],
+];
+
 export const TRACKS = [
   {
     id: 'snoberget', namn: 'SNÖBERGET', besk: 'Klassikern — 10,8 km med långa backar och krön', laps: 1,
@@ -94,6 +101,15 @@ export const TRACKS = [
       { type: 'valley', at: 0.45, len: 170, depth: 24, namn: 'TORRA FLODEN' },
       { type: 'jump', at: 0.53 },
       { type: 'jump', at: 0.62 },
+    ],
+  },
+  {
+    id: 'stad', namn: 'STADSBANAN', besk: 'Natt i stan: höghus, neon, gatlyktor, en tunnel och hopp — 3 varv', laps: 3, theme: 'stad',
+    ctrl: CTRL_STAD, hills: [4, 2, 1], crests: [],
+    features: [
+      { type: 'jump', at: 0.11 },
+      { type: 'tunnel', at: 0.24, len: 320, namn: 'UNDER STAN' },
+      { type: 'jump', at: 0.64 },
     ],
   },
 ];

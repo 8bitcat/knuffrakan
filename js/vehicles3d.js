@@ -1,11 +1,11 @@
 // Utseendet för skolbussen och bigfooten (stockcaren finns i carmodel.js).
 // Samma gränssnitt som CarView: group, setWheel, dent, uvNear, livery, resetDamage, dispose, rest.
 import * as THREE from 'three';
-import { CarView, SHAPES } from './carmodel.js?v=19';
-import { makeLivery } from './livery.js?v=19';
-import { VTYPES, typeOf } from './vtypes.js?v=19';
-import { addGear } from './gearview.js?v=19';
-import { FormelView, TraktorView, GlassView, RullstolView, ElrullstolView, PlanView } from './vehicles3d2.js?v=19';
+import { CarView, SHAPES } from './carmodel.js?v=20';
+import { makeLivery } from './livery.js?v=20';
+import { VTYPES, typeOf } from './vtypes.js?v=20';
+import { addGear } from './gearview.js?v=20';
+import { FormelView, TraktorView, GlassView, RullstolView, ElrullstolView, PlanView } from './vehicles3d2.js?v=20';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const tex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };

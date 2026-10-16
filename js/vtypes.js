@@ -1,7 +1,7 @@
 // Fordonstyper: vanlig stockcar, skolbussen och bigfooten.
 // Allt fysikaliskt per typ: mått, vikt, hjul, fjädring, grepp, styrning — plus kamera och tålighet.
 // Kroppens origo = tyngdpunkten. modelY = markens höjd i kroppens ram när bilen står still.
-import { withGear } from './gear.js?v=15';
+import { withGear } from './gear.js?v=16';
 
 export const VTYPES = {
   stock: {
@@ -106,7 +106,22 @@ export const VTYPES = {
     modelY: -0.65, sideH: 0.5, longH: 0.65, armor: 1.2, stab: 1.0, rightK: 4.5, tagUp: -0.4, cam: { d: -1.2, h: -0.4 }, hood: { y: 1.1, z: -0.1 },
     detune: 0.1, jet: 12, jetZ: 0.95, jetX: [-0.42, 0.42],
   },
+  // Propellerplanet: kör på hjulen, glidflyger i luften (sjunker långsamt, styrs med rodret) och propellern
+  // skär i det som kommer framför nosen. Vingarna sitter högt: stockcars kör under, höga fordon slår i.
+  plan: {
+    id: 'plan', namn: 'Propellerplan',
+    mass: 1100, half: { x: 0.6, y: 0.65, z: 2.6 }, colY: 0.1, inertia: { x: 3900, y: 4000, z: 2200 },
+    rayLen: 1.03, susK: 30000, susC: 3200, bump: 0.3, fsMax: 110000,
+    muLat: 1.8, muLong: 1.7, rearGrip: 0.95, driveMax: 3300, accelK: 1, brake: 20000, steerMax: 0.4, wb: 2.05, downforce: 0.6,
+    wheelR: 0.3, wheels: [
+      { x: -0.22, z: -1.7, front: true }, { x: 0.22, z: -1.7, front: true },
+      { x: -1.1, z: 0.35, front: false }, { x: 1.1, z: 0.35, front: false },
+    ],
+    modelY: -0.9, sideH: 0.7, longH: 0.9, armor: 0.9, stab: 1.0, rightK: 4.5, tagUp: 0.7, cam: { d: 3, h: 1.0 }, hood: { y: 1.45, z: -1.0 },
+    detune: 0, jet: 11, glide: true, wing: true,
+    prop: { z: 2.95, y: 1.1, r: 0.8 },     // propellerns skiva: avstånd framför mitten, navets höjd över marken, radie
+  },
 };
-export const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol'];
+export const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol', 'plan'];
 // fordonets värden inklusive tillbehören (samma kombination ⇒ samma objekt)
 export const typeOf = (spec) => withGear(VTYPES[spec?.kind] || VTYPES.stock, spec?.gear);

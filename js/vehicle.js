@@ -2,9 +2,9 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=15';
-import { VTYPES } from './vtypes.js?v=15';
-import { frontParts, loaderPose } from './gear.js?v=15';
+import { CONF } from './config.js?v=16';
+import { VTYPES } from './vtypes.js?v=16';
+import { frontParts, loaderPose } from './gear.js?v=16';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -259,6 +259,34 @@ export class Vehicle {
         y: cur.y - ry * (1 - damp),
         z: cur.z - rz * (1 - damp) + tz * kR * dt * (tilt > 0.05 ? 1 : 0),
       }, true);
+    }
+
+    // Glidflyg (planet): i luften bär vingarna — det sjunker långsamt i stället för att falla och
+    // farten vrids efter nosen. Lyfter aldrig uppåt, så det går inte att flyga över murarna.
+    this.gliding = false;
+    if (T.glide && grounded === 0 && !off && this.spinT <= 0 && up.y > 0.4) {
+      const lv = this.body.linvel(), hs = Math.hypot(lv.x, lv.z);
+      // vingarna bär bara nära marken (inom 7 m) — annars seglar planet iväg över murarna där vägen lutar nedför
+      this.ray.origin = { x: pos.x, y: pos.y, z: pos.z }; this.ray.dir = { x: 0, y: -1, z: 0 };
+      const low = !!world.castRay(this.ray, 7, true, undefined, undefined, undefined, this.body);
+      if (hs > 12 && lv.y < 0 && low) {
+        this.gliding = true;
+        const sink = -1.8 - 4 * (1 - Math.min(1, hs / 45));           // långsamt plan sjunker fortare
+        const a = clamp((sink - lv.y) * 5, 0, CONF.GRAV * 1.4);
+        if (a > 0) this.applyJ(0, T.mass * a * dt, 0, pos.x, pos.y, pos.z);
+      }
+      // roder: ratten vrider planet runt lodlinjen
+      const cur = this.body.angvel(), want = -inSteer * 0.9;
+      this.body.setAngvel({ x: cur.x, y: cur.y + (want - cur.y) * Math.min(1, 3 * dt), z: cur.z }, true);
+      // fenan: farten vrids mot nosens riktning
+      const fl = Math.hypot(fwd.x, fwd.z), v2 = this.body.linvel();
+      if (fl > 0.3 && hs > 5) {
+        const ang = Math.atan2(fwd.x * v2.z - fwd.z * v2.x, fwd.x * v2.x + fwd.z * v2.z);
+        const th = -Math.sign(ang) * Math.min(Math.abs(ang), 1.4 * dt), c = Math.cos(th), s = Math.sin(th);
+        const nx = v2.x * c - v2.z * s, nz = v2.x * s + v2.z * c;
+        this.J.x += (nx - v2.x) * T.mass; this.J.z += (nz - v2.z) * T.mass;
+        this.body.setLinvel({ x: nx, y: v2.y, z: nz }, true);
+      }
     }
 
     if (grounded >= 2) {

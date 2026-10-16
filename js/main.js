@@ -1,20 +1,20 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=15';
-import { Game } from './game.js?v=15';
-import { HUD } from './hud.js?v=15';
-import { GameAudio } from './audio.js?v=15';
-import { Input } from './input.js?v=15';
-import { SHAPES } from './carmodel.js?v=15';
-import { makeCarView } from './vehicles3d.js?v=15';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=15';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=15';
-import { logoCanvas } from './world.js?v=15';
-import { BotBrain } from './ai.js?v=15';
-import { connectRoom, NetHost, NetClient } from './net.js?v=15';
-import { TRACKS } from './track.js?v=15';
-import { SOUND_OPTS } from './sounds.js?v=15';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=15';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=16';
+import { Game } from './game.js?v=16';
+import { HUD } from './hud.js?v=16';
+import { GameAudio } from './audio.js?v=16';
+import { Input } from './input.js?v=16';
+import { SHAPES } from './carmodel.js?v=16';
+import { makeCarView } from './vehicles3d.js?v=16';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=16';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=16';
+import { logoCanvas } from './world.js?v=16';
+import { BotBrain } from './ai.js?v=16';
+import { connectRoom, NetHost, NetClient } from './net.js?v=16';
+import { TRACKS } from './track.js?v=16';
+import { SOUND_OPTS } from './sounds.js?v=16';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=16';
 
 const PUBLIC = 'PUBLIK';
 
@@ -191,7 +191,7 @@ async function boot() {
     showcase.group.position.set(f.x, f.y - showcase.T.modelY, f.z);
     showcase.group.quaternion.copy(game.track.quatAt(30));
     showcase.rest();
-    showcase.orbitR = 7.2 * Math.max(1, showcase.T.half.z / 2.42) * ({ bigfoot: 1.3, traktor: 1.25, glass: 1.1, rullstol: 0.55, elrullstol: 0.6 }[showcase.T.id] || 1);
+    showcase.orbitR = 7.2 * Math.max(1, showcase.T.half.z / 2.42) * ({ bigfoot: 1.3, traktor: 1.25, glass: 1.1, rullstol: 0.55, elrullstol: 0.6, plan: 1.35 }[showcase.T.id] || 1);
     game.scene.add(showcase.group);
     game.showcase = showcase;
   };
@@ -211,7 +211,7 @@ async function boot() {
     $('gbudtxt').textContent = `${BUDGET - used} kr kvar`;
     $('gslots').innerHTML = SLOTS.map(sl => {
       const cur = mine.find(x => GEAR[x].slot === sl.id);
-      if (blockedSlot(spec.kind, sl.id)) return `<div class="gslot"><label>${sl.namn}</label><div class="gfull">🚜 Frontlastaren sitter redan här — den knuffar undan allt framför traktorn</div></div>`;
+      if (blockedSlot(spec.kind, sl.id)) return `<div class="gslot"><label>${sl.namn}</label><div class="gfull">${spec.kind === 'plan' ? '🌀 Propellern sitter redan här — den skär i allt framför planet' : '🚜 Frontlastaren sitter redan här — den knuffar undan allt framför traktorn'}</div></div>`;
       const btns = GEAR_IDS.filter(id => GEAR[id].slot === sl.id).map(id => {
         const it = GEAR[id], on = mine.includes(id), afford = on || used - (cur ? GEAR[cur].pris : 0) + it.pris <= BUDGET;
         return `<button data-gear="${id}" class="${on ? 'on' : ''}${afford ? '' : ' poor'}"><span class="gi">${it.ikon}</span>${it.namn}<em>${it.pris} kr</em></button>`;
@@ -364,7 +364,7 @@ async function boot() {
   bind('lfart', 'oninput', () => { lab.v = +$('lfart').value; lab.auto = false; });
   game.labTick = (dt) => {
     if (!lab.open) return;
-    if (lab.auto) { lab.v = Math.min(110, lab.v + dt * ({ bus: 3.5, traktor: 3, bigfoot: 5, glass: 5.5, formel: 10, rullstol: 12, elrullstol: 10 }[lab.kind] || 8)); if (lab.v >= 110) lab.auto = false; $('lfart').value = Math.round(lab.v); }
+    if (lab.auto) { lab.v = Math.min(110, lab.v + dt * ({ bus: 3.5, traktor: 3, bigfoot: 5, glass: 5.5, formel: 10, rullstol: 12, elrullstol: 10, plan: 7 }[lab.kind] || 8)); if (lab.v >= 110) lab.auto = false; $('lfart').value = Math.round(lab.v); }
     $('lfartv').textContent = Math.round(lab.v * 3.6) + ' km/h';
     audio.preview(lab.kind, lab.v, lab.gas || lab.auto ? 1 : 0.15, lab.on);
     audio.scrape(lab.scrW ? 1 : 0, lab.scrC ? 1 : 0, lab.scrW || lab.scrC ? Math.max(15, lab.v) : 0);

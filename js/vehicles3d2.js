@@ -2,8 +2,8 @@
 // group, model, wheels[{holder, spin, base}], setWheel, rest, dent, uvNear, livery, resetDamage, dispose, T.
 // Modellens y = 0 är marken, fronten åt -z.
 import * as THREE from 'three';
-import { VTYPES } from './vtypes.js?v=15';
-import { LOADER } from './gear.js?v=15';
+import { VTYPES } from './vtypes.js?v=16';
+import { LOADER } from './gear.js?v=16';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const mkTex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
@@ -539,4 +539,85 @@ export class ElrullstolView extends SimpleView {
     if (k === 2) for (const g of this.mids) g.rotation.x = -spin * (this.T.wheelR / 0.17);
   }
   setThrust(k) { for (const f of this.flames) updFlame(f, k); }
+}
+
+// ---------------- Propellerplanet ----------------
+export class PlanView extends SimpleView {
+  constructor(spec) {
+    super(VTYPES.plan, spec);
+    const c0 = spec.colors?.[0] || '#e8242f', c1 = spec.colors?.[1] || '#16161a';
+    const white = this.phys({ color: 0xf4f4f2, roughness: 0.35, clearcoat: 0.8 });
+    const paint = this.phys({ color: c0, roughness: 0.3, clearcoat: 0.9 });
+    const paint2 = this.phys({ color: c1, roughness: 0.35, clearcoat: 0.7 });
+    const glassM = this.std({ color: 0x1b2234, roughness: 0.1, metalness: 0.5 });
+    const dark = this.std({ color: 0x24262c, roughness: 0.5, metalness: 0.5 });
+    const chrome = this.std({ color: 0xdfe3ea, roughness: 0.18, metalness: 1 });
+    const black = this.std({ color: 0x141418, roughness: 0.7 });
+    // flygkroppen: sidoprofil, smalnar av mot stjärten
+    const body = profile([[-2.55, 0.62], [-2.55, 1.32], [-1.55, 1.44], [-1.05, 1.72], [0.45, 1.72], [2.85, 1.47], [2.85, 1.22], [0.6, 0.5], [-1.6, 0.46]], 1.1, 0.06);
+    const a = body.attributes.position;
+    for (let i = 0; i < a.count; i++) { const z = a.getZ(i), t = clamp((z - 0.4) / 2.45, 0, 1); a.setX(i, a.getX(i) * (1 - 0.65 * t)); }
+    body.computeVertexNormals();
+    this.add(body, white);
+    // rutor: vindrutan och sidorutorna
+    const ws = this.box(0.98, 0.04, 0.6, glassM, 0, 1.585, -1.3); ws.rotation.x = -0.53;
+    for (const s of [-1, 1]) this.box(0.03, 0.34, 1.35, glassM, s * 0.56, 1.46, -0.45);
+    // ränder + registrering på sidorna
+    const reg = 'SE-K' + String(spec.number ?? 0).padStart(2, '0');
+    for (const s of [-1, 1]) {
+      const c = cv(512, 144), g = c.getContext('2d');
+      g.fillStyle = c0; g.fillRect(0, 50, 512, 20); g.fillStyle = c1; g.fillRect(0, 76, 512, 9);
+      g.fillStyle = c1; g.font = 'italic 900 44px "Exo 2", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(reg, 256, 114);
+      const d = this.decal(c, 1.9, 0.53, s * 0.552, 0.98, -0.5, s > 0 ? '+x' : '-x');
+      d.renderOrder = 2;
+    }
+    // motorkåpan + spinnaren + propellern
+    this.add(new THREE.CylinderGeometry(0.5, 0.55, 0.35, 20).rotateX(Math.PI / 2), paint, 0, 1.0, -2.68);
+    this.add(new THREE.ConeGeometry(0.17, 0.32, 16).rotateX(-Math.PI / 2), paint2, 0, 1.1, -3.0);
+    const prop = this.prop = new THREE.Group(); prop.position.set(0, 1.1, -2.95); this.model.add(prop);
+    for (const s of [-1, 1]) { const bl = this.box(0.13, 0.78, 0.035, black, 0, s * 0.42, 0, prop); bl.rotation.y = s * 0.35; this.box(0.13, 0.08, 0.04, this.std({ color: 0xffd21f }), 0, s * 0.76, 0, prop); }
+    const blurM = new THREE.MeshBasicMaterial({ color: 0x9aa0aa, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide });
+    this.mats.push(blurM);
+    this.blur = this.add(new THREE.CircleGeometry(0.8, 28), blurM, 0, 1.1, -2.96); this.blur.castShadow = false;
+    this.propA = 0; this.lastT = 0;
+    // högvingen med stöttor och färgade vingspetsar
+    this.box(6.2, 0.1, 1.15, white, 0, 1.84, -0.55);
+    for (const s of [-1, 1]) {
+      this.box(0.4, 0.105, 1.16, paint, s * 2.92, 1.84, -0.55);
+      this.box(2.0, 0.106, 0.14, paint, s * 1.6, 1.845, -0.95);
+      this.tube(0.035, [s * 0.5, 0.72, -0.45], [s * 1.75, 1.79, -0.5], white);
+    }
+    // stjärten: höjdroder + fena
+    this.box(2.4, 0.06, 0.7, white, 0, 1.36, 2.55);
+    for (const s of [-1, 1]) this.box(0.35, 0.065, 0.7, paint, s * 1.05, 1.36, 2.55);
+    const fin = new THREE.Shape(); fin.moveTo(2.0, 1.45); fin.lineTo(2.9, 1.45); fin.lineTo(2.95, 2.4); fin.lineTo(2.55, 2.4); fin.closePath();
+    const fg = new THREE.ExtrudeGeometry(fin, { depth: 0.06, bevelEnabled: false }).rotateY(-Math.PI / 2).translate(0.03, 0, 0);
+    this.add(fg, paint);
+    // landningsställ: fjäderben + hjulkåpor på huvudhjulen, nosstället
+    const tire = this.std({ color: 0x1a1b1f, roughness: 0.85 });
+    for (const w of this.T.wheels) {
+      if (w.front) {
+        // nosstället: ett hjul i mitten (fysiken har två tätt ihop)
+        if (w.x < 0) { this.wheels.push({ holder: new THREE.Group(), spin: new THREE.Group(), base: w, hubY: 0, spinK: 1 }); continue; }
+        const o = this.wheel(w, 0.24, 0.12, [tire, tire, tire], chrome, 0.45);
+        o.spin.position.x = -w.x;
+        this.tube(0.03, [-w.x, 0.75, 0], [-w.x, 0, 0], chrome, o.holder);
+        continue;
+      }
+      const o = this.wheel(w, 0.3, 0.16, [tire, tire, tire], chrome, 0.45);
+      const pant = this.add(new THREE.SphereGeometry(1, 16, 12), paint, 0, 0.02, -0.05, o.holder); pant.scale.set(0.13, 0.26, 0.48);
+      this.tube(0.04, [Math.sign(w.x) * 0.45, 0.68, w.z], [w.x * 0.95, 0.3, w.z], dark);
+    }
+    // nummer på fenan
+    const nc = numCanvas(spec.number, '#ffffff');
+    for (const s of [-1, 1]) this.decal(nc, 0.42, 0.42, s * 0.04, 1.95, 2.55, s > 0 ? '+x' : '-x');
+  }
+  // propellern: snurrar alltid, fortare med gas; på fart blir den en suddig skiva
+  setThrust(k, time) {
+    const dt = Math.min(0.1, Math.max(0, time - this.lastT)); this.lastT = time;
+    this.propA += dt * (28 + 70 * k);
+    this.prop.rotation.z = this.propA;
+    this.blur.material.opacity = 0.12 + 0.3 * k;
+  }
 }

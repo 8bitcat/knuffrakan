@@ -25,7 +25,7 @@ export const GEAR = {
 export const GEAR_IDS = Object.keys(GEAR);
 
 // platser som fordonet redan har fyllt (traktorns frontlastare sitter fram)
-export const blockedSlot = (kind, slot) => kind === 'traktor' && slot === 'front';
+export const blockedSlot = (kind, slot) => (kind === 'traktor' || kind === 'plan') && slot === 'front';
 
 // giltig lista: kända saker, en per plats, inom budget (i den ordning de valdes)
 export function cleanGear(list, kind) {
@@ -115,6 +115,8 @@ MOUNT.rullstol = { fz: 0.8, w: 0.5, bump: 0.25, roof: 1.32, rear: 1.0, deck: 1.1
   plow: [0.05, 0.55], plowL: 0.6, wedge: [0.05, 0.38], wedgeL: 0.9 };
 MOUNT.elrullstol = { fz: 0.9, w: 0.6, bump: 0.3, roof: 1.55, rear: 1.0, deck: 1.3, sideY: 0.36, sideL: 0.9, cab: [-0.35, 0.35], belt: 0.8,
   plow: [0.05, 0.6], plowL: 0.7, wedge: [0.05, 0.4], wedgeL: 1.0 };
+MOUNT.plan = { fz: 2.95, w: 0.6, bump: 0.6, roof: 1.72, rear: 2.9, deck: 1.6, sideY: 0.85, sideL: 2.0, cab: [-1.4, 0.2], belt: 1.25,
+  plow: [0.1, 0.9], plowL: 0.9, wedge: [0.1, 0.6], wedgeL: 1.3 };
 MOUNT.bus.roofCage = true;
 export const mountOf = (T) => MOUNT[T.id] || MOUNT.stock;
 
@@ -135,6 +137,8 @@ export function frontParts(T) {
   if (g.includes('ram')) out.push({ id: 'ram', hx: 0.16, hy: 0.16, hz: 0.55, x: 0, y: y0 + M.bump, z: -(M.fz + 0.45), rx: 0, ry: 0, fr: 0.3 });
   // traktorns frontlastare: skopan längst fram (0,24–1,0 m över marken när den är nere)
   if (T.loader) { const p = loaderPose(T, 0); out.push({ id: 'skopa', hx: 1.18, hy: 0.38, hz: 0.24, x: 0, y: p.y, z: p.z, rx: p.rx, ry: 0, fr: 0.15 }); }
+  // planets högvinge: bara mot andra bilar (stockcars kör under, höga fordon slår i)
+  if (T.wing) out.push({ id: 'planvinge', hx: 3.1, hy: 0.06, hz: 0.58, x: 0, y: y0 + 1.84, z: -0.55, rx: 0, ry: 0, fr: 0.1 });
   return out;
 }
 

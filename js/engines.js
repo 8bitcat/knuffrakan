@@ -15,6 +15,7 @@ const BOX = {
   formel: { gears: [22, 38, 54, 70, 88, 120], rMin: 4500, rMax: 12500 },
   traktor: { gears: [6, 11, 17, 24, 33, 45, 120], rMin: 700, rMax: 2300 },
   glass: { gears: [11, 22, 38, 58, 120], rMin: 900, rMax: 5500 },
+  plan: { gears: [120], rMin: 1100, rMax: 2700 },
 };
 // grupper: tunga dieslar, stora V8:or, skrikiga racermotorer
 const DIESEL = new Set(['bus', 'traktor']), BIG = new Set(['bigfoot', 'glass']), RACE = new Set(['stock', 'formel']);

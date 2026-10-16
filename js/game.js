@@ -1,19 +1,19 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=15';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=15';
-import { buildWorld, gridSlots } from './world.js?v=15';
-import { createScene, ChaseCam } from './scene.js?v=15';
-import { makeCarView } from './vehicles3d.js?v=15';
-import { typeOf } from './vtypes.js?v=15';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=15';
-import { makeLivery, randomSpec } from './livery.js?v=15';
-import { Vehicle, CP } from './vehicle.js?v=15';
-import { BotBrain } from './ai.js?v=15';
-import { Race } from './race.js?v=15';
-import { FX, Trails } from './fx.js?v=15';
-import { NameTag, SpeedPlate } from './tags.js?v=15';
-import { RemoteVeh, carInfo } from './net.js?v=15';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=16';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=16';
+import { buildWorld, gridSlots } from './world.js?v=16';
+import { createScene, ChaseCam } from './scene.js?v=16';
+import { makeCarView } from './vehicles3d.js?v=16';
+import { typeOf } from './vtypes.js?v=16';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=16';
+import { makeLivery, randomSpec } from './livery.js?v=16';
+import { Vehicle, CP } from './vehicle.js?v=16';
+import { BotBrain } from './ai.js?v=16';
+import { Race } from './race.js?v=16';
+import { FX, Trails } from './fx.js?v=16';
+import { NameTag, SpeedPlate } from './tags.js?v=16';
+import { RemoteVeh, carInfo } from './net.js?v=16';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -335,7 +335,7 @@ export class Game {
       const spec = randomSpec(1000 + k * 17 + Math.floor(Math.random() * 1e5), name);
       spec.title = TITLES[Math.floor(Math.random() * TITLES.length)];
       const r = Math.random();
-      spec.kind = r < 0.1 ? 'bus' : r < 0.2 ? 'bigfoot' : r < 0.27 ? 'formel' : r < 0.33 ? 'traktor' : r < 0.39 ? 'glass' : r < 0.43 ? 'rullstol' : r < 0.47 ? 'elrullstol' : 'stock';
+      spec.kind = r < 0.1 ? 'bus' : r < 0.2 ? 'bigfoot' : r < 0.27 ? 'formel' : r < 0.33 ? 'traktor' : r < 0.39 ? 'glass' : r < 0.43 ? 'rullstol' : r < 0.47 ? 'elrullstol' : r < 0.51 ? 'plan' : 'stock';
       if (spec.kind === 'bus' && Math.random() < 0.7) spec.colors = ['#ffc21a', '#16161a', '#ffffff'];
       spec.gear = randomGear(Math.random, spec.kind);
       this.addCar({ name, isPlayer: false, spec });
@@ -419,6 +419,7 @@ export class Game {
     this.handleImpacts();
     this.crush(dt);
     this.jetBurn(dt);
+    this.propSlash(dt);
     this.race.update(dt);
     for (const car of this.cars) this.carState(car, dt);
   }
@@ -561,7 +562,7 @@ export class Game {
   jetBurn(dt) {
     for (const A of this.cars) {
       const a = A.veh, T = a.T;
-      if (!T.jet || A.wrecked || A.hidden || A.ghostT > 0) continue;
+      if (!T.jetX || A.wrecked || A.hidden || A.ghostT > 0) continue;
       const thr = a.input.throttle || 0;
       if (thr < 0.1) continue;
       const len = 0.18 + 2.1 * thr, heat = Math.max(0, (thr - 0.4) / 0.6);   // bränner först över halv gas
@@ -581,6 +582,45 @@ export class Game {
           B.burnMsgT = this.time;
           this.notify(B, `🔥 Du kör i ${A.name}s jetlåga — akta!`, 'bad');
           this.notify(A, `🔥 ${B.name} grillas i din jetlåga!`, 'good');
+        }
+        if (B.health <= 0) this.wreck(B);
+      }
+    }
+  }
+
+  // Planets propeller skär i det som kommer framför nosen: skada så länge den är i skivan + en knuff
+  // och gnistor vid första träffen. Propellern snurrar alltid (fortare med gas).
+  propSlash(dt) {
+    for (const A of this.cars) {
+      const a = A.veh, P = a.T.prop;
+      if (!P || A.wrecked || A.hidden || A.ghostT > 0) continue;
+      const spin = 0.35 + 0.65 * (a.input.throttle || 0), hubY = a.T.modelY + P.y;
+      for (const B of this.cars) {
+        if (B === A || B.wrecked || B.hidden || B.ghostT > 0) continue;
+        const b = B.veh;
+        const rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
+        const ahead = rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z, lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;
+        const ly = rx * a.up.x + ry * a.up.y + rz * a.up.z;
+        const ext = Math.max(b.T.half.z, b.T.half.x);
+        if (ahead - ext > P.z + 0.4 || ahead + ext < P.z - 0.3) continue;            // skivan ligger inte i B
+        if (Math.abs(lx) > P.r + b.T.half.x * 0.6) continue;
+        if (ly - b.T.half.y > hubY + P.r || ly + b.T.half.y + b.T.colY < hubY - P.r) continue;
+        B.health -= 28 * spin * dt / b.T.armor;
+        B.lastDmgT = this.simT; B.lastHitBy = A; B.lastHitT = this.time;
+        if (!(B.chopCD > this.time)) {
+          B.chopCD = this.time + 0.35;
+          const m = b.T.mass, J = m * 1.6 * spin * Math.min(1.5, a.T.mass / m);
+          const sd = Math.sign(lx || 1);
+          b.applyJ(a.fwd.x * J + a.right.x * sd * J * 0.6, m * 0.6, a.fwd.z * J + a.right.z * sd * J * 0.6, b.pos.x, b.pos.y, b.pos.z);
+          b.spinT = Math.max(b.spinT, 0.7);
+          const hp = _v2.set(a.pos.x + a.fwd.x * P.z, a.pos.y + a.up.y * (hubY - 0.2), a.pos.z + a.fwd.z * P.z);
+          this.fx.tackle(hp, b.vel, _v3.set(a.fwd.x, 0, a.fwd.z), 1.2);
+          if (A === this.me || B === this.me) this.audio?.chop?.(1);
+          if (!B.chopMsgT || this.time - B.chopMsgT > 3) {
+            B.chopMsgT = this.time;
+            this.notify(A, `🌀 Propellern skär i ${B.name}!`, 'good');
+            this.notify(B, `🌀 ${A.name}s propeller skär i dig!`, 'bad');
+          }
         }
         if (B.health <= 0) this.wreck(B);
       }

@@ -1,12 +1,12 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice, JetVoice } from './engines.js?v=15';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=15';
+import { EngineVoice, JetVoice } from './engines.js?v=16';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=16';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol'];
+const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol', 'plan'];
 // Glassbilens melodi: egen (inte någon glassbilsfirmas), speldosa i C-dur. [midi, åttondelar], 0 = paus
 const JINGLE = [
   [76, 1], [79, 1], [84, 1], [79, 1], [81, 1], [79, 1], [76, 2],
@@ -269,6 +269,12 @@ export class GameAudio {
     else this.noise(1.2, 300, 0.8 * near);
   }
   rev() { if (this.buf.rev) this.play(this.buf.rev, 0.5); }
+  // propellern skär: några snabba hack
+  chop(k = 1) {
+    if (!this.ctx) return;
+    for (let i = 0; i < 4; i++) this.noise(0.035, 2200, 0.5 * k * (1 - i * 0.18), i * 0.045, 'highpass');
+    this.bump?.(0.5 * k);
+  }
   noise(dur, f0, vol, delay = 0, type = 'lowpass') {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime + delay, n = Math.floor(ctx.sampleRate * dur);

@@ -1,22 +1,22 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=20';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=20';
-import { themeOf } from './themes.js?v=20';
-import { LAVA_IN } from './world.js?v=20';
-import { buildWorld, gridSlots } from './world.js?v=20';
-import { createScene, ChaseCam } from './scene.js?v=20';
-import { makeCarView } from './vehicles3d.js?v=20';
-import { typeOf } from './vtypes.js?v=20';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=20';
-import { makeLivery, randomSpec } from './livery.js?v=20';
-import { Vehicle, CP } from './vehicle.js?v=20';
-import { BotBrain } from './ai.js?v=20';
-import { Race } from './race.js?v=20';
-import { FX, Trails } from './fx.js?v=20';
-import { NameTag, SpeedPlate } from './tags.js?v=20';
-import { RemoteVeh, carInfo } from './net.js?v=20';
-import { Weapons } from './weapons.js?v=20';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=21';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=21';
+import { themeOf } from './themes.js?v=21';
+import { LAVA_IN } from './world.js?v=21';
+import { buildWorld, gridSlots } from './world.js?v=21';
+import { createScene, ChaseCam } from './scene.js?v=21';
+import { makeCarView } from './vehicles3d.js?v=21';
+import { typeOf } from './vtypes.js?v=21';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=21';
+import { makeLivery, randomSpec } from './livery.js?v=21';
+import { Vehicle, CP } from './vehicle.js?v=21';
+import { BotBrain } from './ai.js?v=21';
+import { Race } from './race.js?v=21';
+import { FX, Trails } from './fx.js?v=21';
+import { NameTag, SpeedPlate } from './tags.js?v=21';
+import { RemoteVeh, carInfo } from './net.js?v=21';
+import { Weapons } from './weapons.js?v=21';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -836,9 +836,11 @@ export class Game {
     if (car.ghostT > 0) { car.ghostT -= dt; if (car.ghostT <= 0) v.setGhost(false); }
     // Väggvakt (i stället för CCD): har bilen ändå hamnat genom muren puttas den tillbaka
     // innanför och sidofarten studsar — men inte om den flyger högt över muren
-    const wallOut = Math.abs(car.trk.lat) - T.halfW;
+    // mätt längs den doserade vägbanan (muren står vinkelrätt mot den — i en lutande kurva lutar den utåt)
+    const gi = car.trk.i, ox = v.pos.x - T.px[gi], oy = v.pos.y - T.py[gi], oz = v.pos.z - T.pz[gi];
+    const wallOut = Math.abs(ox * T.rx[gi] + oy * T.ry[gi] + oz * T.rz[gi]) - T.halfW;
     const inGap = !!(car.trk.f & F_GAP);
-    const dyRoad = v.pos.y - car.trk.y, inTunnel = !!(car.trk.f & F_TUNNEL);
+    const dyRoad = ox * T.ux[gi] + oy * T.uy[gi] + oz * T.uz[gi], inTunnel = !!(car.trk.f & F_TUNNEL);
     const nearRoad = dyRoad > -2.5 && dyRoad < (inTunnel ? 9.5 : 12);
     if (!car.wrecked && !inGap && wallOut > 0.9 && wallOut < 10 && nearRoad) {
       const sd = Math.sign(car.trk.lat), i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];

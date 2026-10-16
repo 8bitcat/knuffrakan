@@ -1,6 +1,6 @@
-import { CONF } from './config.js?v=20';
-import { GEAR } from './gear.js?v=20';
-import { WEAPONS, WIDS } from './weapons.js?v=20';
+import { CONF } from './config.js?v=21';
+import { GEAR } from './gear.js?v=21';
+import { WEAPONS, WIDS } from './weapons.js?v=21';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };

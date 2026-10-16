@@ -3,7 +3,7 @@
 // efter ögonblicksbilderna: varje bil har vapen + "skjuter" i sin rad, projektilerna ligger sist i
 // bilden, och lådor/explosioner/chockvågor kommer som händelser.
 import * as THREE from 'three';
-import { F_GAP, F_RAMP, F_LAND } from './track.js?v=20';
+import { F_GAP, F_RAMP, F_LAND } from './track.js?v=21';
 
 export const WEAPONS = {
   raket: { namn: 'Raketer', ikon: '🚀', ammo: 3 },

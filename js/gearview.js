@@ -1,8 +1,8 @@
 // Tillbehörens utseende på bilarna. Mått och lägen ur MOUNT/frontParts i gear.js —
 // samma som fysiken, så det man ser är det som knuffas.
 import * as THREE from 'three';
-import { cleanGear, frontParts, MOUNT } from './gear.js?v=20';
-import { VTYPES } from './vtypes.js?v=20';
+import { cleanGear, frontParts, MOUNT } from './gear.js?v=21';
+import { VTYPES } from './vtypes.js?v=21';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const tex = (c, rx = 1, ry = 1) => {

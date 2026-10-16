@@ -2,7 +2,7 @@
 // hopp med glipa, tunnlar genom berg, en dalbro och en bro där banan korsar sig själv.
 // Allt (väg, murar, terräng, AI, placeringar) utgår från samma sampling var 4:e meter.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=20';
+import { CONF } from './config.js?v=21';
 
 // ---------- Banorna ----------
 // SNÖBERGET: start/mål vid (0,0), körriktning +x.
@@ -61,6 +61,12 @@ const CTRL_STAD = [
   [-1400, 150], [-1100, 0], [-600, 0],
 ];
 
+// ISBANAN: en doserad oval — långa raksträckor, två snabba lutande kurvor
+const CTRL_IS = [
+  [0, 0], [700, 0], [1300, 0], [1700, 150], [1850, 450], [1700, 750], [1300, 900], [700, 900], [0, 900],
+  [-600, 900], [-1000, 750], [-1150, 450], [-1000, 150], [-600, 0],
+];
+
 export const TRACKS = [
   {
     id: 'snoberget', namn: 'SNÖBERGET', besk: 'Klassikern — 10,8 km med långa backar och krön', laps: 1,
@@ -111,6 +117,11 @@ export const TRACKS = [
       { type: 'tunnel', at: 0.24, len: 320, namn: 'UNDER STAN' },
       { type: 'jump', at: 0.64 },
     ],
+  },
+  {
+    id: 'is', namn: 'ISBANAN', besk: 'Hal is och doserade kurvor under norrskenet — 3 varv', laps: 3, theme: 'is',
+    grip: 0.72, bank: { k: 150, max: 0.32 },
+    ctrl: CTRL_IS, hills: [2, 1, 0.5], crests: [], features: [],
   },
 ];
 export const trackDef = (id) => TRACKS.find(t => t.id === id) || TRACKS[0];

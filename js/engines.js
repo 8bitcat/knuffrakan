@@ -143,3 +143,63 @@ export class EngineVoice {
   }
 }
 export { pick };
+
+// Jetmotor (syntes): turbinvin som stiger med varvet, vrål av luft, och efterbrännkammarens muller vid full gas.
+// Varvet (n1) går upp långsamt som en riktig turbin. Samma gränssnitt som EngineVoice.
+export class JetVoice {
+  constructor(audio, kind, set, out) {
+    const ctx = this.ctx = audio.ctx;
+    this.audio = audio; this.kind = kind; this.n1 = 0.2; this.prevThr = 0;
+    if (!audio.noiseBuf) {
+      const b = audio.noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.out = ctx.createGain(); this.out.gain.value = 0;
+    this.pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (this.pan) { this.out.connect(this.pan); this.pan.connect(out); } else this.out.connect(out);
+    const noise = (type, f, q) => {
+      const s = ctx.createBufferSource(); s.buffer = audio.noiseBuf; s.loop = true;
+      const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+      const g = ctx.createGain(); g.gain.value = 0;
+      s.connect(fl); fl.connect(g); g.connect(this.out); s.start(0, Math.random() * 2);
+      return { s, f: fl, g };
+    };
+    this.roar = noise('bandpass', 600, 0.6);
+    this.rumble = noise('lowpass', 150, 0.7);
+    const osc = (type) => {
+      const o = ctx.createOscillator(); o.type = type;
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 5;
+      const g = ctx.createGain(); g.gain.value = 0;
+      o.connect(f); f.connect(g); g.connect(this.out); o.start();
+      return { o, f, g };
+    };
+    this.whine = osc('sawtooth'); this.whine2 = osc('sine');
+    this.setSet(set);
+  }
+  setSet(set) { this.pitch = set?.pitch || 1; this.twin = !!set?.twin; }
+  set(v, throttle, vol, pan = 0, dop = 1) {
+    const t = this.ctx.currentTime, nyq = this.ctx.sampleRate * 0.45;
+    const target = 0.22 + 0.78 * throttle;
+    this.n1 += (target - this.n1) * (target > this.n1 ? 0.03 : 0.045);
+    const n = this.n1, sp = Math.min(1, v / 90);
+    const wf = Math.min(nyq, (900 + 4300 * n) * this.pitch * dop);
+    this.whine.o.frequency.setTargetAtTime(wf, t, 0.05); this.whine.f.frequency.setTargetAtTime(wf, t, 0.05);
+    const wf2 = Math.min(nyq, wf * (this.twin ? 1.012 : 2.01));
+    this.whine2.o.frequency.setTargetAtTime(wf2, t, 0.05); this.whine2.f.frequency.setTargetAtTime(wf2, t, 0.05);
+    this.whine.g.gain.setTargetAtTime(0.05 + 0.07 * n, t, 0.08);
+    this.whine2.g.gain.setTargetAtTime((this.twin ? 0.05 : 0.025) + 0.03 * n, t, 0.08);
+    this.roar.f.frequency.setTargetAtTime((350 + 1500 * n + 500 * sp) * this.pitch, t, 0.08);
+    this.roar.g.gain.setTargetAtTime(0.25 + 0.6 * n, t, 0.08);
+    const burner = throttle > 0.7 ? 1 : 0;
+    this.rumble.g.gain.setTargetAtTime((0.12 + 0.75 * burner) * n, t, 0.12);
+    this.out.gain.setTargetAtTime(vol, t, 0.05);
+    if (this.pan) this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.05);
+    // efterbrännkammaren tänds: en duns (bara egna fordonet)
+    if (vol > 0.3 && throttle > 0.8 && this.prevThr < 0.3) this.audio.noise(0.35, 240, 0.6 * vol);
+    this.prevThr = throttle;
+  }
+  stop() {
+    this.out.gain.value = 0;
+    for (const x of [this.roar.s, this.rumble.s, this.whine.o, this.whine2.o]) { try { x.stop(); } catch { /* ok */ } }
+  }
+}

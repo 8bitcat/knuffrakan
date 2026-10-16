@@ -1,7 +1,7 @@
 // Fordonstyper: vanlig stockcar, skolbussen och bigfooten.
 // Allt fysikaliskt per typ: mått, vikt, hjul, fjädring, grepp, styrning — plus kamera och tålighet.
 // Kroppens origo = tyngdpunkten. modelY = markens höjd i kroppens ram när bilen står still.
-import { withGear } from './gear.js?v=14';
+import { withGear } from './gear.js?v=15';
 
 export const VTYPES = {
   stock: {
@@ -79,7 +79,34 @@ export const VTYPES = {
     modelY: -1.0, sideH: 0.8, longH: 1.0, armor: 1.3, stab: 1.15, rightK: 5, tagUp: 1.4, cam: { d: 3, h: 1.4 }, hood: { y: 1.45, z: -2.2 },
     detune: -0.1,
   },
+  // Jetrullstolen: liten och lätt, en jetmotor bakom ryggstödet (jet = dragkraft i m/s², knuffar kroppen —
+  // även i luften). Snabbast från start, men skör och slängs runt av allt.
+  rullstol: {
+    id: 'rullstol', namn: 'Jetrullstol',
+    mass: 500, half: { x: 0.5, y: 0.5, z: 0.75 }, colY: 0.1, inertia: { x: 600, y: 500, z: 450 },
+    rayLen: 0.68, susK: 14000, susC: 1500, bump: 0.2, fsMax: 60000,
+    muLat: 2.0, muLong: 1.9, rearGrip: 0.95, driveMax: 2000, accelK: 1, brake: 9000, steerMax: 0.2, wb: 0.8, downforce: 0.9,
+    wheelR: 0.3, wheels: [
+      { x: -0.3, z: -0.55, front: true }, { x: 0.3, z: -0.55, front: true },
+      { x: -0.4, z: 0.25, front: false }, { x: 0.4, z: 0.25, front: false },
+    ],
+    modelY: -0.55, sideH: 0.42, longH: 0.55, armor: 0.7, stab: 1.6, rightK: 4, tagUp: -0.6, cam: { d: -1.6, h: -0.6 }, hood: { y: 0.9, z: 0.0 },
+    detune: 0.3, jet: 15, jetZ: 1.07, jetX: [0],          // munstyckets z och x i kroppens ram (lågan bakåt)
+  },
+  // Jet-elrullstolen: tyngre, två jetmotorer, stadigare
+  elrullstol: {
+    id: 'elrullstol', namn: 'Jet-elrullstol',
+    mass: 900, half: { x: 0.6, y: 0.62, z: 0.85 }, colY: 0.09, inertia: { x: 900, y: 800, z: 850 },
+    rayLen: 0.78, susK: 24000, susC: 2600, bump: 0.2, fsMax: 100000,
+    muLat: 1.9, muLong: 1.8, rearGrip: 0.95, driveMax: 3600, accelK: 1, brake: 16000, steerMax: 0.24, wb: 1.0, downforce: 1.0,
+    wheelR: 0.17, wheels: [
+      { x: -0.28, z: -0.5, front: true }, { x: 0.28, z: -0.5, front: true },
+      { x: -0.28, z: 0.5, front: false }, { x: 0.28, z: 0.5, front: false },
+    ],
+    modelY: -0.65, sideH: 0.5, longH: 0.65, armor: 1.2, stab: 1.0, rightK: 4.5, tagUp: -0.4, cam: { d: -1.2, h: -0.4 }, hood: { y: 1.1, z: -0.1 },
+    detune: 0.1, jet: 12, jetZ: 0.95, jetX: [-0.42, 0.42],
+  },
 };
-export const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass'];
+export const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol'];
 // fordonets värden inklusive tillbehören (samma kombination ⇒ samma objekt)
 export const typeOf = (spec) => withGear(VTYPES[spec?.kind] || VTYPES.stock, spec?.gear);

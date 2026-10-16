@@ -2,8 +2,8 @@
 // group, model, wheels[{holder, spin, base}], setWheel, rest, dent, uvNear, livery, resetDamage, dispose, T.
 // Modellens y = 0 är marken, fronten åt -z.
 import * as THREE from 'three';
-import { VTYPES } from './vtypes.js?v=14';
-import { LOADER } from './gear.js?v=14';
+import { VTYPES } from './vtypes.js?v=15';
+import { LOADER } from './gear.js?v=15';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const mkTex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
@@ -357,4 +357,186 @@ export class GlassView extends SimpleView {
       restore: () => {}, dispose: () => {},
     };
   }
+}
+
+// ---------------- Jetmotorer med efterbrännkammare (rullstolarna) ----------------
+let FL = null;
+function flameKit() {
+  if (FL) return FL;
+  const add = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+  const gc = cv(128, 128), g = gc.getContext('2d'), rg = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  rg.addColorStop(0, 'rgba(255,240,200,1)'); rg.addColorStop(0.35, 'rgba(255,150,40,0.55)'); rg.addColorStop(1, 'rgba(255,80,0,0)');
+  g.fillStyle = rg; g.fillRect(0, 0, 128, 128);
+  // delas av alla — läggs aldrig i vyns städlistor
+  FL = {
+    outer: add(0xff6a12, 0.7), core: add(0xfff0b0, 0.9), blue: add(0x4f9dff, 0.65), diamond: add(0x9fd0ff, 0.45),
+    glow: new THREE.SpriteMaterial({ map: mkTex(gc), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }),
+    cone: new THREE.ConeGeometry(1, 1, 18, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.5),   // bas vid z 0, spets bakåt
+    dia: new THREE.SphereGeometry(1, 10, 8),
+  };
+  return FL;
+}
+const numCanvas = (nr, color) => {
+  const c = cv(128, 128), g = c.getContext('2d');
+  g.fillStyle = color; g.font = 'italic 900 96px "Exo 2", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(String(nr ?? ''), 64, 70);
+  return c;
+};
+
+// jetmotor längs z (intaget fram, munstycket bak) — returnerar lågan som ska animeras
+SimpleView.prototype.jet = function (x, y, z, r, L, paint, chrome, parent = this.model) {
+  const K = flameKit();
+  const steel = this.std({ color: 0x3a3d44, metalness: 0.8, roughness: 0.35, side: THREE.DoubleSide });
+  const dark = this.std({ color: 0x0d0e12, roughness: 0.6, metalness: 0.4 });
+  this.add(new THREE.CylinderGeometry(r * 0.92, r, L, 22).rotateX(Math.PI / 2), paint, x, y, z, parent);
+  this.add(new THREE.TorusGeometry(r * 0.97, r * 0.12, 8, 22), chrome, x, y, z - L / 2, parent);
+  const fan = this.add(new THREE.CircleGeometry(r * 0.9, 20), dark, x, y, z - L / 2 - 0.004, parent); fan.rotation.y = Math.PI;
+  this.add(new THREE.ConeGeometry(r * 0.3, r * 0.65, 12).rotateX(-Math.PI / 2), chrome, x, y, z - L / 2 - r * 0.3, parent);
+  this.add(new THREE.CylinderGeometry(r * 1.01, r * 1.01, L * 0.14, 22, 1, true).rotateX(Math.PI / 2), chrome, x, y, z - L * 0.18, parent);
+  const nz = z + L / 2 + r * 0.45;
+  this.add(new THREE.CylinderGeometry(r * 0.72, r * 0.9, r * 0.9, 18, 1, true).rotateX(Math.PI / 2), steel, x, y, nz, parent);
+  const hot = new THREE.Mesh(new THREE.CircleGeometry(r * 0.68, 18), K.core); this.geos.push(hot.geometry);
+  hot.position.set(x, y, nz + r * 0.44); parent.add(hot);
+  const grp = new THREE.Group(); grp.position.set(x, y, nz + r * 0.45); parent.add(grp);
+  const mk = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.renderOrder = 5; grp.add(m); return m; };
+  const f = { r, outer: mk(K.cone, K.outer), core: mk(K.cone, K.core), blue: mk(K.cone, K.blue), dias: [0, 1, 2].map(() => mk(K.dia, K.diamond)) };
+  f.glow = new THREE.Sprite(K.glow); f.glow.renderOrder = 6; grp.add(f.glow);
+  updFlame(f, 0);
+  return f;
+};
+// k = gas 0..1: liten blå låga på tomgång, lång orange låga med chockdiamanter på full gas.
+// Längden (0,18 + 2,1·k m) är samma som skadezonen i game.js jetBurn.
+function updFlame(f, k) {
+  const fl = 0.85 + 0.3 * Math.random(), r = f.r;
+  const len = (0.18 + 2.1 * k) * fl;
+  f.outer.scale.set(r * (1.0 + 0.15 * Math.random()), r * (1.0 + 0.15 * Math.random()), len);
+  f.core.scale.set(r * 0.58, r * 0.58, len * 0.55);
+  f.blue.scale.set(r * 0.7, r * 0.7, 0.1 + 0.25 * k);
+  f.dias.forEach((d, i) => { d.visible = k > 0.6; d.scale.set(r * 0.42, r * 0.42, r * 0.1); d.position.z = len * (0.2 + i * 0.19); });
+  f.glow.scale.setScalar(r * (2.2 + 4.5 * k) * fl);
+}
+
+// sittande förare: höfterna vid (0, seatY, seatZ)
+SimpleView.prototype.rider = function (seatY, seatZ, { footY, footZ, hands }) {
+  const sp = this.spec, tones = ['#f1c7a5', '#e0ac69', '#c68642', '#8d5524'];
+  const skin = this.std({ color: tones[(sp.number || 0) % 4], roughness: 0.6 });
+  const jacket = this.phys({ color: sp.colors?.[1] || '#1e7bff', roughness: 0.5, clearcoat: 0.2 });
+  const pants = this.std({ color: 0x23262e, roughness: 0.8 });
+  const helmet = this.phys({ color: sp.colors?.[0] || '#ff3b3b', roughness: 0.25, clearcoat: 1 });
+  const visor = this.phys({ color: 0x101820, roughness: 0.05, metalness: 0.6 });
+  const shoe = this.std({ color: 0x15161a });
+  const torso = this.add(new THREE.CapsuleGeometry(0.15, 0.3, 4, 10), jacket, 0, seatY + 0.33, seatZ + 0.05); torso.rotation.x = -0.12;
+  this.add(new THREE.SphereGeometry(0.13, 16, 12), helmet, 0, seatY + 0.74, seatZ + 0.02);
+  this.box(0.19, 0.07, 0.05, visor, 0, seatY + 0.74, seatZ - 0.1);
+  for (const s of [-1, 1]) {
+    const knee = [s * 0.1, seatY + 0.1, seatZ - 0.38];
+    this.tube(0.07, [s * 0.1, seatY + 0.06, seatZ], knee, pants);
+    this.tube(0.06, knee, [s * 0.1, footY + 0.05, footZ], pants);
+    this.box(0.1, 0.07, 0.2, shoe, s * 0.1, footY + 0.02, footZ - 0.05);
+    const sh = [s * 0.2, seatY + 0.5, seatZ + 0.04], h = hands[s < 0 ? 0 : 1];
+    const el = [(sh[0] + h[0]) / 2 + s * 0.05, (sh[1] + h[1]) / 2 - 0.05, (sh[2] + h[2]) / 2 + 0.06];
+    this.tube(0.05, sh, el, jacket); this.tube(0.045, el, h, jacket);
+    this.add(new THREE.SphereGeometry(0.045, 10, 8), skin, h[0], h[1], h[2]);
+  }
+};
+
+// ---------------- Jetrullstolen ----------------
+export class RullstolView extends SimpleView {
+  constructor(spec) {
+    super(VTYPES.rullstol, spec);
+    const c0 = spec.colors?.[0] || '#ff3b6b', c1 = spec.colors?.[1] || '#1e7bff';
+    const chrome = this.std({ color: 0xdfe3ea, roughness: 0.18, metalness: 1 });
+    const fabric = this.std({ color: c0, roughness: 0.8 });
+    const black = this.std({ color: 0x141418, roughness: 0.7 });
+    const paint = this.phys({ color: c1, roughness: 0.3, metalness: 0.3, clearcoat: 1 });
+    for (const s of [-1, 1]) {
+      const x = s * 0.25;
+      this.tube(0.02, [x, 0.47, -0.25], [x, 0.47, 0.24], chrome);
+      this.tube(0.02, [x, 0.42, 0.24], [x, 1.08, 0.3], chrome);
+      this.tube(0.02, [x, 1.08, 0.3], [x, 1.1, 0.42], chrome);
+      this.add(new THREE.CylinderGeometry(0.03, 0.03, 0.1, 10).rotateX(Math.PI / 2), black, x, 1.1, 0.44);
+      this.tube(0.02, [x, 0.47, -0.22], [s * 0.2, 0.16, -0.52], chrome);
+      this.tube(0.018, [s * 0.27, 0.7, -0.18], [s * 0.27, 0.7, 0.18], chrome);
+      this.tube(0.018, [s * 0.27, 0.7, -0.15], [x, 0.47, -0.15], chrome);
+      this.box(0.06, 0.04, 0.3, black, s * 0.27, 0.73, 0);
+      this.tube(0.016, [s * 0.3, 0.36, -0.5], [s * 0.3, 0.12, -0.55], chrome);   // länkhjulens gaffel
+      this.tube(0.02, [x, 0.47, -0.2], [s * 0.3, 0.36, -0.5], chrome);
+    }
+    this.tube(0.02, [-0.25, 0.47, 0.2], [0.25, 0.47, 0.2], chrome);
+    this.box(0.44, 0.07, 0.44, fabric, 0, 0.52, -0.01);
+    const back = this.box(0.46, 0.5, 0.05, fabric, 0, 0.8, 0.27); back.rotation.x = -0.1;
+    this.box(0.4, 0.025, 0.17, black, 0, 0.15, -0.55);
+    const tire = this.std({ color: 0x2a2b31, roughness: 0.85 }), hub = this.std({ color: 0x9aa0aa, metalness: 0.7, roughness: 0.3 });
+    for (const w of this.T.wheels) {
+      if (w.front) { this.wheel(w, 0.09, 0.05, [black, black, black], chrome, 0.5); continue; }
+      const o = this.wheel(w, 0.3, 0.045, [tire, tire, tire], hub, 0.15);
+      for (let k = 0; k < 6; k++) { const sp = this.box(0.008, 0.54, 0.008, chrome, 0, 0, 0, o.spin); sp.rotation.x = k * Math.PI / 6; }
+      this.add(new THREE.TorusGeometry(0.27, 0.012, 6, 28).rotateY(Math.PI / 2), chrome, 0, 0, 0, o.spin);
+      this.add(new THREE.TorusGeometry(0.255, 0.012, 6, 28).rotateY(Math.PI / 2), chrome, Math.sign(w.x) * 0.05, 0, 0, o.spin);
+    }
+    // jetmotorn bakom ryggstödet
+    this.flames = [this.jet(0, 0.82, 0.62, 0.15, 0.62, paint, chrome)];
+    for (const s of [-1, 1]) this.tube(0.02, [s * 0.25, 0.92, 0.31], [s * 0.1, 0.84, 0.5], chrome);
+    const nc = numCanvas(spec.number, '#ffffff');
+    for (const s of [-1, 1]) this.decal(nc, 0.2, 0.2, s * 0.155, 0.82, 0.66, s > 0 ? '+x' : '-x');
+    this.rider(0.56, -0.02, { footY: 0.17, footZ: -0.5, hands: [[-0.45, 0.5, 0.1], [0.45, 0.5, 0.1]] });
+  }
+  setThrust(k) { for (const f of this.flames) updFlame(f, k); }
+}
+
+// ---------------- Jet-elrullstolen ----------------
+export class ElrullstolView extends SimpleView {
+  constructor(spec) {
+    super(VTYPES.elrullstol, spec);
+    const c0 = spec.colors?.[0] || '#2bd6e8', c1 = spec.colors?.[1] || '#16161a';
+    const chrome = this.std({ color: 0xdfe3ea, roughness: 0.18, metalness: 1 });
+    const dark = this.std({ color: 0x2a2c33, roughness: 0.55, metalness: 0.4 });
+    const black = this.std({ color: 0x141418, roughness: 0.7 });
+    const fabric = this.std({ color: c1, roughness: 0.8 });
+    const paint = this.phys({ color: c0, roughness: 0.3, metalness: 0.3, clearcoat: 1 });
+    // chassit (batterierna) med färgade sidokåpor och lampor
+    this.box(0.6, 0.26, 1.0, dark, 0, 0.3, 0);
+    for (const s of [-1, 1]) this.box(0.04, 0.18, 0.72, paint, s * 0.31, 0.33, 0);
+    const led = this.std({ color: 0xfff6d0, emissive: 0xfff2c0, emissiveIntensity: 0.9 });
+    const red = this.std({ color: 0xff2a2a, emissive: 0xff1010, emissiveIntensity: 0.7 });
+    for (const s of [-1, 1]) { this.box(0.08, 0.04, 0.02, led, s * 0.22, 0.36, -0.51); this.box(0.08, 0.04, 0.02, red, s * 0.22, 0.36, 0.51); }
+    // drivhjulen i mitten (bara utseende) + länkhjulen fram och bak (fysikens hjul)
+    const tire = this.std({ color: 0x1a1b1f, roughness: 0.85 });
+    this.mids = [-1, 1].map(s => {
+      const g = new THREE.Group(); g.position.set(s * 0.36, 0.17, 0); this.model.add(g);
+      this.add(new THREE.CylinderGeometry(0.17, 0.17, 0.08, 22).rotateZ(Math.PI / 2), tire, 0, 0, 0, g);
+      this.add(new THREE.CylinderGeometry(0.1, 0.1, 0.085, 6).rotateZ(Math.PI / 2), paint, 0, 0, 0, g);
+      return g;
+    });
+    for (const w of this.T.wheels) this.wheel(w, 0.08, 0.05, [black, black, black], chrome, 0.5);
+    // sits, rygg, nackstöd, armstöd, joystick, benstöd
+    this.box(0.12, 0.25, 0.12, dark, 0, 0.55, 0.05);
+    this.box(0.5, 0.1, 0.48, fabric, 0, 0.7, -0.02);
+    const back = this.box(0.5, 0.62, 0.09, fabric, 0, 1.05, 0.26); back.rotation.x = -0.08;
+    this.box(0.3, 0.16, 0.09, fabric, 0, 1.45, 0.29);
+    for (const s of [-1, 1]) {
+      this.box(0.08, 0.06, 0.42, black, s * 0.29, 0.88, -0.02);
+      this.box(0.03, 0.16, 0.03, chrome, s * 0.29, 0.79, 0.12);
+      this.tube(0.02, [s * 0.18, 0.62, -0.25], [s * 0.16, 0.17, -0.6], chrome);
+    }
+    this.box(0.08, 0.06, 0.1, black, 0.29, 0.94, -0.18);
+    this.tube(0.008, [0.29, 0.97, -0.19], [0.29, 1.03, -0.2], chrome);
+    this.add(new THREE.SphereGeometry(0.028, 10, 8), paint, 0.29, 1.04, -0.2);
+    this.box(0.42, 0.03, 0.2, black, 0, 0.14, -0.62);
+    // två jetmotorer
+    this.flames = [-1, 1].map(s => this.jet(s * 0.42, 0.98, 0.52, 0.13, 0.6, paint, chrome));
+    for (const s of [-1, 1]) this.tube(0.022, [s * 0.25, 1.0, 0.27], [s * 0.36, 0.98, 0.4], chrome);
+    // säkerhetsflaggan
+    this.tube(0.008, [-0.24, 0.85, 0.33], [-0.3, 2.35, 0.48], this.std({ color: 0xe6e6e6 }));
+    const fs = new THREE.Shape(); fs.moveTo(0, 0); fs.lineTo(0, -0.28); fs.lineTo(0.46, -0.14); fs.closePath();
+    this.add(new THREE.ShapeGeometry(fs).rotateY(-Math.PI / 2), this.std({ color: 0xff7a00, side: THREE.DoubleSide, roughness: 0.7 }), -0.3, 2.33, 0.48);
+    const nc = numCanvas(spec.number, '#ffffff');
+    this.decal(nc, 0.3, 0.3, 0, 1.05, 0.31, '+z');
+    this.rider(0.74, -0.02, { footY: 0.17, footZ: -0.6, hands: [[-0.29, 0.92, -0.12], [0.29, 1.0, -0.2]] });
+  }
+  setWheel(k, susLen, spin, steer) {
+    super.setWheel(k, susLen, spin, steer);
+    if (k === 2) for (const g of this.mids) g.rotation.x = -spin * (this.T.wheelR / 0.17);
+  }
+  setThrust(k) { for (const f of this.flames) updFlame(f, k); }
 }

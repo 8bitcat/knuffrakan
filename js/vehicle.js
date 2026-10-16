@@ -2,9 +2,9 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=14';
-import { VTYPES } from './vtypes.js?v=14';
-import { frontParts, loaderPose } from './gear.js?v=14';
+import { CONF } from './config.js?v=15';
+import { VTYPES } from './vtypes.js?v=15';
+import { frontParts, loaderPose } from './gear.js?v=15';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -162,6 +162,14 @@ export class Vehicle {
       } else if (brake > 0.05 && this.vLong < 1.5) {
         drive = -brake * T.driveMax * 0.45 * (this.vLong > -16 ? 1 : 0); // back
       }
+    }
+    // jetmotor: trycker kroppen rakt framåt (även i luften, lite svagare) — samma toppfartsspärr som motorn
+    this.thrust = 0;
+    if (T.jet && !this.hold && throttle > 0.02) {
+      const x = Math.max(0, this.vLong) / this.vmax;
+      this.thrust = throttle * clamp(1 - x * x * x, -0.7, 1);
+      const J = T.mass * T.jet * this.powerMul * this.thrust * (this.grounded === 0 ? 0.55 : 1) * dt;
+      this.applyJ(fwd.x * J, fwd.y * J, fwd.z * J, pos.x, pos.y, pos.z);
     }
 
     let grounded = 0;

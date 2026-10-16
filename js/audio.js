@@ -1,12 +1,12 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice } from './engines.js?v=14';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=14';
+import { EngineVoice, JetVoice } from './engines.js?v=15';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=15';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass'];
+const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol'];
 // Glassbilens melodi: egen (inte någon glassbilsfirmas), speldosa i C-dur. [midi, åttondelar], 0 = paus
 const JINGLE = [
   [76, 1], [79, 1], [84, 1], [79, 1], [81, 1], [79, 1], [76, 2],
@@ -123,7 +123,7 @@ export class GameAudio {
   // motorröst för en typ och plats (0 = egen bil, 1–2 = grannar, 3 = Ljudlabbet)
   voice(kind, slot) {
     const P = this.pool[kind] ||= [];
-    if (!P[slot]) P[slot] = new EngineVoice(this, kind, this.opt(kind), this.master);
+    if (!P[slot]) { const o = this.opt(kind); P[slot] = o.jet ? new JetVoice(this, kind, o, this.master) : new EngineVoice(this, kind, o, this.master); }
     return P[slot];
   }
 

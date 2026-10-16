@@ -26,6 +26,15 @@ export const SOUND_OPTS = {
     { id: 'A', namn: 'Skåpbil (V8)', layers: [['bfb_lo', 56.5], ['bfb_hi', 86.1]], f: [48, 120] },
     { id: 'B', namn: 'Diesel', layers: [['bus_lo', 32.3], ['bus_mid', 40.4], ['bus_hi', 52.5]], f: [32, 90] },
   ],
+  // jetmotorer: syntes (engines.js JetVoice), pitch = turbinens tonläge
+  rullstol: [
+    { id: 'A', namn: 'Jetmotor (skrikig)', jet: true, pitch: 1.25 },
+    { id: 'B', namn: 'Jetmotor (dov)', jet: true, pitch: 0.8 },
+  ],
+  elrullstol: [
+    { id: 'A', namn: 'Dubbla jetmotorer', jet: true, pitch: 1.0, twin: true },
+    { id: 'B', namn: 'Jetmotor (dov)', jet: true, pitch: 0.75 },
+  ],
   scrape: [
     { id: 'A', namn: 'Betong + plåt', wall: 'scr_belly', car: 'scr_drum', spark: 'scr_spark' },
     { id: 'B', namn: 'Metallrör + kylare', wall: 'scr_pipe', car: 'scr_rad', spark: 'scr_spark' },
@@ -36,7 +45,7 @@ export const SOUND_OPTS = {
     { id: 'A', namn: 'Gamla', light: ['hit1', 'hit2', 'hit3', 'hit4'], heavy: ['crash_heavy_1', 'crash_heavy_2', 'crash_heavy_3'], wreck: ['wreck'] },
   ],
 };
-export const DEFAULT_CHOICE = { stock: 'B', bus: 'A', bigfoot: 'A', formel: 'A', traktor: 'A', glass: 'A', scrape: 'A', crash: 'B' };
+export const DEFAULT_CHOICE = { stock: 'B', bus: 'A', bigfoot: 'A', formel: 'A', traktor: 'A', glass: 'A', rullstol: 'A', elrullstol: 'A', scrape: 'A', crash: 'B' };
 // laddas alltid
 export const BASE_FILES = ['wind', 'pack', 'tire_screech', 'explosion', 'rev', 'pop1', 'pop2', 'pop3', 'airbrake'];
 export const LOOP_FILES = new Set(['wind', 'pack', 'tire_screech', 'metal_scrape']);

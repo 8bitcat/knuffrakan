@@ -1,19 +1,19 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=14';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=14';
-import { buildWorld, gridSlots } from './world.js?v=14';
-import { createScene, ChaseCam } from './scene.js?v=14';
-import { makeCarView } from './vehicles3d.js?v=14';
-import { typeOf } from './vtypes.js?v=14';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=14';
-import { makeLivery, randomSpec } from './livery.js?v=14';
-import { Vehicle, CP } from './vehicle.js?v=14';
-import { BotBrain } from './ai.js?v=14';
-import { Race } from './race.js?v=14';
-import { FX, Trails } from './fx.js?v=14';
-import { NameTag, SpeedPlate } from './tags.js?v=14';
-import { RemoteVeh, carInfo } from './net.js?v=14';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=15';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=15';
+import { buildWorld, gridSlots } from './world.js?v=15';
+import { createScene, ChaseCam } from './scene.js?v=15';
+import { makeCarView } from './vehicles3d.js?v=15';
+import { typeOf } from './vtypes.js?v=15';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=15';
+import { makeLivery, randomSpec } from './livery.js?v=15';
+import { Vehicle, CP } from './vehicle.js?v=15';
+import { BotBrain } from './ai.js?v=15';
+import { Race } from './race.js?v=15';
+import { FX, Trails } from './fx.js?v=15';
+import { NameTag, SpeedPlate } from './tags.js?v=15';
+import { RemoteVeh, carInfo } from './net.js?v=15';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -335,7 +335,7 @@ export class Game {
       const spec = randomSpec(1000 + k * 17 + Math.floor(Math.random() * 1e5), name);
       spec.title = TITLES[Math.floor(Math.random() * TITLES.length)];
       const r = Math.random();
-      spec.kind = r < 0.1 ? 'bus' : r < 0.2 ? 'bigfoot' : r < 0.28 ? 'formel' : r < 0.34 ? 'traktor' : r < 0.41 ? 'glass' : 'stock';
+      spec.kind = r < 0.1 ? 'bus' : r < 0.2 ? 'bigfoot' : r < 0.27 ? 'formel' : r < 0.33 ? 'traktor' : r < 0.39 ? 'glass' : r < 0.43 ? 'rullstol' : r < 0.47 ? 'elrullstol' : 'stock';
       if (spec.kind === 'bus' && Math.random() < 0.7) spec.colors = ['#ffc21a', '#16161a', '#ffffff'];
       spec.gear = randomGear(Math.random, spec.kind);
       this.addCar({ name, isPlayer: false, spec });
@@ -418,6 +418,7 @@ export class Game {
     }
     this.handleImpacts();
     this.crush(dt);
+    this.jetBurn(dt);
     this.race.update(dt);
     for (const car of this.cars) this.carState(car, dt);
   }
@@ -551,6 +552,37 @@ export class Game {
         B.gearMsgT = this.time;
         this.notify(A, `${wedge ? '📐 Du kilade' : loader ? '🚜 Du skopade undan' : '🚜 Du plogade'} ${B.name}!`, 'good');
         this.notify(B, `${A.name} ${wedge ? '📐 kilade' : loader ? '🚜 skopade undan' : '🚜 plogade'} dig!`, 'bad');
+      }
+    }
+  }
+
+  // Jetlågan bränner: den som är i lågan bakom en jetrullstol tar skada. Lågans längd är samma som
+  // i bilden (vehicles3d2.js updFlame): 0,18 m på tomgång upp till 2,3 m på full gas.
+  jetBurn(dt) {
+    for (const A of this.cars) {
+      const a = A.veh, T = a.T;
+      if (!T.jet || A.wrecked || A.hidden || A.ghostT > 0) continue;
+      const thr = a.input.throttle || 0;
+      if (thr < 0.1) continue;
+      const len = 0.18 + 2.1 * thr, heat = Math.max(0, (thr - 0.4) / 0.6);   // bränner först över halv gas
+      for (const B of this.cars) {
+        if (B === A || B.wrecked || B.hidden || B.ghostT > 0) continue;
+        const b = B.veh;
+        const rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
+        const behind = -(rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z), lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;
+        const ext = Math.max(b.T.half.z, b.T.half.x);                  // B kan stå snett
+        if (Math.abs(ry) > 2 || behind - ext > T.jetZ + len || behind + ext < T.jetZ) continue;
+        if (!T.jetX.some(jx => Math.abs(lx - jx) < b.T.half.x + 0.35)) continue;
+        if (heat <= 0) continue;
+        B.health -= 12 * heat * dt / b.T.armor;
+        B.lastDmgT = this.simT; B.lastHitBy = A; B.lastHitT = this.time;
+        if (Math.random() < dt * 12) this.fx.sparks(_v2.set(b.pos.x, b.pos.y + 0.3, b.pos.z), b.vel, 3, 2);
+        if (!B.burnMsgT || this.time - B.burnMsgT > 3) {
+          B.burnMsgT = this.time;
+          this.notify(B, `🔥 Du kör i ${A.name}s jetlåga — akta!`, 'bad');
+          this.notify(A, `🔥 ${B.name} grillas i din jetlåga!`, 'good');
+        }
+        if (B.health <= 0) this.wreck(B);
       }
     }
   }
@@ -835,6 +867,11 @@ export class Game {
       const VT = v.T || car.view.T;
       v.wheels.forEach((w, k) => car.view.setWheel(k, (w.grounded ? w.dist : VT.rayLen) - VT.wheelR, w.spin, w.front ? v.steer : 0));
       car.view.setLoader?.(v.loader || 0);
+      if (car.view.setThrust) {
+        // jetlågan: egen gas (värden ser alla) — gästen gissar på andras gas utifrån farten
+        const thr = this.mode !== 'client' || car === this.me ? (v.input?.throttle || 0) : (v.speed < (v.vmax || 80) * 0.96 ? 1 : 0.5);
+        car.view.setThrust(car.wrecked || car.hidden ? 0 : thr, this.time);
+      }
       // spöke efter omstart: blinka
       g.visible = !car.hidden && !(car.ghostT > 0 && Math.floor(this.time * 10) % 2 === 0);
       // namnskylt

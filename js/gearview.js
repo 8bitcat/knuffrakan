@@ -1,8 +1,8 @@
 // Tillbehörens utseende på bilarna. Mått och lägen ur MOUNT/frontParts i gear.js —
 // samma som fysiken, så det man ser är det som knuffas.
 import * as THREE from 'three';
-import { cleanGear, frontParts, MOUNT } from './gear.js?v=14';
-import { VTYPES } from './vtypes.js?v=14';
+import { cleanGear, frontParts, MOUNT } from './gear.js?v=15';
+import { VTYPES } from './vtypes.js?v=15';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const tex = (c, rx = 1, ry = 1) => {
@@ -110,7 +110,7 @@ export function addGear(view, spec) {
 
   // --- sidor ---
   if (gear.includes('sidopansar')) {
-    const hgt = { bus: 0.75, traktor: 0.6, glass: 0.7, formel: 0.3 }[kind] || 0.42;
+    const hgt = { bus: 0.75, traktor: 0.6, glass: 0.7, formel: 0.3, rullstol: 0.22, elrullstol: 0.26 }[kind] || 0.42;
     for (const s of [-1, 1]) {
       const pl = box(0.07, hgt, P.sideL, m.plate, s * (P.w + 0.05), P.sideY, 0.1);
       pl.material = m.plate;
@@ -118,12 +118,12 @@ export function addGear(view, spec) {
     }
   }
   if (gear.includes('spikar')) {
-    const small = kind === 'stock' || kind === 'formel';
+    const small = kind === 'stock' || kind === 'formel' || kind === 'rullstol' || kind === 'elrullstol';
     const cone = new THREE.ConeGeometry(small ? 0.07 : 0.1, small ? 0.42 : 0.55, 10);
     const hub = new THREE.CylinderGeometry(small ? 0.16 : 0.24, small ? 0.16 : 0.24, 0.06, 14);
     geos.push(cone, hub);
     // halva däckbredden per fordon (fram, bak)
-    const tireHalf = { bigfoot: [0.47, 0.47], bus: [0.19, 0.39], formel: [0.16, 0.2], traktor: [0.16, 0.27], glass: [0.15, 0.15] }[kind] || [0.16, 0.16];
+    const tireHalf = { bigfoot: [0.47, 0.47], bus: [0.19, 0.39], formel: [0.16, 0.2], traktor: [0.16, 0.27], glass: [0.15, 0.15], rullstol: [0.04, 0.05], elrullstol: [0.05, 0.05] }[kind] || [0.16, 0.16];
     view.wheels?.forEach((w) => {
       const s = Math.sign(w.base.x) || 1;
       const off = tireHalf[w.base.front ? 0 : 1];

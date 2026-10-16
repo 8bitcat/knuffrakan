@@ -111,6 +111,10 @@ export const MOUNT = {
   glass: { fz: 2.95, w: 1.1, bump: 0.55, roof: 3.02, rear: 2.95, deck: 3.02, sideY: 0.92, sideL: 3.8, cab: [-1.6, 2.7], belt: 1.4,
     plow: [0.12, 1.05], plowL: 1.05, wedge: [0.12, 0.72], wedgeL: 1.5, wind: [1.32, -3.0, 2.42, -2.62], roofCage: true, noHood: true },
 };
+MOUNT.rullstol = { fz: 0.8, w: 0.5, bump: 0.25, roof: 1.32, rear: 1.0, deck: 1.12, sideY: 0.38, sideL: 0.6, cab: [-0.3, 0.3], belt: 0.62,
+  plow: [0.05, 0.55], plowL: 0.6, wedge: [0.05, 0.38], wedgeL: 0.9 };
+MOUNT.elrullstol = { fz: 0.9, w: 0.6, bump: 0.3, roof: 1.55, rear: 1.0, deck: 1.3, sideY: 0.36, sideL: 0.9, cab: [-0.35, 0.35], belt: 0.8,
+  plow: [0.05, 0.6], plowL: 0.7, wedge: [0.05, 0.4], wedgeL: 1.0 };
 MOUNT.bus.roofCage = true;
 export const mountOf = (T) => MOUNT[T.id] || MOUNT.stock;
 

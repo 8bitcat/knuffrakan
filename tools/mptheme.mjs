@@ -1,0 +1,21 @@
+import { createRequire } from 'module';
+const require = createRequire('D:/Qisy/QISYFrontend/QISYFrontend-1/package.json');
+const { chromium } = require('playwright');
+const room = 'D' + Math.floor(Math.random() * 90000 + 10000);
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11'] });
+const mk = async (tag) => {
+  const ctx = await browser.newContext({ viewport: { width: 900, height: 500 } });
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => console.log(tag, 'PAGEERROR', e.message));
+  await p.addInitScript((n) => { localStorage.setItem('knuff_namn', n); localStorage.setItem('knuff_bana', 'vulkan'); }, tag);
+  await p.goto('http://localhost:8810/');
+  await p.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
+  await p.fill('#roomin', room); await p.click('#roombtn');
+  await p.waitForFunction(() => window.__game?.me && window.__game.race.phase === 'lobby', null, { timeout: 60000 });
+  return p;
+};
+const A = await mk('Anna'); const B = await mk('Bertil');
+await A.waitForTimeout(2000);
+console.log('värd', await A.evaluate(() => window.__game.trackId + ' dis ' + window.__game.scene.fog.density), '| gäst', await B.evaluate(() => window.__game.trackId + ' dis ' + window.__game.scene.fog.density + ' lavaremsor ' + window.__game.track.flags.filter(f => f & 32).length));
+await B.screenshot({ path: 'tools/out/mptheme-B.png' });
+await browser.close();

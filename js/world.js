@@ -3,8 +3,9 @@
 // det finns en fysikvärld (värden).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONF } from './config.js?v=17';
-import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, JUMP } from './track.js?v=17';
+import { CONF } from './config.js?v=18';
+import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, F_LAVA, JUMP } from './track.js?v=18';
+import { themeOf } from './themes.js?v=18';
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const h2 = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -110,13 +111,13 @@ function idxRange(T, s0, s1, pad = 0) {
   return out;
 }
 
-function asphaltTex() {
+function asphaltTex([r0, g0, b0] = [60, 47, 66]) {
   return canvasTex(512, 512, (c, w, h) => {
     const img = c.createImageData(w, h);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const n = (Math.random() - 0.5) * 16 + fbm(x / 40, y / 40, 3) * 7;
       const o = (y * w + x) * 4;
-      img.data[o] = 60 + n; img.data[o + 1] = 47 + n; img.data[o + 2] = 66 + n; img.data[o + 3] = 255;
+      img.data[o] = r0 + n; img.data[o + 1] = g0 + n; img.data[o + 2] = b0 + n; img.data[o + 3] = 255;
     }
     c.putImageData(img, 0, 0);
   });
@@ -125,7 +126,7 @@ function asphaltTex() {
 function buildRoad(ctx) {
   const { scene, track: T } = ctx;
   const HW = T.halfW, W2 = CONF.ROAD_W / 2;
-  const tex = asphaltTex();
+  const tex = asphaltTex(ctx.theme.asphalt);
   tex.wrapS = THREE.ClampToEdgeWrapping; tex.wrapT = THREE.RepeatWrapping;
   const runs = segRuns(T, noGap(T));
   const roadMat = new THREE.MeshLambertMaterial({ map: tex });
@@ -137,7 +138,7 @@ function buildRoad(ctx) {
   }
 
   // Kantlinjer
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xf4eef2, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const lineMat = new THREE.MeshBasicMaterial({ color: ctx.theme.line, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   for (const sgn of [-1, 1]) {
     const a = sgn * (W2 - 0.18), b = sgn * (W2 - 0.52);
     for (const [ra, rb] of runs) scene.add(new THREE.Mesh(stripGeo(T, Math.min(a, b), Math.max(a, b), 0.015, 10, ra, rb), lineMat));
@@ -227,10 +228,11 @@ function extrude(T, list, side, profile, base, uScale) {
   return g;
 }
 
-function chevronTex() {
+function chevronTex(hex = 0x2c5fd6) {
+  const base = new THREE.Color(hex).multiplyScalar(0.62).getStyle(), dark = new THREE.Color(hex).multiplyScalar(0.45).getStyle();
   const t = canvasTex(256, 128, (c, w, h) => {
-    c.fillStyle = '#123b86'; c.fillRect(0, 0, w, h);
-    c.fillStyle = '#0d2c66'; c.fillRect(0, 0, w, 10); c.fillRect(0, h - 14, w, 14);
+    c.fillStyle = base; c.fillRect(0, 0, w, h);
+    c.fillStyle = dark; c.fillRect(0, 0, w, 10); c.fillRect(0, h - 14, w, 14);
     c.fillStyle = '#f4f6ff';
     for (let x = 0; x < w; x += 64) {
       c.beginPath();
@@ -261,10 +263,11 @@ const BRIDGE_CURB = [[0, -0.05], [0, 0.55], [0.4, 0.55], [0.4, -0.05]];
 function buildBarriers(ctx) {
   const { scene, track: T } = ctx;
   const N = T.N, base = T.halfW;
-  const concMat = new THREE.MeshLambertMaterial({ color: 0xe2c3c8, flatShading: true, side: THREE.DoubleSide });
-  const saferMat = new THREE.MeshLambertMaterial({ map: chevronTex(), side: THREE.DoubleSide });
+  const TH = ctx.theme;
+  const concMat = new THREE.MeshLambertMaterial({ color: TH.conc, flatShading: true, side: THREE.DoubleSide });
+  const saferMat = new THREE.MeshLambertMaterial({ map: chevronTex(TH.safer), side: THREE.DoubleSide });
   const fenceMat = new THREE.MeshLambertMaterial({ map: fenceTex(), transparent: true, alphaTest: 0.35, side: THREE.DoubleSide, depthWrite: false });
-  const railMat = new THREE.MeshLambertMaterial({ color: 0x2c5fd6, side: THREE.DoubleSide });
+  const railMat = new THREE.MeshLambertMaterial({ color: TH.safer, side: THREE.DoubleSide });
   const postGeo = new THREE.CylinderGeometry(0.07, 0.07, 3.2, 5);
   const posts = [], railPosts = [];
   // typ per sample: -1 ingen mur (glipa), 0 betong, 1 blå kurvvägg, 2 broräcke, 3 betong + högt fångstängsel (hopp)
@@ -325,7 +328,7 @@ function buildBarriers(ctx) {
   }
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   // stängselstolpar
-  const postInst = new THREE.InstancedMesh(postGeo, new THREE.MeshLambertMaterial({ color: 0x51566a }), Math.max(1, posts.length));
+  const postInst = new THREE.InstancedMesh(postGeo, new THREE.MeshLambertMaterial({ color: TH.post }), Math.max(1, posts.length));
   postInst.count = posts.length;
   posts.forEach(([i, side], k) => {
     const lat = side * (base + 0.3);
@@ -400,7 +403,11 @@ function buildTerrain(ctx) {
     for (let i = 0; i < N; i += 4) { const d = (px[i] - x) ** 2 + (pz[i] - z) ** 2; if (d < bd) { bd = d; best = i; } }
     cIdx[b * cnx + a] = best;
   }
-  const HWb = T.halfW, FL = T.flags;
+  const HWb = T.halfW, FL = T.flags, TH = ctx.theme;
+  // marken långt från vägen: stad = nästan platt, öken = sanddyner, annars berg och dalar
+  const nat = TH.flora === 'city' ? (x, z) => 2.5 * fbm(x * 0.004, z * 0.004, 2)
+    : TH.flora === 'cactus' ? (x, z, D) => natural(x, z, D) * 0.7 + 7 * Math.abs(Math.sin(x * 0.011 + z * 0.004 + fbm(x * 0.002, z * 0.002, 2) * 3)) * Math.min(1, D / 200)
+      : natural;
   const VM = new Float32Array(NV);            // dal-mask (inga träd på isen)
   const hole = new Uint8Array(NV);            // tunnelns hål i berget
   const feats = T.features;
@@ -448,7 +455,7 @@ function buildTerrain(ctx) {
       else {
         const t = smoothstep(HWb + 4, HWb + 170, dB);
         const bankUp = Math.min(1.4, Math.max(0, (dB - HWb - 3.5) * 0.1));
-        y = (rB.y - 0.4 + bankUp) * (1 - t) + natural(x, z, dB) * t;
+        y = (rB.y - 0.4 + bankUp) * (1 - t) + nat(x, z, dB) * t;
       }
       const o = iz * nx + ix;
       const rA = fA ? roadAt(iA, x, z) : rB;
@@ -468,6 +475,14 @@ function buildTerrain(ctx) {
           if (d > -30 && d < JUMP.GAP + 30) {
             const cm = (1 - smoothstep(HWb + 3, HWb + 16, rA.al)) * (1 - smoothstep(JUMP.GAP / 2 + 14, JUMP.GAP / 2 + 26, Math.abs(d - JUMP.GAP / 2)));
             if (cm > 0) y += (Math.min(y, rA.y - 16) - y) * cm;
+          }
+        } else if (f.type === 'canyon') {
+          // kanjon: lodräta klippväggar på båda sidor (öppet uppåt)
+          const in0 = T.sdist(sA, f.s0), in1 = T.sdist(f.s1, sA);
+          if (in0 > -60 && in1 > -60 && rA.al > HWb + 2.5) {
+            const fade = smoothstep(-60, 40, Math.min(in0, in1));
+            const wall = Math.min(f.h || 42, (rA.al - HWb - 2.5) * 2.6) * (1 - smoothstep(90, 260, rA.al) * 0.5);
+            y = Math.max(y, y * (1 - fade) + (rA.y + wall) * fade);
           }
         } else if (f.type === 'tunnel') {
           const in0 = T.sdist(sA, f.s0), in1 = T.sdist(f.s1, sA);
@@ -513,12 +528,14 @@ function buildTerrain(ctx) {
   // Färg: snö, lite rosa sten i branterna
   const nor = g.attributes.normal.array;
   const col = new Float32Array(NV * 3);
-  const snow = new THREE.Color(0xf7eef3), snow2 = new THREE.Color(0xeedde6), rock = new THREE.Color(0xb39aa6), c = new THREE.Color();
+  const snow = new THREE.Color(TH.ground[0]), snow2 = new THREE.Color(TH.ground[1]), rock = new THREE.Color(TH.ground[2]), c = new THREE.Color();
+  const crack = TH.crack ? new THREE.Color(TH.crack) : null;
   for (let o = 0; o < NV; o++) {
     const ny = nor[o * 3 + 1];
     const x = pos[o * 3], z = pos[o * 3 + 2];
     c.copy(snow).lerp(snow2, 0.5 + 0.5 * fbm(x * 0.01, z * 0.01, 2));
     c.lerp(rock, smoothstep(0.86, 0.62, ny));
+    if (crack && Dist[o] > HWb + 8) c.lerp(crack, smoothstep(0.032, 0.0, Math.abs(fbm(x * 0.012 + 5, z * 0.012 - 2, 3))) * 0.9);
     col[o * 3] = c.r; col[o * 3 + 1] = c.g; col[o * 3 + 2] = c.b;
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -648,7 +665,7 @@ function buildMountains(ctx, terr) {
   const cx = (terr.x0 + terr.x1) / 2, cz = (terr.z0 + terr.z1) / 2;
   const R0 = Math.max(terr.x1 - terr.x0, terr.z1 - terr.z0) * 0.55;
   const geos = [];
-  const snowC = new THREE.Color(0xf6e8ef), rockC = new THREE.Color(0xc2a7b3), lowC = new THREE.Color(0xd9c4cd);
+  const [snowC, rockC, lowC] = (ctx.theme?.mtn || [0xf6e8ef, 0xc2a7b3, 0xd9c4cd]).map(h => new THREE.Color(h));
   for (let k = 0; k < 44; k++) {
     const a = (k / 44) * Math.PI * 2 + hash1(k) * 0.12;
     const r = R0 + 300 + hash1(k + 50) * 1800;
@@ -1057,6 +1074,18 @@ function buildValleys(ctx) {
   const { scene, track: T } = ctx;
   for (const f of T.features) {
     if (f.type !== 'valley') continue;
+    const kind = ctx.theme.valley;
+    if (kind !== 'ice') {
+      const len = f.lv * 1.5, tex = kind === 'lava' ? (ctx.lavaTex ||= lavaTex()) : sandBedTex();
+      tex.repeat.set(kind === 'lava' ? 10 : 6, kind === 'lava' ? 1.2 : 1);
+      const mat = kind === 'lava' ? new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }) : new THREE.MeshLambertMaterial({ map: tex });
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(len, 46).rotateX(-Math.PI / 2), mat);
+      floor.rotation.y = Math.atan2(-f.tx, -f.tz);
+      floor.position.set(f.x, f.floorY + 0.35, f.z);
+      scene.add(floor);
+      boardAt(ctx, f.s0 - 120, T.halfW + 4, signTex(f.namn || 'BRON', kind === 'lava' ? 'LAVA UNDER!' : 'HÅLL I DIG!', kind === 'lava' ? '#ff6a1e' : '#ffb21a'));
+      continue;
+    }
     const tex = canvasTex(512, 128, (c, w, h) => {
       c.fillStyle = '#cfeaf6'; c.fillRect(0, 0, w, h);
       c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = 2;
@@ -1126,6 +1155,7 @@ function buildJumps(ctx) {
 
 // ---------- Huvudbygget ----------
 export function buildWorld(ctx) {
+  ctx.theme = themeOf(ctx.track.def);
   if (ctx.world) ctx.fixedBody = ctx.world.createRigidBody(ctx.RAPIER.RigidBodyDesc.fixed());
   const t0 = performance.now();
   buildRoad(ctx);
@@ -1137,16 +1167,25 @@ export function buildWorld(ctx) {
   buildBridges(ctx);
   buildValleys(ctx);
   buildJumps(ctx);
-  const trees = buildTrees(ctx, terr);
-  buildRedTrees(ctx, terr);
-  buildMountains(ctx, terr);
+  const trees = buildFlora(ctx, terr);
+  if (ctx.theme.redTrees) buildRedTrees(ctx, terr);
+  buildMountainsThemed(ctx, terr);
+  const lava = buildLava(ctx);
+  const air = makeAir(ctx);
   const gantry = buildGantry(ctx);
   const screen = buildScreen(ctx, terr);
   buildArrow(ctx, terr);
   buildSigns(ctx, terr);
   console.log(`värld: terräng ${(t1 - t0).toFixed(0)} ms, totalt ${(performance.now() - t0).toFixed(0)} ms`);
   return {
-    terr, gantry, screen, barrierTypes, fixedBody: ctx.fixedBody,
+    terr, gantry, screen, barrierTypes, fixedBody: ctx.fixedBody, theme: ctx.theme,
+    // rörligt: lava som flyter, rökpelare, luften (aska/damm/snö), eldklot
+    update(dt, time, cam, fx, onBoom) {
+      if (lava) lava.offset.y -= dt * 0.08;
+      if (ctx.lavaTex && ctx.lavaTex !== lava) ctx.lavaTex.offset.x += dt * 0.03;
+      for (const p of ctx.plumes || []) { p.s.position.y = p.base.y + 60 + ((time * 14 + p.k * 90) % 540); p.s.material.opacity = 0.85 * (1 - ((time * 14 + p.k * 90) % 540) / 540); }
+      air(dt, time, cam, fx, onBoom);
+    },
     // göm träd långt bort (fog döljer dem ändå)
     cull(cam, range = 2300) {
       for (const t of trees) {
@@ -1154,5 +1193,412 @@ export function buildWorld(ctx) {
         t.mesh.visible = d < range;
       }
     },
+  };
+}
+
+// ============================================================================================
+// ---------- Teman: växtlighet, berg, dalar, lava, stad och luften (themes.js) ----------
+// ============================================================================================
+function colorGeo(geo, hex) {
+  const c = new THREE.Color(hex), n = geo.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  geo.setAttribute('color', new THREE.BufferAttribute(a, 3));
+  if (geo.attributes.uv) geo.deleteAttribute('uv');
+  if (geo.index) return geo.toNonIndexed();
+  return geo;
+}
+const mergeColored = (parts) => { const g = mergeGeometries(parts.map(p => p.index ? p.toNonIndexed() : p)); g.computeVertexNormals(); return g; };
+
+// brända träd + basaltblock (vulkanen)
+function deadTreeGeo() {
+  const parts = [colorGeo(new THREE.CylinderGeometry(0.22, 0.5, 8, 6).translate(0, 4, 0), 0x1a1214)];
+  for (const [a, y, l] of [[0.6, 4.5, 2.6], [-0.8, 5.6, 2.2], [2.2, 6.4, 1.8], [-2.4, 3.6, 2.0]]) {
+    const b = new THREE.CylinderGeometry(0.06, 0.16, l, 5).translate(0, l / 2, 0).rotateZ(0.9 * Math.sign(a)).rotateY(a);
+    parts.push(colorGeo(b.translate(0, y, 0), 0x241a1a));
+  }
+  parts.push(colorGeo(new THREE.ConeGeometry(0.22, 0.8, 6).translate(0, 8.4, 0), 0xff5a14));   // glöd i toppen
+  return mergeColored(parts);
+}
+function rockGeo(hex, flat = 0.6) {
+  return mergeColored([colorGeo(new THREE.DodecahedronGeometry(1.6, 0).scale(1, flat, 1.2).translate(0, 0.5, 0), hex)]);
+}
+// kaktusar, buskar (öknen)
+function cactusGeo() {
+  const G = 0x3f7a3a, parts = [colorGeo(new THREE.CylinderGeometry(0.45, 0.55, 7.5, 8).translate(0, 3.75, 0), G),
+    colorGeo(new THREE.SphereGeometry(0.45, 8, 6).translate(0, 7.5, 0), G)];
+  for (const [s, y0, h] of [[1, 2.6, 2.6], [-1, 3.6, 2.0]]) {
+    parts.push(colorGeo(new THREE.CylinderGeometry(0.3, 0.3, 1.0, 7).rotateZ(Math.PI / 2).translate(s * 0.75, y0, 0), G));
+    parts.push(colorGeo(new THREE.CylinderGeometry(0.3, 0.32, h, 7).translate(s * 1.25, y0 + h / 2, 0), G));
+    parts.push(colorGeo(new THREE.SphereGeometry(0.3, 7, 5).translate(s * 1.25, y0 + h, 0), G));
+  }
+  return mergeColored(parts);
+}
+function shrubGeo() { return mergeColored([colorGeo(new THREE.IcosahedronGeometry(1.2, 0).scale(1, 0.6, 1).translate(0, 0.5, 0), 0x8a7a4a), colorGeo(new THREE.IcosahedronGeometry(0.8, 0).scale(1, 0.6, 1).translate(0.8, 0.4, 0.3), 0x6e6236)]); }
+function barrelGeo() { return mergeColored([colorGeo(new THREE.SphereGeometry(0.9, 9, 7).scale(1, 1.2, 1).translate(0, 0.9, 0), 0x4a8a44), colorGeo(new THREE.ConeGeometry(0.25, 0.4, 6).translate(0, 2.1, 0), 0xff5a8a)]); }
+// iskristaller och isblock
+function iceGeo() {
+  const parts = [];
+  for (const [x, z, h, t] of [[0, 0, 7, 0], [1.4, 0.6, 4.5, 0.3], [-1.2, 0.8, 5.2, -0.35], [0.3, -1.3, 3.6, 0.25]]) {
+    parts.push(colorGeo(new THREE.OctahedronGeometry(1, 0).scale(0.9, h / 2, 0.9).rotateZ(t).translate(x, h / 2 - 0.3, z), 0xbfe8ff));
+  }
+  return mergeColored(parts);
+}
+function iceBlockGeo() { return mergeColored([colorGeo(new THREE.BoxGeometry(4, 2.6, 3.2).rotateY(0.4).translate(0, 1.1, 0), 0xa8dcf6), colorGeo(new THREE.BoxGeometry(2.4, 1.8, 2.2).rotateY(-0.3).translate(2.6, 2.9, 0.4), 0xc8ecff)]); }
+
+// utspridning som granarna (dungar, glesare längre bort), valfria former med vikter
+function scatter(ctx, terr, geos, weights, maxN, mat, minD = 9) {
+  const { scene, track: T } = ctx;
+  const CH = 600, chunks = new Map(), HWb = T.halfW;
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const W = terr.x1 - terr.x0, D = terr.z1 - terr.z0, wsum = weights.reduce((a, b) => a + b, 0);
+  let placed = 0;
+  for (let n = 0; n < maxN * 12 && placed < maxN; n++) {
+    const x = terr.x0 + rnd() * W, z = terr.z0 + rnd() * D;
+    const dist = terr.distAt(x, z);
+    if (dist < HWb + minD || dist > 1000 || terr.valleyAt(x, z) > 0.05) continue;
+    const dens = fbm(x * 0.006 + 4.4, z * 0.006 - 2.2, 3) * 0.6 + 0.35 - Math.min(0.5, dist / 1600);
+    if (rnd() > dens + (dist < 60 ? 0.35 : 0)) continue;
+    if (Math.hypot(x, z) < 140 && dist < 60) continue;
+    let r = rnd() * wsum, type = 0;
+    while (type < weights.length - 1 && r > weights[type]) { r -= weights[type]; type++; }
+    const key = Math.floor(x / CH) + '|' + Math.floor(z / CH) + '|' + type;
+    if (!chunks.has(key)) chunks.set(key, { type, list: [], cx: (Math.floor(x / CH) + 0.5) * CH, cz: (Math.floor(z / CH) + 0.5) * CH });
+    chunks.get(key).list.push([x, terr.heightAt(x, z) - 0.3, z, 0.8 + rnd() * 0.9, rnd() * 6.28]);
+    placed++;
+  }
+  const out = [], m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  for (const ch of chunks.values()) {
+    const inst = new THREE.InstancedMesh(geos[ch.type], Array.isArray(mat) ? mat[ch.type] : mat, ch.list.length);
+    ch.list.forEach(([x, y, z, sc, r], k) => { q.setFromAxisAngle(UP, r); m4.compose(v.set(x, y, z), q, s.set(sc, sc * (0.9 + (r % 1) * 0.35), sc)); inst.setMatrixAt(k, m4); });
+    inst.computeBoundingSphere(); inst.castShadow = true;
+    scene.add(inst);
+    out.push({ mesh: inst, cx: ch.cx, cz: ch.cz });
+  }
+  return out;
+}
+
+function buildFlora(ctx, terr) {
+  const fl = ctx.theme.flora;
+  if (fl === 'pine') return buildTrees(ctx, terr);
+  if (fl === 'city') return buildCity(ctx, terr);
+  const lam = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  if (fl === 'dead') return scatter(ctx, terr, [deadTreeGeo(), rockGeo(0x221a1c), rockGeo(0x3a2826, 0.9)], [0.45, 0.35, 0.2], 2600, lam);
+  if (fl === 'cactus') return scatter(ctx, terr, [cactusGeo(), shrubGeo(), rockGeo(0xb8623e, 0.8), barrelGeo()], [0.3, 0.35, 0.2, 0.15], 3200, lam);
+  if (fl === 'ice') {
+    const ice = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x16344a, transparent: true, opacity: 0.9 });
+    return scatter(ctx, terr, [iceGeo(), iceBlockGeo(), pineGeo(true)], [0.35, 0.25, 0.4], 3600, [ice, ice, lam]);
+  }
+  return [];
+}
+
+// ---------- Staden: höghus med tända fönster, neonskyltar, gatlyktor ----------
+function windowTex(lit) {
+  return canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = lit ? '#000' : '#1b1e2a'; c.fillRect(0, 0, w, h);
+    if (!lit) { c.fillStyle = '#232738'; for (let x = 0; x < w; x += 64) c.fillRect(x, 0, 6, h); }
+    const cols = ['#ffd98a', '#fff4d8', '#9fe8ff', '#ffb36a'];
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) {
+      const on = Math.random() < 0.42;
+      c.fillStyle = on ? cols[Math.floor(Math.random() * 4)] : (lit ? '#000' : '#0d0f17');
+      c.fillRect(x * 64 + 14, y * 32 + 8, 40, 18);
+    }
+  });
+}
+let CITY = null;
+function cityMats() {
+  if (CITY) return CITY;
+  const map = windowTex(false), em = windowTex(true);
+  for (const t of [map, em]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
+  const facade = new THREE.MeshLambertMaterial({ map, emissive: 0xffffff, emissiveMap: em, emissiveIntensity: 0.95 });
+  const roof = new THREE.MeshLambertMaterial({ color: 0x15171f });
+  CITY = { facade, roof, arr: [facade, facade, roof, roof, facade, facade] };
+  return CITY;
+}
+// låda med fönster i rätt skala (en ruta = 4 m bred, 3,2 m hög)
+function buildingGeo(w, h, d) {
+  const g = new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0);
+  const uv = g.attributes.uv, n = g.attributes.normal;
+  for (let i = 0; i < uv.count; i++) {
+    const ax = Math.abs(n.getX(i)) > 0.5 ? d : w;
+    uv.setXY(i, uv.getX(i) * ax / 16, uv.getY(i) * h / 25.6);
+  }
+  return g;
+}
+function neonTex(word, col) {
+  return canvasTex(512, 160, (c, w, h) => {
+    c.clearRect(0, 0, w, h);
+    c.font = 'italic 900 112px "Exo 2", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.shadowColor = col; c.shadowBlur = 28; c.fillStyle = col;
+    for (let k = 0; k < 3; k++) c.fillText(word, w / 2, h / 2 + 6);
+    c.shadowBlur = 0; c.fillStyle = '#ffffff'; c.globalAlpha = 0.85; c.fillText(word, w / 2, h / 2 + 6);
+  });
+}
+function glowSpriteTex(rgb) {
+  return canvasTex(64, 64, (c) => {
+    const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, `rgba(${rgb},1)`); g.addColorStop(0.3, `rgba(${rgb},0.5)`); g.addColorStop(1, `rgba(${rgb},0)`);
+    c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+  });
+}
+function buildCity(ctx, terr) {
+  const { scene, track: T } = ctx, M = cityMats(), HWb = T.halfW;
+  let seed = 11;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const W = terr.x1 - terr.x0, D = terr.z1 - terr.z0;
+  const occ = new Set(), CELL = 34;
+  const geos = [];
+  const signs = [];
+  for (let n = 0; n < 40000 && geos.length < 900; n++) {
+    const x = terr.x0 + rnd() * W, z = terr.z0 + rnd() * D;
+    const dist = terr.distAt(x, z);
+    if (dist < HWb + 24 || dist > 900 || terr.valleyAt(x, z) > 0.05) continue;
+    if (Math.hypot(x, z) < 160 && dist < 80) continue;
+    const key = Math.floor(x / CELL) + '|' + Math.floor(z / CELL);
+    if (occ.has(key)) continue;
+    occ.add(key);
+    const far = Math.min(1, dist / 600);
+    const w = 14 + rnd() * 14, d = 14 + rnd() * 14, h = 12 + rnd() * (30 + far * 70) + (rnd() < 0.12 ? 60 : 0);
+    const g = buildingGeo(w, h, d).rotateY(rnd() * 0.3 - 0.15).translate(x, terr.heightAt(x, z) - 0.5, z);
+    geos.push({ g, x, z });
+    if (dist < 140 && rnd() < 0.35) signs.push({ x, z, y: terr.heightAt(x, z) + Math.min(h - 4, 10 + rnd() * 14), w, d });
+  }
+  // slå ihop i bitar (för culling)
+  const CH = 600, chunks = new Map();
+  for (const b of geos) {
+    const k = Math.floor(b.x / CH) + '|' + Math.floor(b.z / CH);
+    if (!chunks.has(k)) chunks.set(k, { list: [], cx: (Math.floor(b.x / CH) + 0.5) * CH, cz: (Math.floor(b.z / CH) + 0.5) * CH });
+    chunks.get(k).list.push(b.g);
+  }
+  const out = [];
+  for (const ch of chunks.values()) {
+    const m = new THREE.Mesh(mergeGeometries(ch.list), M.facade);
+    m.castShadow = true; m.receiveShadow = true;
+    scene.add(m);
+    out.push({ mesh: m, cx: ch.cx, cz: ch.cz });
+  }
+  // neonskyltar mot vägen
+  const words = [['KNUFF', '#ff3bd6'], ['PIZZA', '#ffd21f'], ['BIO', '#2bd6e8'], ['HOTELL', '#ff5a5a'], ['SUSHI', '#7aff6a'], ['GYM', '#b06aff'],
+    ['TURBO', '#ff8a2a'], ['KAFÉ', '#ffe28a'], ['GLASS', '#ff9ec7'], ['ARKAD', '#5bff9a'], ['DISCO', '#ff3b6b'], ['NATTÖPPET', '#6ab8ff']];
+  const texCache = new Map();
+  signs.forEach((s, k) => {
+    const [word, col] = words[k % words.length];
+    if (!texCache.has(word)) texCache.set(word, new THREE.MeshBasicMaterial({ map: neonTex(word, col), transparent: true, toneMapped: false, side: THREE.DoubleSide, depthWrite: false }));
+    const p = T.project(s.x, s.z, -1, {});
+    const f = T.sampleAt(p.s);
+    const toRoad = Math.atan2(f.x - s.x, f.z - s.z);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(13, 4), texCache.get(word));
+    sign.position.set(s.x + Math.sin(toRoad) * (Math.max(s.w, s.d) / 2 + 0.4), s.y, s.z + Math.cos(toRoad) * (Math.max(s.w, s.d) / 2 + 0.4));
+    sign.rotation.y = toRoad;
+    scene.add(sign);
+  });
+  // gatlyktor längs vägen (stolpe + arm + lampa, och ett sken i en enda punktmoln)
+  const lamps = [];
+  for (let s = 20; s < T.L; s += 42) {
+    const i = T.idx(s);
+    if (T.flags[i] & (F_GAP | F_TUNNEL)) continue;
+    for (const sd of [-1, 1]) lamps.push([i, sd]);
+  }
+  const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.14, 0.2, 9, 6).translate(0, 4.5, 0), new THREE.MeshLambertMaterial({ color: 0x2a2c33 }), lamps.length);
+  const head = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.25, 2.2), new THREE.MeshBasicMaterial({ color: 0xfff1c8, toneMapped: false }), lamps.length);
+  const gpos = new Float32Array(lamps.length * 3);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  lamps.forEach(([i, sd], k) => {
+    const lat = sd * (HWb + 2.2);
+    const x = T.px[i] + T.rx[i] * lat, z = T.pz[i] + T.rz[i] * lat, y = T.py[i] + T.ry[i] * lat;
+    m4.compose(v.set(x, y, z), q, one); post.setMatrixAt(k, m4);
+    const hx = T.px[i] + T.rx[i] * (lat - sd * 2.2), hz = T.pz[i] + T.rz[i] * (lat - sd * 2.2);
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(T.hx[i], T.hz[i]));
+    m4.compose(v.set(hx, y + 8.9, hz), q, one); head.setMatrixAt(k, m4); q.identity();
+    gpos.set([hx, y + 8.6, hz], k * 3);
+  });
+  scene.add(post, head);
+  const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(gpos, 3));
+  const glow = new THREE.Points(gg, new THREE.PointsMaterial({ map: glowSpriteTex('255,225,170'), size: 9, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  glow.frustumCulled = false;
+  scene.add(glow);
+  return out;
+}
+
+// ---------- Berg: vulkaner, platåberg och stadssiluett ----------
+function buildMountainsThemed(ctx, terr) {
+  const th = ctx.theme;
+  if (th.mtnShape === 'cone') return buildMountains(ctx, terr);
+  const cx = (terr.x0 + terr.x1) / 2, cz = (terr.z0 + terr.z1) / 2;
+  const R0 = Math.max(terr.x1 - terr.x0, terr.z1 - terr.z0) * 0.55;
+  const [topC, rockC, lowC] = th.mtn.map(h => new THREE.Color(h));
+  const geos = [], tops = [];
+  if (th.mtnShape === 'skyline') {
+    const M = cityMats(), list = [];
+    for (let k = 0; k < 160; k++) {
+      const a = (k / 160) * Math.PI * 2 + hash1(k) * 0.03, r = R0 + 200 + hash1(k + 50) * 1300;
+      const w = 50 + hash1(k + 7) * 110, h = 120 + hash1(k + 90) * 330;
+      list.push(buildingGeo(w, h, w * (0.7 + hash1(k + 3) * 0.6)).translate(cx + Math.cos(a) * r * 1.2, -40, cz + Math.sin(a) * r));
+    }
+    const m = new THREE.Mesh(mergeGeometries(list), M.facade);
+    m.frustumCulled = false;
+    ctx.scene.add(m);
+    return [];
+  }
+  const N = th.mtnShape === 'mesa' ? 34 : 30;
+  for (let k = 0; k < N; k++) {
+    const a = (k / N) * Math.PI * 2 + hash1(k) * 0.12, r = R0 + 300 + hash1(k + 50) * 1800;
+    let g, height, rad;
+    if (th.mtnShape === 'mesa') {
+      height = 160 + hash1(k + 90) * 260; rad = 500 + hash1(k + 130) * 700;
+      g = new THREE.CylinderGeometry(rad * (0.62 + hash1(k + 5) * 0.15), rad, height, 10, 6).toNonIndexed();
+    } else {
+      height = 420 + hash1(k + 90) * 700; rad = 700 + hash1(k + 130) * 800;
+      g = new THREE.CylinderGeometry(rad * 0.1, rad, height, 11, 5, true).toNonIndexed();
+    }
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      if (y < height / 2 - 1) {
+        const jx = p.getX(i), jz = p.getZ(i), n = vnoise(jx * 0.004 + k * 3.1, jz * 0.004 + y * 0.003) * 0.18;
+        p.setX(i, jx * (1 + n)); p.setZ(i, jz * (1 + n));
+      }
+    }
+    const col = new Float32Array(p.count * 3), c = new THREE.Color();
+    for (let i = 0; i < p.count; i += 3) {
+      const ym = (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) / 3, t = (ym + height / 2) / height;
+      if (th.mtnShape === 'mesa') c.copy(t > 0.97 ? lowC : (Math.floor(t * 9) % 2 ? rockC : topC));
+      else c.copy(t > 0.86 ? topC : (t < 0.2 ? lowC : rockC)).lerp(topC, t > 0.7 && hash1(i + k) > 0.8 ? 0.6 : 0);  // lavaströmmar nerför sidan
+      for (let j = 0; j < 3; j++) { col[(i + j) * 3] = c.r; col[(i + j) * 3 + 1] = c.g; col[(i + j) * 3 + 2] = c.b; }
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.deleteAttribute('uv');
+    const X = cx + Math.cos(a) * r * 1.25, Z = cz + Math.sin(a) * r;
+    g.translate(X, height / 2 - 60, Z);
+    geos.push(g);
+    if (th.mtnShape === 'volcano') tops.push({ x: X, y: height - 60, z: Z, r: rad * 0.1, big: height > 800 });
+  }
+  const g = mergeGeometries(geos);
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide }));
+  m.frustumCulled = false;
+  ctx.scene.add(m);
+  // vulkanerna: glöd i kratern + rökpelare
+  if (th.mtnShape === 'volcano') {
+    const glowM = new THREE.SpriteMaterial({ map: glowSpriteTex('255,110,30'), blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false });
+    const smokeT = canvasTex(128, 128, (c) => { const gr = c.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(40,30,32,0.9)'); gr.addColorStop(1, 'rgba(40,30,32,0)'); c.fillStyle = gr; c.fillRect(0, 0, 128, 128); });
+    const smokeM = new THREE.SpriteMaterial({ map: smokeT, transparent: true, depthWrite: false });
+    ctx.plumes = [];
+    for (const t of tops) {
+      const s = new THREE.Sprite(glowM); s.position.set(t.x, t.y + 20, t.z); s.scale.setScalar(t.r * 3.2); ctx.scene.add(s);
+      if (!t.big) continue;
+      for (let k = 0; k < 6; k++) {
+        const p = new THREE.Sprite(smokeM.clone()); p.position.set(t.x, t.y + 60 + k * 90, t.z); p.scale.setScalar(160 + k * 70);
+        ctx.scene.add(p); ctx.plumes.push({ s: p, base: t, k });
+      }
+    }
+    ctx.volcanoTops = tops;
+  }
+  return [];
+}
+
+// ---------- Dalarnas botten: is, lava eller sand ----------
+function lavaTex() {
+  const t = canvasTex(256, 256, (c, w, h) => {
+    const img = c.createImageData(w, h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const n = fbm(x / 28, y / 28, 4), m = Math.abs(fbm(x / 14 + 7, y / 14 - 3, 3));
+      const hot = Math.max(0, 1 - m * 4.2);
+      const o = (y * w + x) * 4;
+      img.data[o] = 120 + 120 * hot + n * 30; img.data[o + 1] = 20 + 150 * hot * hot + n * 15; img.data[o + 2] = 6 + 60 * hot * hot * hot; img.data[o + 3] = 255;
+    }
+    c.putImageData(img, 0, 0);
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+function sandBedTex() {
+  const t = canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = '#d9a868'; c.fillRect(0, 0, w, h);
+    c.strokeStyle = 'rgba(150,100,60,0.35)'; c.lineWidth = 3;
+    for (let y = 0; y < h; y += 12) { c.beginPath(); for (let x = 0; x <= w; x += 8) c.lineTo(x, y + Math.sin(x * 0.05 + y) * 4); c.stroke(); }
+    c.strokeStyle = 'rgba(110,70,40,0.5)'; c.lineWidth = 2;
+    for (let k = 0; k < 30; k++) { c.beginPath(); let x = Math.random() * w, y = Math.random() * h; c.moveTo(x, y); for (let n = 0; n < 4; n++) { x += (Math.random() - 0.5) * 40; y += (Math.random() - 0.5) * 30; c.lineTo(x, y); } c.stroke(); }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+// ---------- Lava längs kanterna (F_LAVA): glödande remsor innanför murarna — bränner den som kör i ----------
+export const LAVA_IN = 3.6;          // hur långt in från muren lavan går
+function buildLava(ctx) {
+  const { scene, track: T } = ctx;
+  const tex = lavaTex();
+  const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+  const runs = segRuns(T, (k) => !!(T.flags[k % T.N] & F_LAVA) && !!(T.flags[(k + 1) % T.N] & F_LAVA));
+  const HW = T.halfW;
+  let n = 0;
+  for (const [a, b] of runs) {
+    if (!(T.flags[a % T.N] & F_LAVA)) continue;
+    for (const sd of [-1, 1]) {
+      const g = stripGeo(T, sd < 0 ? -HW : HW - LAVA_IN, sd < 0 ? -HW + LAVA_IN : HW, 0.05, 14, a, b);
+      scene.add(new THREE.Mesh(g, mat)); n++;
+    }
+    const sMid = ((a + b) / 2) * T.ds;
+    for (const sd of [-1, 1]) boardAt(ctx, sMid - (b - a) * T.ds / 2 - 90, sd * (T.halfW + 4), signTex('LAVA!', 'HÅLL MITTEN', '#ff6a1e'));
+  }
+  return n ? tex : null;
+}
+
+// ---------- Luften: aska + glöd, ökendamm eller snö kring kameran; eldklot över vulkanbanan ----------
+const AIR = {
+  ash0: new THREE.Color(0xffb050), ash1: new THREE.Color(0xff3a10), dark0: new THREE.Color(0x2a2224), dark1: new THREE.Color(0x4a3e40),
+  dust0: new THREE.Color(0xf0d0a0), dust1: new THREE.Color(0xd8b080), snow0: new THREE.Color(0xffffff), snow1: new THREE.Color(0xdff2ff),
+};
+function makeAir(ctx) {
+  const th = ctx.theme, T = ctx.track, terr = ctx.terr;
+  const balls = [];
+  let fbT = 2;
+  const ballM = new THREE.MeshBasicMaterial({ color: 0xffa040, toneMapped: false });
+  const ballG = new THREE.SphereGeometry(1.6, 10, 8);
+  const glowM = th.mtnShape === 'volcano' ? new THREE.SpriteMaterial({ map: glowSpriteTex('255,140,40'), blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }) : null;
+  return (dt, time, cam, fx, onBoom) => {
+    if (!fx || !cam) return;
+    const r = (s) => (Math.random() * 2 - 1) * s;
+    if (th.air === 'ash') {
+      for (let k = 0; k < 3; k++) fx.glow.spawn(cam.x + r(45), cam.y - 4 + Math.random() * 12, cam.z + r(45), r(0.6), 0.6 + Math.random(), r(0.6), 3 + Math.random() * 2, 0.18, 0.05, AIR.ash0, AIR.ash1, 1, -0.2, 0.2);
+      if (Math.random() < 0.6) fx.puff.spawn(cam.x + r(40), cam.y + 8 + Math.random() * 8, cam.z + r(40), r(1), -0.8, r(1), 5, 0.25, 0.2, AIR.dark0, AIR.dark1, 0.7, 0.4, 0.3);
+    } else if (th.air === 'dust') {
+      for (let k = 0; k < 2; k++) fx.puff.spawn(cam.x + r(50), cam.y - 3 + Math.random() * 6, cam.z + r(50), 3 + r(1), r(0.3), 1 + r(1), 4, 0.6, 3.5, AIR.dust0, AIR.dust1, 0.22, 0, 0.1);
+    } else if (th.air === 'snow') {
+      for (let k = 0; k < 4; k++) fx.puff.spawn(cam.x + r(45), cam.y + 6 + Math.random() * 14, cam.z + r(45), r(0.8), -2.5, r(0.8), 6, 0.22, 0.2, AIR.snow0, AIR.snow1, 0.9, 0.2, 0.1);
+    }
+    // eldklot: kastas från rökhimlen och slår ner en bit från vägen (bara syns och hörs)
+    if (glowM) {
+      fbT -= dt;
+      if (fbT <= 0) {
+        fbT = 2.2 + Math.random() * 2.5;
+        for (let tries = 0; tries < 8; tries++) {
+          const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 220;
+          const tx = cam.x + Math.cos(a) * d, tz = cam.z + Math.sin(a) * d;
+          if (terr.distAt(tx, tz) < T.halfW + 22) continue;
+          const ty = terr.heightAt(tx, tz), fl = 3.4 + Math.random() * 1.2;
+          const sx = tx + r(400), sz = tz + r(400), sy = ty + 260 + Math.random() * 120;
+          const g = 9.8, vx = (tx - sx) / fl, vz = (tz - sz) / fl, vy = (ty - sy) / fl + 0.5 * g * fl;
+          const m = new THREE.Mesh(ballG, ballM), s = new THREE.Sprite(glowM);
+          s.scale.setScalar(14); m.add(s); m.position.set(sx, sy, sz);
+          ctx.scene.add(m);
+          balls.push({ m, vx, vy, vz, g });
+          break;
+        }
+      }
+      for (const b of balls) {
+        b.vy -= b.g * dt;
+        b.m.position.x += b.vx * dt; b.m.position.y += b.vy * dt; b.m.position.z += b.vz * dt;
+        fx.fire(b.m.position, { x: 0, y: 0, z: 0 }, 2.2);
+        if (Math.random() < 0.7) fx.smoke(b.m.position, { x: 0, y: 0, z: 0 }, true, 1.4);
+        if (b.m.position.y < terr.heightAt(b.m.position.x, b.m.position.z)) {
+          b.dead = true; ctx.scene.remove(b.m);
+          fx.explosion(b.m.position, { x: 0, y: 0, z: 0 });
+          onBoom?.(b.m.position);
+        }
+      }
+      for (let i = balls.length - 1; i >= 0; i--) if (balls[i].dead) balls.splice(i, 1);
+    }
   };
 }

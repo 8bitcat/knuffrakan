@@ -2,9 +2,9 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=17';
-import { VTYPES } from './vtypes.js?v=17';
-import { frontParts, loaderPose } from './gear.js?v=17';
+import { CONF } from './config.js?v=18';
+import { VTYPES } from './vtypes.js?v=18';
+import { frontParts, loaderPose } from './gear.js?v=18';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -173,6 +173,7 @@ export class Vehicle {
     }
 
     let grounded = 0;
+    const gripK = this.sim.track?.def?.grip ?? 1;          // banans grepp (isbanan < 1)
     for (const w of this.wheels) {
       _a.set(w.x, 0, w.z).applyQuaternion(this.quat).add(pos);
       this.ray.origin = { x: _a.x, y: _a.y, z: _a.z };
@@ -212,7 +213,7 @@ export class Vehicle {
       _pv.copy(this.vel).add(_t.crossVectors(this.angv, _r));
       const vL = _pv.dot(_wf), vS = _pv.dot(_ws);
 
-      const grip = T.muLat * (w.front
+      const grip = T.muLat * gripK * (w.front
         ? this.pressF
         : T.rearGrip * this.pressR * (1 - 0.55 * this.drift) * (hand > 0.5 ? 0.42 : 1));
       const maxJ = grip * Fs * dt;
@@ -224,7 +225,7 @@ export class Vehicle {
       if (this.hold) F -= vL * T.mass * 0.25 / dt * 0.5;
       if (hand > 0.5 && !w.front) F -= Math.sign(vL) * T.muLong * Fs * 0.8;
       F -= vL * 4 * T.mass / 1500; // rullmotstånd
-      const maxL = T.muLong * Fs;
+      const maxL = T.muLong * gripK * Fs;
       let jL = clamp(F, -maxL, maxL) * dt;
       // friktionscirkel
       const tot = Math.hypot(jS, jL), lim = Math.max(maxJ, maxL * dt);
@@ -301,7 +302,7 @@ export class Vehicle {
         // annars vrids nosen runt fortare än bilen kan svänga och den snurrar
         const v = Math.max(1, Math.abs(this.vLong));
         const dm = steerMaxAt(sp, T);
-        const wMax = Math.min(v * Math.tan(dm) / T.wb, 30 / v);
+        const wMax = Math.min(v * Math.tan(dm) / T.wb, 30 * gripK / v);
         const kin = -Math.sign(this.vLong || 1) * clamp(this.steer / dm, -1.6, 1.6) * wMax;   // höger = negativ gir
         // drift: hårt rattutslag i hög fart med gas (eller handbroms) → bakvagnen släpper
         const wantDrift = !this.assist && (hand > 0.5 ? sp > 12 : (Math.abs(inSteer) > 0.45 && sp > 30 && throttle > 0.3));

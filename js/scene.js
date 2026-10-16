@@ -19,7 +19,7 @@ void main() {
 const SKY_FS = `
 varying vec3 vDir;
 uniform vec3 cHor; uniform vec3 cMid; uniform vec3 cTop; uniform vec3 cCloud; uniform vec3 cShade;
-uniform float uTime;
+uniform float uTime; uniform float uStars; uniform float uAurora; uniform float uClouds;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
   vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -31,13 +31,27 @@ void main() {
   float h = d.y;
   vec3 col = mix(cHor, cMid, smoothstep(-0.02, 0.2, h));
   col = mix(col, cTop, smoothstep(0.2, 0.85, h));
-  if (h > 0.0) {
+  if (h > 0.0 && uStars > 0.0) {
+    // stjärnor: små punkter som blinkar
+    vec2 sp = d.xz / (h + 0.35) * 70.0;
+    vec2 cell = floor(sp); float r = hash(cell);
+    float star = step(0.992, r) * smoothstep(0.35, 0.0, length(fract(sp) - 0.5)) * smoothstep(0.04, 0.3, h);
+    col += vec3(star * (0.6 + 0.4 * sin(uTime * 2.0 + r * 40.0)) * uStars);
+  }
+  if (h > 0.0 && uAurora > 0.0) {
+    // norrsken: gröna och lila band som böljar
+    float w = d.x * 2.6 + d.z * 1.1 + fbm(d.xz * 1.8 + vec2(uTime * 0.012, 0.0)) * 3.5 + uTime * 0.03;
+    float band = pow(max(0.0, sin(w)), 6.0) + 0.6 * pow(max(0.0, sin(w * 1.7 + 1.3)), 8.0);
+    float a = band * smoothstep(0.08, 0.3, h) * (1.0 - smoothstep(0.55, 0.95, h));
+    col += mix(vec3(0.15, 1.0, 0.55), vec3(0.65, 0.3, 1.0), smoothstep(0.25, 0.6, h)) * a * 0.55 * uAurora;
+  }
+  if (h > 0.0 && uClouds > 0.0) {
     vec2 uv = d.xz / (h + 0.14) * 0.85 + vec2(uTime * 0.004, uTime * 0.0013);
     float n = fbm(uv * 1.25);
     float c = smoothstep(0.47, 0.76, n) * smoothstep(0.0, 0.16, h);
     float sh = smoothstep(0.58, 0.88, fbm(uv * 1.25 + vec2(3.7, 1.9)));
     vec3 cc = mix(cCloud, cShade, sh * 0.7);
-    col = mix(col, cc, c * 0.88);
+    col = mix(col, cc, c * 0.88 * uClouds);
   }
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
@@ -52,6 +66,7 @@ export function createSkyMesh(radius = 8000) {
       cHor: { value: new THREE.Color(SKY.hor) }, cMid: { value: new THREE.Color(SKY.mid) },
       cTop: { value: new THREE.Color(SKY.top) }, cCloud: { value: new THREE.Color(SKY.cloud) },
       cShade: { value: new THREE.Color(SKY.shade) }, uTime: { value: 0 },
+      uStars: { value: 0 }, uAurora: { value: 0 }, uClouds: { value: 1 },
     },
   });
   const m = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 16), mat);
@@ -79,7 +94,8 @@ export function createScene(canvas) {
   // Reflektioner i lacken: rendera himlen en gång till en miljökarta
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envScene = new THREE.Scene();
-  envScene.add(createSkyMesh(100));
+  const envSky = createSkyMesh(100);
+  envScene.add(envSky);
   const ground = new THREE.Mesh(new THREE.CircleGeometry(100, 16), new THREE.MeshBasicMaterial({ color: 0xf0e2ea }));
   ground.rotation.x = -Math.PI / 2; ground.position.y = -2;
   envScene.add(ground);
@@ -105,10 +121,27 @@ export function createScene(canvas) {
     camera.updateProjectionMatrix();
   });
 
+  let hemiI = 1.0, sunI = 1.45;
   return {
     renderer, scene, camera, sky, sun,
+    // banans tema: himmel, dis, ljus och reflektionerna i lacken
+    applyTheme(th) {
+      for (const m of [sky.material, envSky.material]) {
+        const u = m.uniforms;
+        u.cHor.value.setHex(th.sky.hor); u.cMid.value.setHex(th.sky.mid); u.cTop.value.setHex(th.sky.top);
+        u.cCloud.value.setHex(th.sky.cloud); u.cShade.value.setHex(th.sky.shade);
+        u.uStars.value = th.sky.stars || 0; u.uAurora.value = th.sky.aurora || 0; u.uClouds.value = th.sky.clouds ?? 1;
+      }
+      scene.background.setHex(th.sky.hor);
+      scene.fog.color.setHex(th.sky.hor); scene.fog.density = th.fog;
+      hemi.color.setHex(th.hemi[0]); hemi.groundColor.setHex(th.hemi[1]); hemiI = th.hemi[2]; hemi.intensity = hemiI;
+      sun.color.setHex(th.sun[0]); sunI = th.sun[1]; sun.intensity = sunI;
+      ground.material.color.setHex(th.envGround);
+      scene.environment?.dispose();
+      scene.environment = pmrem.fromScene(envScene, 0.02).texture;
+    },
     // inne i tunneln: mindre dagsljus
-    setTunnel(k) { hemi.intensity = 1.0 * (1 - 0.6 * k); sun.intensity = 1.45 * (1 - 0.85 * k); },
+    setTunnel(k) { hemi.intensity = hemiI * (1 - 0.6 * k); sun.intensity = sunI * (1 - 0.85 * k); },
     // Skuggan och himlen följer det man tittar på
     follow(target, t) {
       sky.position.copy(camera.position);

@@ -1,20 +1,22 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=17';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=17';
-import { buildWorld, gridSlots } from './world.js?v=17';
-import { createScene, ChaseCam } from './scene.js?v=17';
-import { makeCarView } from './vehicles3d.js?v=17';
-import { typeOf } from './vtypes.js?v=17';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=17';
-import { makeLivery, randomSpec } from './livery.js?v=17';
-import { Vehicle, CP } from './vehicle.js?v=17';
-import { BotBrain } from './ai.js?v=17';
-import { Race } from './race.js?v=17';
-import { FX, Trails } from './fx.js?v=17';
-import { NameTag, SpeedPlate } from './tags.js?v=17';
-import { RemoteVeh, carInfo } from './net.js?v=17';
-import { Weapons } from './weapons.js?v=17';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=18';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=18';
+import { themeOf } from './themes.js?v=18';
+import { LAVA_IN } from './world.js?v=18';
+import { buildWorld, gridSlots } from './world.js?v=18';
+import { createScene, ChaseCam } from './scene.js?v=18';
+import { makeCarView } from './vehicles3d.js?v=18';
+import { typeOf } from './vtypes.js?v=18';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=18';
+import { makeLivery, randomSpec } from './livery.js?v=18';
+import { Vehicle, CP } from './vehicle.js?v=18';
+import { BotBrain } from './ai.js?v=18';
+import { Race } from './race.js?v=18';
+import { FX, Trails } from './fx.js?v=18';
+import { NameTag, SpeedPlate } from './tags.js?v=18';
+import { RemoteVeh, carInfo } from './net.js?v=18';
+import { Weapons } from './weapons.js?v=18';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -63,6 +65,7 @@ export class Game {
     this.worldGroup = new THREE.Group();
     this.scene.add(this.worldGroup);
     this.world3d = buildWorld({ scene: this.worldGroup, track: this.track, RAPIER: this.RAPIER, world: this.world });
+    this.sceneApi?.applyTheme?.(themeOf(def));
     this.trackId = def.id;
     this.trails?.clear(); this.skids?.clear();
     for (const c of this.cars || []) { c.trk.i = 0; c.lap = 0; c.prevS = 0; }
@@ -892,6 +895,13 @@ export class Game {
     if (lying) car.flipT += dt; else if (!upside || car.airT > 0.7) car.flipT = 0;
     car.rstate = air ? 1 : upside ? 2 : 0;
     if (car.flipT > CONF.FLIP_AUTO && v.speed < 9) this.respawn(car, 10, 'flip');
+    // lava längs kanterna: bränner den som kör i den
+    if ((car.trk.f & F_LAVA) && Math.abs(car.trk.lat) > T.halfW - LAVA_IN && v.grounded > 0 && v.pos.y < car.trk.y + 2.5) {
+      car.health -= 16 * dt / v.T.armor; car.lastDmgT = this.simT;
+      if (Math.random() < dt * 20) this.fx.fire(v.pos, v.vel, 1.4);
+      if (!car.lavaMsgT || this.time - car.lavaMsgT > 3) { car.lavaMsgT = this.time; this.notify(car, '🔥 Lava! Kör in mot mitten!', 'bad'); }
+      if (car.health <= 0) { this.wreck(car); return; }
+    }
     // utanför banan
     if (Math.abs(car.trk.lat) > T.halfW + 5 || v.pos.y < car.trk.y - 12) car.offT += dt; else car.offT = 0;
     if (v.pos.y < car.trk.y - 4 && (car.trk.f & F_GAP || T.flags[(car.trk.i + 4) % T.N] & F_GAP || T.flags[(car.trk.i - 4 + T.N) % T.N] & F_GAP)) car.offT += dt * 2.5;
@@ -992,6 +1002,10 @@ export class Game {
       this.scrapes.length = 0;
     }
     this.weapons.frame(dt);
+    this.world3d.update?.(dt, this.time, this.camera.position, this.fx, (p) => {
+      const near = this.me ? Math.max(0, 1 - this.me.veh.pos.distanceTo(p) / 260) : 0.4;
+      if (near > 0.05) this.audio?.blast?.(near * 0.8);
+    });
     this.fx.update(dt);
     this.trails.update(this.time);
     this.skids.update(this.time);

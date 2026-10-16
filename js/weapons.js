@@ -3,7 +3,7 @@
 // efter ögonblicksbilderna: varje bil har vapen + "skjuter" i sin rad, projektilerna ligger sist i
 // bilden, och lådor/explosioner/chockvågor kommer som händelser.
 import * as THREE from 'three';
-import { F_GAP, F_RAMP, F_LAND } from './track.js?v=17';
+import { F_GAP, F_RAMP, F_LAND } from './track.js?v=18';
 
 export const WEAPONS = {
   raket: { namn: 'Raketer', ikon: '🚀', ammo: 3 },
@@ -11,8 +11,8 @@ export const WEAPONS = {
   minor: { namn: 'Minor', ikon: '💣', ammo: 3 },
   chock: { namn: 'Chockvåg', ikon: '💥', ammo: 1 },
   harpun: { namn: 'Harpun', ikon: '🪝', ammo: 1 },
-  kulspruta: { namn: 'Kulspruta .50', ikon: '.50', ammo: 60, rate: 12, dmg: 1.7, spread: 0.012, kick: 0.15, gun: true },
-  kanon: { namn: '20 mm automatkanon', ikon: '20mm', ammo: 80, rate: 20, dmg: 2.6, spread: 0.02, kick: 0.3, gun: true },
+  kulspruta: { namn: 'Kulspruta .50', ikon: '.50', ammo: 60, rate: 12, dmg: 1.3, spread: 0.012, kick: 0.15, gun: true },
+  kanon: { namn: '20 mm automatkanon', ikon: '20mm', ammo: 80, rate: 20, dmg: 1.9, spread: 0.02, kick: 0.3, gun: true },
 };
 export const WIDS = Object.keys(WEAPONS);                 // kod i ögonblicksbilden = index + 1, -1 = ruletten snurrar
 // vikt = a + b·p där p = 0 för ledaren och 1 för den sista
@@ -198,8 +198,8 @@ export class Weapons {
   botWants(c, dt) {
     const id = c.weapon.id;
     c.holdT = (c.holdT || 0) + dt;
-    if (id === 'kulspruta' || id === 'kanon') return !!this.target(c, 0.985, 110, 3);
-    if (id === 'raket') return !!this.target(c, 0.9, 120, 6);
+    if (id === 'kulspruta' || id === 'kanon') return !!this.target(c, 0.988, 80, 3);
+    if (id === 'raket') return !!this.target(c, 0.92, 100, 6);
     if (id === 'harpun') return !!this.target(c, 0.94, 70, 12);
     if (id === 'olja' || id === 'minor') {
       for (const o of this.g.cars) {
@@ -322,7 +322,7 @@ export class Weapons {
       const tw = this.rayWorld(p.pos, dir, Math.min(ht, step + 0.4));
       if (hitCar || tw >= 0) {
         p.pos.addScaledVector(dir, tw >= 0 && (!hitCar || tw < ht) ? tw : ht);
-        this.explode(p.pos, p.owner, hitCar && !(tw >= 0 && tw < ht) ? hitCar : null, 7, 14, 22);
+        this.explode(p.pos, p.owner, hitCar && !(tw >= 0 && tw < ht) ? hitCar : null, 7, 14, 18);
         p.dead = true; return;
       }
       p.pos.addScaledVector(p.vel, dt);
@@ -351,7 +351,7 @@ export class Weapons {
         const d = _a.length();
         if (d < 2.6) {
           p.attached = true; p.until = now + 2.6; p.life = 99;
-          this.hurt(tg, p.owner, 5);
+          this.hurt(tg, p.owner, 4);
           g.notify(p.owner, `🪝 Harpunen sitter i ${tg.name} — du dras fram!`, 'good');
           g.notify(tg, `🪝 ${p.owner.name} harpunerade dig!`, 'bad');
           if (p.owner === g.me || tg === g.me) g.audio?.bump?.(0.8);
@@ -372,7 +372,7 @@ export class Weapons {
         const dx = o.veh.pos.x - p.pos.x, dz = o.veh.pos.z - p.pos.z, dy = o.veh.pos.y - p.pos.y;
         const r = o.veh.T.half.x + 1.3;
         if (dx * dx + dz * dz < r * r && Math.abs(dy) < 2.5) {
-          this.explode(p.pos, p.owner, o, 4.5, 10, 20, true);
+          this.explode(p.pos, p.owner, o, 4.5, 10, 16, true);
           p.dead = true; return;
         }
       }
@@ -419,7 +419,7 @@ export class Weapons {
       _a.divideScalar(d || 1);
       o.veh.applyJ?.(_a.x * m * push * k, m * push * 0.45 * k, _a.z * m * push * k, o.veh.pos.x, o.veh.pos.y, o.veh.pos.z);
       o.veh.spinT = Math.max(o.veh.spinT || 0, 0.6 * k);
-      if (o !== direct && dmg) this.hurt(o, owner, dmg * 0.5 * k);
+      if (o !== direct && dmg) this.hurt(o, owner, dmg * 0.4 * k);
     }
     this.boomFx(pos, radius > 5 ? 1 : 0.7);
     g.emit({ t: 'wx', p: [+pos.x.toFixed(2), +pos.y.toFixed(2), +pos.z.toFixed(2)], k: radius > 5 ? 1 : 0.7 });

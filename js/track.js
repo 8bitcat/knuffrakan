@@ -2,7 +2,7 @@
 // hopp med glipa, tunnlar genom berg, en dalbro och en bro där banan korsar sig själv.
 // Allt (väg, murar, terräng, AI, placeringar) utgår från samma sampling var 4:e meter.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=17';
+import { CONF } from './config.js?v=18';
 
 // ---------- Banorna ----------
 // SNÖBERGET: start/mål vid (0,0), körriktning +x.
@@ -41,6 +41,13 @@ function eightCtrl() {
   return pts;
 }
 
+// VULKANBANAN: en lång njure runt vulkanen i mitten
+const CTRL_VULKAN = [
+  [0, 0], [700, 0], [1400, -50], [1900, -250], [2200, -650], [2150, -1150], [1800, -1500], [1250, -1650],
+  [650, -1550], [150, -1700], [-450, -1850], [-1050, -1750], [-1500, -1400], [-1650, -900], [-1450, -450],
+  [-900, -250], [-450, -80],
+];
+
 export const TRACKS = [
   {
     id: 'snoberget', namn: 'SNÖBERGET', besk: 'Klassikern — 10,8 km med långa backar och krön', laps: 1,
@@ -59,11 +66,24 @@ export const TRACKS = [
       { type: 'jump', at: 0.694 },
     ],
   },
+  {
+    id: 'vulkan', namn: 'VULKANBANAN', besk: 'Lava längs kanterna, lavafloder under broarna, eldklot — 2 varv', laps: 2, theme: 'vulkan',
+    ctrl: CTRL_VULKAN, hills: [12, 6, 3], crests: [{ s: 0.36, h: 6, w: 50 }],
+    features: [
+      { type: 'jump', at: 0.1 },
+      { type: 'lava', at: 0.2, len: 420 },
+      { type: 'valley', at: 0.3, len: 180, depth: 30, namn: 'LAVAFLODEN' },
+      { type: 'lava', at: 0.43, len: 480 },
+      { type: 'tunnel', at: 0.56, len: 380, namn: 'KRATERN' },
+      { type: 'valley', at: 0.72, len: 160, depth: 28, namn: 'MAGMABRON' },
+      { type: 'lava', at: 0.87, len: 380 },
+    ],
+  },
 ];
 export const trackDef = (id) => TRACKS.find(t => t.id === id) || TRACKS[0];
 
 // Flaggor per sample
-export const F_GAP = 1, F_BRIDGE = 2, F_TUNNEL = 4, F_RAMP = 8, F_LAND = 16;
+export const F_GAP = 1, F_BRIDGE = 2, F_TUNNEL = 4, F_RAMP = 8, F_LAND = 16, F_LAVA = 32, F_CANYON = 64;
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -199,6 +219,12 @@ export function buildTrack(def = TRACKS[0]) {
       } else if (f.type === 'valley') {
         const s0 = s - f.len / 2, s1 = s + f.len / 2;
         if (free(s0 - 140, s1 + 140) && maxK(s0 - 80, s1 + 80) < 1 / 350 && valleyClear(s, f.len)) placed = { ...f, c: wrapS(s), s0: wrapS(s0), s1: wrapS(s1), a: s0 - 140, b: s1 + 140 };
+      } else if (f.type === 'lava') {
+        const s0 = s - f.len / 2, s1 = s + f.len / 2;
+        if (free(s0 - 40, s1 + 40)) placed = { ...f, s0: wrapS(s0), s1: wrapS(s1), a: s0 - 40, b: s1 + 40 };
+      } else if (f.type === 'canyon') {
+        const s0 = s - f.len / 2, s1 = s + f.len / 2;
+        if (free(s0 - 80, s1 + 80) && maxK(s0, s1) < 1 / 260 && roomAround(s0, s1, 280, 260)) placed = { ...f, s0: wrapS(s0), s1: wrapS(s1), a: s0 - 80, b: s1 + 80 };
       }
     }
     if (!placed) { console.warn('kunde inte placera', f.type); continue; }
@@ -229,10 +255,11 @@ export function buildTrack(def = TRACKS[0]) {
   }
   for (const f of features) {
     const s0 = f.s0, s1 = f.s1;
-    if (f.type === 'tunnel' || f.type === 'valley') {
+    if (f.type === 'tunnel' || f.type === 'valley' || f.type === 'lava' || f.type === 'canyon') {
+      const bit = { tunnel: F_TUNNEL, valley: F_BRIDGE, lava: F_LAVA, canyon: F_CANYON }[f.type];
       for (let i = 0; i < N; i++) {
         const s = i * ds;
-        if (sdist(s, s0) >= 0 && sdist(s, s1) <= 0) flags[i] |= f.type === 'tunnel' ? F_TUNNEL : F_BRIDGE;
+        if (sdist(s, s0) >= 0 && sdist(s, s1) <= 0) flags[i] |= bit;
       }
     }
   }
@@ -262,7 +289,7 @@ export function buildTrack(def = TRACKS[0]) {
     // R0 = F × Y,  U0 = R0 × F
     let r0x = -tz, r0z = tx; const rl = Math.hypot(r0x, r0z); r0x /= rl; r0z /= rl;
     const u0x = -r0z * ty, u0y = r0z * tx - r0x * tz, u0z = r0x * ty;
-    const bk = (flags[i] & (F_GAP | F_RAMP)) ? 0 : clamp(-CONF.BANK_K * ks[i], -CONF.BANK_MAX, CONF.BANK_MAX);
+    const bk = (flags[i] & (F_GAP | F_RAMP)) ? 0 : clamp(-(def.bank?.k ?? CONF.BANK_K) * ks[i], -(def.bank?.max ?? CONF.BANK_MAX), def.bank?.max ?? CONF.BANK_MAX);
     const c = Math.cos(bk), s = Math.sin(bk);
     fx[i] = tx; fy[i] = ty; fz[i] = tz;
     rx[i] = r0x * c + u0x * s; ry[i] = u0y * s; rz[i] = r0z * c + u0z * s;

@@ -2,7 +2,7 @@
 // Målas på en 1024×1024-canvas. Vänster sida = nedre halvan, höger = övre (vänd 180°),
 // taket i mitten. u = längs bilen (0 = nosen), v = runt tvärsnittet.
 import * as THREE from 'three';
-import { V } from './carmodel.js?v=16';
+import { V } from './carmodel.js?v=17';
 
 export const SPONSORS = [
   'SKRUTTKOLA', 'TURBOFIL', 'KANELBULLEN', 'PLÅTIS', 'RAKETOST', 'SNÖKRUT', 'BRUMBRUM', 'KROCKCOLA',

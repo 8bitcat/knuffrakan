@@ -1,11 +1,12 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=16';
-import { VTYPES } from './vtypes.js?v=16';
+import { PROTO } from './config.js?v=17';
+import { Weapons } from './weapons.js?v=17';
+import { VTYPES } from './vtypes.js?v=17';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
-const ROW = 26;     // flyttal per bil i en ögonblicksbild
+const ROW = 28;     // flyttal per bil i en ögonblicksbild
 const HEAD = 6;     // [tid, fas, t, raceT, closeT, antal]
 const PHASES = ['idle', 'grid', 'count', 'race', 'results', 'lobby'];
 
@@ -98,7 +99,7 @@ export class NetHost {
     if (!car) return;
     if (d.t === 'in') {
       const r = car.remoteInput;
-      r.throttle = +d.a || 0; r.brake = +d.b || 0; r.steer = Math.max(-1, Math.min(1, +d.s || 0)); r.handbrake = +d.h || 0; r.loader = +d.k || 0;
+      r.throttle = +d.a || 0; r.brake = +d.b || 0; r.steer = Math.max(-1, Math.min(1, +d.s || 0)); r.handbrake = +d.h || 0; r.loader = +d.k || 0; r.fire = +d.w || 0;
     } else if (d.t === 'reset') g.requestReset(car);
     else if (d.t === 'ready') { g.setReady(car, d.on); this.lobbyT = 1; }
     else if (d.t === 'spec' && d.spec) { g.setSpec(car, d.spec); this.broadcast({ t: 'spec', id: car.id, spec: d.spec }, conn); }
@@ -128,7 +129,9 @@ export class NetHost {
     if (this.snapT < 0.05) return;
     this.snapT = 0;
     const g = this.game, r = g.race, cars = g.cars;
-    const a = new Float32Array(HEAD + cars.length * ROW);
+    const pk = g.weapons ? g.weapons.pack() : new Float32Array([0]);
+    const a = new Float32Array(HEAD + cars.length * ROW + pk.length);
+    a.set(pk, HEAD + cars.length * ROW);
     a[0] = g.simT; a[1] = PHASES.indexOf(r.phase); a[2] = r.t; a[3] = r.raceT; a[4] = r.closeT; a[5] = cars.length;
     cars.forEach((c, k) => {
       const v = c.veh, o = HEAD + k * ROW;
@@ -142,13 +145,14 @@ export class NetHost {
       let f = 0;
       if (c.wrecked) f |= 1; if (c.ghostT > 0) f |= 2; if (c.drafting) f |= 4; if (c.finished) f |= 8;
       if (v.wheels[2].slip > 0.35) f |= 16; if (v.wheels[3].slip > 0.35) f |= 32; if (v.hold) f |= 64;
-      if (c.scrapeT > 0) f |= 128; if (c.grindT > 0) f |= 256; if (c.hidden) f |= 512;
+      if (c.scrapeT > 0) f |= 128; if (c.grindT > 0) f |= 256; if (c.hidden) f |= 512; if (c.firing) f |= 1024;
       a[o + 17] = f;
       a[o + 18] = c.place;
       a[o + 19] = c.prog;
       a[o + 20] = v.vmax;
       a[o + 21] = c.saves ?? 3;
       a[o + 22] = c.lockT || 0; a[o + 23] = c.flipT || 0; a[o + 24] = c.rstate || 0; a[o + 25] = v.loader || 0;
+      a[o + 26] = Weapons.code(c); a[o + 27] = c.weapon?.ammo || 0;
     });
     this.broadcast({ t: 's', b: a.buffer });
   }
@@ -237,6 +241,7 @@ export class NetClient {
       case 'finish': g.clientFinish(d); break;
       case 'results': g.clientResults(d); break;
       case 'old': g.hud?.toast('Någon kör en annan version — ladda om sidan', 'bad'); break;
+      case 'wb': case 'wx': case 'wsh': g.weapons?.onEvent(d); break;
     }
   }
   onSnap(a) {
@@ -247,6 +252,7 @@ export class NetClient {
     const rows = new Map();
     const n = a[5];
     for (let k = 0; k < n; k++) { const o = HEAD + k * ROW; rows.set(a[o], a.subarray(o, o + ROW)); }
+    if (a.length > HEAD + n * ROW) this.proj = { at: now, list: Weapons.unpack(a, HEAD + n * ROW) };
     this.buf.push({ t: st + this.off, head: a, rows });
     if (this.buf.length > 30) this.buf.shift();
   }
@@ -257,7 +263,7 @@ export class NetClient {
     if (this.inT > 1 / 30 && this.conn.open) {
       this.inT = 0;
       const s = g.input.state;
-      this.conn.send({ t: 'in', a: +s.throttle.toFixed(2), b: +s.brake.toFixed(2), s: +s.steer.toFixed(3), h: s.handbrake, k: s.loader ? 1 : 0 });
+      this.conn.send({ t: 'in', a: +s.throttle.toFixed(2), b: +s.brake.toFixed(2), s: +s.steer.toFixed(3), h: s.handbrake, k: s.loader ? 1 : 0, w: s.fire ? 1 : 0 });
     }
     if (this.buf.length < 1) return;
     const rt = performance.now() - 110;
@@ -283,6 +289,7 @@ export class NetClient {
       car.scrapeT = (f & 128) ? 0.15 : 0; car.grindT = (f & 256) ? 0.15 : 0; car.hidden = !!(f & 512);
       car.place = rb[18]; car.prog = rb[19]; car.veh.vmax = rb[20]; car.saves = rb[21];
       car.lockT = rb[22]; car.flipT = rb[23]; car.rstate = rb[24]; car.veh.loader = rb[25];
+      car.wcode = rb[26]; car.wammo = rb[27]; car.firing = !!(f & 1024);
       car.trk.s = car.trk.s || 0;
       g.track.project(car.veh.pos.x, car.veh.pos.z, g.track.idx(((rb[19] % g.track.L) + g.track.L) % g.track.L), car.trk);
     }

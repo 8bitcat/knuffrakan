@@ -1,8 +1,8 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice, JetVoice } from './engines.js?v=16';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=16';
+import { EngineVoice, JetVoice } from './engines.js?v=17';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=17';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -269,6 +269,44 @@ export class GameAudio {
     else this.noise(1.2, 300, 0.8 * near);
   }
   rev() { if (this.buf.rev) this.play(this.buf.rev, 0.5); }
+  // ---- vapen (syntes) ----
+  thump(f, dur, vol, delay = 0) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(f * 2.2, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f * 0.5), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + 0.05);
+  }
+  pickup() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    [660, 880, 1320].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + i * 0.06); g.gain.exponentialRampToValueAtTime(0.08, t + i * 0.06 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.06 + 0.12);
+      o.connect(g); g.connect(this.master); o.start(t + i * 0.06); o.stop(t + i * 0.06 + 0.15);
+    });
+  }
+  gun(kind, near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    if (kind === 'kanon') { this.noise(0.14, 700, 0.6 * near); this.thump(70, 0.14, 0.45 * near); this.noise(0.05, 3500, 0.25 * near, 0, 'highpass'); }
+    else { this.noise(0.08, 1600, 0.5 * near); this.thump(110, 0.08, 0.3 * near); this.noise(0.03, 5000, 0.2 * near, 0, 'highpass'); }
+  }
+  launch(near = 1) { if (!this.ctx) return; this.noise(0.6, 1400, 0.45 * near, 0, 'bandpass'); this.thump(90, 0.2, 0.3 * near); }
+  blast(near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    if (this.buf.explosion) this.play(this.buf.explosion, 0.75 * near, 0.95 + Math.random() * 0.15);
+    else this.noise(0.9, 300, 0.7 * near);
+    this.thump(45, 0.5, 0.6 * near);
+  }
+  shockwave(near = 1) { if (!this.ctx) return; this.thump(38, 0.7, 0.8 * near); this.noise(0.7, 260, 0.5 * near); }
+  twang(near = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(700, t); o.frequency.exponentialRampToValueAtTime(160, t + 0.3);
+    g.gain.setValueAtTime(0.3 * near, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.4);
+  }
+  splat(near = 1) { if (!this.ctx) return; this.noise(0.3, 420, 0.45 * near); }
   // propellern skär: några snabba hack
   chop(k = 1) {
     if (!this.ctx) return;

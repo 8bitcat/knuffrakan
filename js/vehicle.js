@@ -2,9 +2,9 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=16';
-import { VTYPES } from './vtypes.js?v=16';
-import { frontParts, loaderPose } from './gear.js?v=16';
+import { CONF } from './config.js?v=17';
+import { VTYPES } from './vtypes.js?v=17';
+import { frontParts, loaderPose } from './gear.js?v=17';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -66,7 +66,7 @@ export class Vehicle {
       x: w.x, z: w.z, front: w.front, comp: 0, prevComp: 0, grounded: false, load: 0,
       dist: T.rayLen, spin: 0, hit: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), slip: 0,
     }));
-    this.input = { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0 };
+    this.input = { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0, fire: 0 };
     this.steer = 0;
     this.vmax = CONF.BASE_KMH / 3.6;
     this.powerMul = 1;

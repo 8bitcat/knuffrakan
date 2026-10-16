@@ -1,19 +1,20 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=16';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=16';
-import { buildWorld, gridSlots } from './world.js?v=16';
-import { createScene, ChaseCam } from './scene.js?v=16';
-import { makeCarView } from './vehicles3d.js?v=16';
-import { typeOf } from './vtypes.js?v=16';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=16';
-import { makeLivery, randomSpec } from './livery.js?v=16';
-import { Vehicle, CP } from './vehicle.js?v=16';
-import { BotBrain } from './ai.js?v=16';
-import { Race } from './race.js?v=16';
-import { FX, Trails } from './fx.js?v=16';
-import { NameTag, SpeedPlate } from './tags.js?v=16';
-import { RemoteVeh, carInfo } from './net.js?v=16';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=17';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=17';
+import { buildWorld, gridSlots } from './world.js?v=17';
+import { createScene, ChaseCam } from './scene.js?v=17';
+import { makeCarView } from './vehicles3d.js?v=17';
+import { typeOf } from './vtypes.js?v=17';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=17';
+import { makeLivery, randomSpec } from './livery.js?v=17';
+import { Vehicle, CP } from './vehicle.js?v=17';
+import { BotBrain } from './ai.js?v=17';
+import { Race } from './race.js?v=17';
+import { FX, Trails } from './fx.js?v=17';
+import { NameTag, SpeedPlate } from './tags.js?v=17';
+import { RemoteVeh, carInfo } from './net.js?v=17';
+import { Weapons } from './weapons.js?v=17';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -36,6 +37,7 @@ export class Game {
     this.cars = [];
     this.me = null;
     this.race = new Race(this);
+    this.weapons = new Weapons(this);
     this.acc = 0; this.time = 0; this.simT = 0;
     this.nextId = 1;
     this.orbit = 0;
@@ -65,6 +67,7 @@ export class Game {
     this.trails?.clear(); this.skids?.clear();
     for (const c of this.cars || []) { c.trk.i = 0; c.lap = 0; c.prevS = 0; }
     if (this.hud) this.hud.mapBase = null;
+    this.weapons?.onTrack();
     console.log(`bana ${def.id}: ${(performance.now() - t0).toFixed(0)} ms`);
     return true;
   }
@@ -84,7 +87,7 @@ export class Game {
     else this.nextId = Math.max(this.nextId, id + 1);
     const car = {
       id, name, isPlayer, spec, view, veh, remote,
-      remoteInput: { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0 },
+      remoteInput: { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0, fire: 0 },
       tag: new NameTag(this.scene, name, id * 7.3 + name.length, isPlayer),
       brain: isPlayer || remote || client ? null : new BotBrain(mulberry(id * 97 + 3)),
       trk: { i: 0, s: 0, lat: 0, y: 0 }, lap: 0, prog: 0, prevS: 0, place: 0,
@@ -379,7 +382,7 @@ export class Game {
   }
 
   wreck(car) {
-    car.wrecked = true; car.wreckT = 2.4; car.veh.disabled = true;
+    car.wrecked = true; car.wreckT = 2.4; car.veh.disabled = true; car.weapon = null; car.rollT = 0;
     this.fx.explosion(car.veh.pos, car.veh.vel);
     const near = this.me ? Math.max(0, 1 - this.me.veh.pos.distanceTo(car.veh.pos) / 140) : 1;
     this.audio?.boom(car === this.me ? 1 : near);
@@ -420,6 +423,7 @@ export class Game {
     this.crush(dt);
     this.jetBurn(dt);
     this.propSlash(dt);
+    this.weapons.step(dt);
     this.race.update(dt);
     for (const car of this.cars) this.carState(car, dt);
   }
@@ -987,6 +991,7 @@ export class Game {
       for (const [x, y, z, vx, vy, vz, dx, dz] of this.scrapes) this.fx.scrape(_v.set(x, y, z), _v2.set(vx, vy, vz), _v3.set(dx || 0, 0, dz || 0));
       this.scrapes.length = 0;
     }
+    this.weapons.frame(dt);
     this.fx.update(dt);
     this.trails.update(this.time);
     this.skids.update(this.time);

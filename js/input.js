@@ -2,8 +2,8 @@
 export class Input {
   constructor() {
     this.keys = new Set();
-    this.state = { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0 };
-    this.touch = { left: false, right: false, gas: false, brake: false, loader: false };
+    this.state = { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0, fire: 0 };
+    this.touch = { left: false, right: false, gas: false, brake: false, loader: false, fire: false };
     this.onPress = null;
     addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
@@ -17,7 +17,7 @@ export class Input {
   }
 
   bindTouch(root) {
-    const map = { tl: 'left', tr: 'right', tg: 'gas', tb: 'brake', tk: 'loader' };
+    const map = { tl: 'left', tr: 'right', tg: 'gas', tb: 'brake', tk: 'loader', tw: 'fire' };
     for (const [id, key] of Object.entries(map)) {
       const el = root.querySelector('#' + id);
       if (!el) continue;
@@ -35,6 +35,7 @@ export class Input {
     let st = ((k.has('KeyD') || k.has('ArrowRight') || t.right) ? 1 : 0) - ((k.has('KeyA') || k.has('ArrowLeft') || t.left) ? 1 : 0);
     let hb = k.has('Space') ? 1 : 0;
     let ld = (k.has('KeyE') || t.loader) ? 1 : 0;      // traktorns skopa
+    let fi = (k.has('KeyF') || t.fire) ? 1 : 0;        // vapnet
     // handkontroll
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     let analog = null;
@@ -47,13 +48,14 @@ export class Input {
       if (ax) analog = ax;
       if (p.buttons[0]?.pressed) hb = 1;
       if (p.buttons[5]?.pressed || p.buttons[2]?.pressed) ld = 1;
+      if (p.buttons[4]?.pressed) fi = 1;
       const y = p.buttons[3]?.pressed, b = p.buttons[1]?.pressed;
       if (y && !this._padBtn.y) this.onPress?.('KeyR');
       if (b && !this._padBtn.b) this.onPress?.('KeyC');
       this._padBtn.y = y; this._padBtn.b = b;
     }
     const s = this.state;
-    s.throttle = thr; s.brake = brk; s.handbrake = hb; s.loader = ld;
+    s.throttle = thr; s.brake = brk; s.handbrake = hb; s.loader = ld; s.fire = fi;
     if (analog !== null) s.steer = analog;
     else {
       // mjuk styrning för knappar

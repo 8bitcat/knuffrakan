@@ -1,5 +1,6 @@
-import { CONF } from './config.js?v=16';
-import { GEAR } from './gear.js?v=16';
+import { CONF } from './config.js?v=17';
+import { GEAR } from './gear.js?v=17';
+import { WEAPONS, WIDS } from './weapons.js?v=17';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -86,8 +87,26 @@ export class HUD {
       }
     }
     this.updateMates(game, racing);
+    this.updateWeapon(game);
     const tk = this.tk ||= document.getElementById('tk');
     if (tk) { const on = me.spec?.kind === 'traktor'; if (tk.classList.contains('hidden') === on) tk.classList.toggle('hidden', !on); }
+  }
+
+  // Vapnet man har (nere i mitten): ruletten snurrar när man kört genom en låda
+  updateWeapon(game) {
+    const el = this.ws ||= document.getElementById('wslot'), tw = this.tw ||= document.getElementById('tw');
+    if (!el) return;
+    const me = game.me, cli = game.mode === 'client';
+    const code = cli ? (me.wcode || 0) : me.rollT > 0 ? -1 : me.weapon ? WIDS.indexOf(me.weapon.id) + 1 : 0;
+    const ammo = cli ? me.wammo : me.weapon?.ammo;
+    let key = 'none', ic = '', nm = '';
+    if (code === -1) { const id = WIDS[Math.floor(game.time * 14) % WIDS.length]; ic = WEAPONS[id].ikon; nm = '…'; key = 'roll' + id; }
+    else if (code > 0) { const W = WEAPONS[WIDS[code - 1]]; ic = W.ikon; nm = W.namn + (ammo > 1 ? ' ×' + ammo : ''); key = ic + nm; }
+    if (key === this.wKey) return;
+    this.wKey = key;
+    el.classList.toggle('hidden', code === 0); el.classList.toggle('roll', code === -1);
+    el.querySelector('.wi').textContent = ic; el.querySelector('.wn').textContent = nm;
+    if (tw) tw.classList.toggle('hidden', code <= 0);
   }
 
   // Lobbypanelen: rumskod, vilka som är med, redo, start

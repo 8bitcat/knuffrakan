@@ -1,8 +1,8 @@
 // Racet: (lobby →) startgrid → nedräkning → race (ett varv) → resultat → lobby/ny grid.
 // Online samlas man i lobbyn (kör runt fritt) tills värden startar eller alla är redo.
 // Packracing: toppfarten styrs av placeringen (sist går fortast) + suget bakom bilar.
-import { CONF } from './config.js?v=16';
-import { gridSlots } from './world.js?v=16';
+import { CONF } from './config.js?v=17';
+import { gridSlots } from './world.js?v=17';
 
 export class Race {
   constructor(game) {
@@ -26,6 +26,7 @@ export class Race {
   toLobby() {
     const g = this.g, T = g.track;
     this.phase = 'lobby'; this.closeT = -1; this.finishCount = 0; this.raceT = 0; this.readyT = null;
+    g.weapons?.reset();
     this.t = g.isPublic ? CONF.LOBBY_AUTOSTART : -1;
     this.results = [];
     g.hud?.hideResults();
@@ -50,6 +51,7 @@ export class Race {
   toGrid(wait = CONF.GRID_WAIT) {
     const g = this.g, T = g.track;
     this.phase = 'grid'; this.t = wait; this.closeT = -1; this.finishCount = 0; this.raceT = 0;
+    g.weapons?.reset();
     this.results = [];
     g.hud?.hideResults();
     for (const car of g.cars) { car.hidden = false; car.ghostT = 0; car.veh.setGhost?.(false); car.ready = false; }

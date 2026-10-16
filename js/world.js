@@ -3,9 +3,9 @@
 // det finns en fysikvärld (värden).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONF } from './config.js?v=18';
-import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, F_LAVA, JUMP } from './track.js?v=18';
-import { themeOf } from './themes.js?v=18';
+import { CONF } from './config.js?v=19';
+import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, F_LAVA, JUMP } from './track.js?v=19';
+import { themeOf } from './themes.js?v=19';
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const h2 = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -479,9 +479,10 @@ function buildTerrain(ctx) {
         } else if (f.type === 'canyon') {
           // kanjon: lodräta klippväggar på båda sidor (öppet uppåt)
           const in0 = T.sdist(sA, f.s0), in1 = T.sdist(f.s1, sA);
-          if (in0 > -60 && in1 > -60 && rA.al > HWb + 2.5) {
+          // väggens fot en hel terrängruta (10 m) utanför muren — annars lutar triangeln in över vägen
+          if (in0 > -60 && in1 > -60 && rA.al > HWb + 9) {
             const fade = smoothstep(-60, 40, Math.min(in0, in1));
-            const wall = Math.min(f.h || 42, (rA.al - HWb - 2.5) * 2.6) * (1 - smoothstep(90, 260, rA.al) * 0.5);
+            const wall = Math.min(f.h || 42, (rA.al - HWb - 9) * 2.2) * (1 - smoothstep(90, 260, rA.al) * 0.5);
             y = Math.max(y, y * (1 - fade) + (rA.y + wall) * fade);
           }
         } else if (f.type === 'tunnel') {

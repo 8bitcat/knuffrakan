@@ -2,7 +2,7 @@
 // hopp med glipa, tunnlar genom berg, en dalbro och en bro där banan korsar sig själv.
 // Allt (väg, murar, terräng, AI, placeringar) utgår från samma sampling var 4:e meter.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=18';
+import { CONF } from './config.js?v=19';
 
 // ---------- Banorna ----------
 // SNÖBERGET: start/mål vid (0,0), körriktning +x.
@@ -48,6 +48,12 @@ const CTRL_VULKAN = [
   [-900, -250], [-450, -80],
 ];
 
+// ÖKENBANAN: långa raksträckor för hoppen, kanjonen i östra kurvan
+const CTRL_OKEN = [
+  [0, 0], [900, 0], [1800, 0], [2500, -100], [2900, -450], [2950, -950], [2600, -1300], [1900, -1450],
+  [1100, -1500], [300, -1500], [-500, -1450], [-1200, -1250], [-1650, -850], [-1700, -400], [-1300, -100], [-700, 0],
+];
+
 export const TRACKS = [
   {
     id: 'snoberget', namn: 'SNÖBERGET', besk: 'Klassikern — 10,8 km med långa backar och krön', laps: 1,
@@ -77,6 +83,17 @@ export const TRACKS = [
       { type: 'tunnel', at: 0.56, len: 380, namn: 'KRATERN' },
       { type: 'valley', at: 0.72, len: 160, depth: 28, namn: 'MAGMABRON' },
       { type: 'lava', at: 0.87, len: 380 },
+    ],
+  },
+  {
+    id: 'oken', namn: 'ÖKENBANAN', besk: 'Sanddyner, en kanjon och tre jättehopp över raviner — 2 varv', laps: 2, theme: 'oken',
+    ctrl: CTRL_OKEN, hills: [10, 5, 2], crests: [{ s: 0.75, h: 7, w: 60 }],
+    features: [
+      { type: 'jump', at: 0.1 },
+      { type: 'canyon', at: 0.31, len: 700, h: 46, namn: 'DJÄVULSKANJONEN' },
+      { type: 'valley', at: 0.45, len: 170, depth: 24, namn: 'TORRA FLODEN' },
+      { type: 'jump', at: 0.53 },
+      { type: 'jump', at: 0.62 },
     ],
   },
 ];
@@ -224,7 +241,8 @@ export function buildTrack(def = TRACKS[0]) {
         if (free(s0 - 40, s1 + 40)) placed = { ...f, s0: wrapS(s0), s1: wrapS(s1), a: s0 - 40, b: s1 + 40 };
       } else if (f.type === 'canyon') {
         const s0 = s - f.len / 2, s1 = s + f.len / 2;
-        if (free(s0 - 80, s1 + 80) && maxK(s0, s1) < 1 / 260 && roomAround(s0, s1, 280, 260)) placed = { ...f, s0: wrapS(s0), s1: wrapS(s1), a: s0 - 80, b: s1 + 80 };
+        // klippväggarna lyfter bara marken närmast kanjonens egen väg, så det räcker med lite luft till resten
+        if (free(s0 - 80, s1 + 80) && maxK(s0, s1) < 1 / 260 && roomAround(s0, s1, 150, 200)) placed = { ...f, s0: wrapS(s0), s1: wrapS(s1), a: s0 - 80, b: s1 + 80 };
       }
     }
     if (!placed) { console.warn('kunde inte placera', f.type); continue; }

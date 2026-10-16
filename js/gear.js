@@ -129,7 +129,17 @@ export function frontParts(T) {
     out.push({ id: 'kil', hx: M.w * 0.96, hy: 0.05, hz: Math.hypot(L, hb - ht) / 2, x: 0, y: y0 + (ht + hb) / 2, z: -(M.fz + M.wedgeL - L / 2), rx: -th, ry: 0, fr: 0.1 });
   }
   if (g.includes('ram')) out.push({ id: 'ram', hx: 0.16, hy: 0.16, hz: 0.55, x: 0, y: y0 + M.bump, z: -(M.fz + 0.45), rx: 0, ry: 0, fr: 0.3 });
-  // traktorns frontlastare: skopan längst fram (0,24–1,0 m över marken)
-  if (T.loader) out.push({ id: 'skopa', hx: 1.18, hy: 0.38, hz: 0.24, x: 0, y: y0 + 0.62, z: -(M.fz + M.loaderZ), rx: 0, ry: 0, fr: 0.15 });
+  // traktorns frontlastare: skopan längst fram (0,24–1,0 m över marken när den är nere)
+  if (T.loader) { const p = loaderPose(T, 0); out.push({ id: 'skopa', hx: 1.18, hy: 0.38, hz: 0.24, x: 0, y: p.y, z: p.z, rx: p.rx, ry: 0, fr: 0.15 }); }
   return out;
+}
+
+// Frontlastaren: armarna vrider sig runt en axel vid hytten. k = 0 (nere) … 1 (uppe).
+// Ger skopans mitt i kroppens ram (y inkl. T.modelY) och lutningen runt x.
+export const LOADER = { pivotY: 1.62, pivotZ: 0.15, maxAng: 0.6 };
+export function loaderPose(T, k) {
+  const M = mountOf(T), th = Math.max(0, Math.min(1, k)) * LOADER.maxAng;
+  const ry = 0.62 - LOADER.pivotY, rz = -(M.fz + M.loaderZ) - LOADER.pivotZ;
+  const c = Math.cos(th), s = Math.sin(th);
+  return { y: T.modelY + LOADER.pivotY + ry * c - rz * s, z: LOADER.pivotZ + ry * s + rz * c, rx: th };
 }

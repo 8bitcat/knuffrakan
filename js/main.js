@@ -1,20 +1,20 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=13';
-import { Game } from './game.js?v=13';
-import { HUD } from './hud.js?v=13';
-import { GameAudio } from './audio.js?v=13';
-import { Input } from './input.js?v=13';
-import { SHAPES } from './carmodel.js?v=13';
-import { makeCarView } from './vehicles3d.js?v=13';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=13';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=13';
-import { logoCanvas } from './world.js?v=13';
-import { BotBrain } from './ai.js?v=13';
-import { connectRoom, NetHost, NetClient } from './net.js?v=13';
-import { TRACKS } from './track.js?v=13';
-import { SOUND_OPTS } from './sounds.js?v=13';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=13';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=14';
+import { Game } from './game.js?v=14';
+import { HUD } from './hud.js?v=14';
+import { GameAudio } from './audio.js?v=14';
+import { Input } from './input.js?v=14';
+import { SHAPES } from './carmodel.js?v=14';
+import { makeCarView } from './vehicles3d.js?v=14';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=14';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=14';
+import { logoCanvas } from './world.js?v=14';
+import { BotBrain } from './ai.js?v=14';
+import { connectRoom, NetHost, NetClient } from './net.js?v=14';
+import { TRACKS } from './track.js?v=14';
+import { SOUND_OPTS } from './sounds.js?v=14';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=14';
 
 const PUBLIC = 'PUBLIK';
 
@@ -120,7 +120,9 @@ async function boot() {
     $('menu').classList.add('hidden');
     hud.show(true);
     if ('ontouchstart' in window) $('touch').classList.remove('hidden');
+    tractorTip();
   };
+  const tractorTip = () => { if (spec.kind === 'traktor') hud.toast('🚜 Håll E (eller SKOPA) för att lyfta skopan — kör upp bakom någon och lyft!', 'good'); };
   const readName = () => {
     name = ($('namein').value || '').trim().slice(0, 16) || 'Spelare';
     try { localStorage.setItem('knuff_namn', name); } catch { /* ok */ }
@@ -269,6 +271,7 @@ async function boot() {
     if (showcase) { game.scene.remove(showcase.group); showcase.dispose(); showcase = null; game.showcase = null; }
     // uppdatera spelarens bil om den finns
     if (game.me) {
+      if (spec.kind === 'traktor' && game.me.spec?.kind !== 'traktor') tractorTip();
       game.setSpec(game.me, { ...spec });
       if (game.mode === 'client') game.net?.send({ t: 'spec', spec });
       else game.emit({ t: 'spec', id: game.me.id, spec });

@@ -2,9 +2,9 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=13';
-import { VTYPES } from './vtypes.js?v=13';
-import { frontParts } from './gear.js?v=13';
+import { CONF } from './config.js?v=14';
+import { VTYPES } from './vtypes.js?v=14';
+import { frontParts, loaderPose } from './gear.js?v=14';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -58,13 +58,15 @@ export class Vehicle {
       const c = world.createCollider(gd, this.body);
       c.isGear = true;
       this.colliders.push(c);
+      if (p.id === 'skopa') this.loaderCol = c;
     }
+    this.loader = 0; this.loaderRate = 0;    // frontlastaren: 0 nere … 1 uppe
     this.ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
     this.wheels = T.wheels.map(w => ({
       x: w.x, z: w.z, front: w.front, comp: 0, prevComp: 0, grounded: false, load: 0,
       dist: T.rayLen, spin: 0, hit: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), slip: 0,
     }));
-    this.input = { throttle: 0, brake: 0, steer: 0, handbrake: 0 };
+    this.input = { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0 };
     this.steer = 0;
     this.vmax = CONF.BASE_KMH / 3.6;
     this.powerMul = 1;
@@ -126,6 +128,17 @@ export class Vehicle {
     const off = this.disabled;
     const throttle = off ? 0 : inp.throttle, brake = off ? 0.15 : (this.hold ? 1 : inp.brake);
     const hand = off ? 0 : inp.handbrake;
+    // frontlastaren: uppåt medan knappen hålls, snabbt ner när den släpps
+    if (this.loaderCol) {
+      const want = !off && inp.loader ? 1 : 0, prev = this.loader;
+      this.loader = want > prev ? Math.min(1, prev + 0.95 * dt) : Math.max(0, prev - 2.4 * dt);
+      this.loaderRate = (this.loader - prev) / dt;
+      if (this.loader !== prev) {
+        const p = loaderPose(T, this.loader), h = p.rx / 2;
+        this.loaderCol.setTranslationWrtParent({ x: 0, y: p.y, z: p.z });
+        this.loaderCol.setRotationWrtParent({ x: Math.sin(h), y: 0, z: 0, w: Math.cos(h) });
+      }
+    }
 
     const sp = Math.abs(this.vLong);
     const vf = this.vel.dot(fwd), vr = this.vel.dot(right);

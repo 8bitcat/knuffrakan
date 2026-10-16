@@ -1,5 +1,5 @@
-import { CONF } from './config.js?v=13';
-import { GEAR } from './gear.js?v=13';
+import { CONF } from './config.js?v=14';
+import { GEAR } from './gear.js?v=14';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -86,6 +86,8 @@ export class HUD {
       }
     }
     this.updateMates(game, racing);
+    const tk = this.tk ||= document.getElementById('tk');
+    if (tk) { const on = me.spec?.kind === 'traktor'; if (tk.classList.contains('hidden') === on) tk.classList.toggle('hidden', !on); }
   }
 
   // Lobbypanelen: rumskod, vilka som är med, redo, start

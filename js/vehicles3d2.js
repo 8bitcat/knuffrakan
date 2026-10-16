@@ -2,7 +2,8 @@
 // group, model, wheels[{holder, spin, base}], setWheel, rest, dent, uvNear, livery, resetDamage, dispose, T.
 // Modellens y = 0 är marken, fronten åt -z.
 import * as THREE from 'three';
-import { VTYPES } from './vtypes.js?v=13';
+import { VTYPES } from './vtypes.js?v=14';
+import { LOADER } from './gear.js?v=14';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const mkTex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
@@ -213,19 +214,28 @@ export class TraktorView extends SimpleView {
     const lugs = this.tex(lugTex(), 1, 1);
     const tread = this.std({ map: lugs, roughness: 0.95 }), side = this.std({ color: 0x141416, roughness: 0.85 });
     for (const w of this.T.wheels) this.wheel(w, w.front ? 0.5 : 0.85, w.front ? 0.3 : 0.52, [tread, side, side], accent, w.front ? 0.58 : 0.55);
-    // frontlastare: armar, hydraulik och skopa (skopan finns också i fysiken, gear.js)
-    const zb = -(2.15 + 0.62);
+    // frontlastare: armar + skopa vrids runt en axel vid hytten (samma mått som fysiken, gear.js loaderPose)
+    const PY = LOADER.pivotY, PZ = LOADER.pivotZ, zb = -(2.15 + 0.62) - PZ;
+    const arm = this.loaderGrp = new THREE.Group();
+    arm.position.set(0, PY, PZ);
+    this.model.add(arm);
+    const A = (x, y, z) => [x, y - PY, z];                       // markhöjd → armens ram
     for (const s of [-1, 1]) {
-      this.tube(0.075, [s * 0.66, 1.62, 0.15], [s * 0.66, 1.25, -1.6], accent);
-      this.tube(0.075, [s * 0.66, 1.25, -1.6], [s * 1.0, 0.72, zb + 0.2], accent);
-      this.tube(0.05, [s * 0.6, 0.85, -0.55], [s * 0.72, 1.18, -1.7], chrome);
+      this.tube(0.075, A(s * 0.66, PY, 0), A(s * 0.66, 1.25, -1.75), accent, arm);
+      this.tube(0.075, A(s * 0.66, 1.25, -1.75), A(s * 1.0, 0.72, zb + 0.2), accent, arm);
     }
-    this.box(2.36, 0.76, 0.06, accent, 0, 0.62, zb + 0.22);
-    this.box(2.36, 0.06, 0.5, accent, 0, 0.27, zb);
-    this.box(2.36, 0.06, 0.2, accent, 0, 0.99, zb + 0.13);
-    for (const s of [-1, 1]) this.box(0.06, 0.76, 0.5, accent, s * 1.18, 0.62, zb);
-    this.box(2.4, 0.05, 0.08, chrome, 0, 0.25, zb - 0.25);
-    for (let k = -2.5; k <= 2.5; k++) this.add(new THREE.ConeGeometry(0.05, 0.16, 6).rotateX(-Math.PI / 2), chrome, k * 0.4, 0.25, zb - 0.34);
+    this.box(2.36, 0.76, 0.06, accent, 0, 0.62 - PY, zb + 0.22, arm);
+    this.box(2.36, 0.06, 0.5, accent, 0, 0.27 - PY, zb, arm);
+    this.box(2.36, 0.06, 0.2, accent, 0, 0.99 - PY, zb + 0.13, arm);
+    for (const s of [-1, 1]) this.box(0.06, 0.76, 0.5, accent, s * 1.18, 0.62 - PY, zb, arm);
+    this.box(2.4, 0.05, 0.08, chrome, 0, 0.25 - PY, zb - 0.25, arm);
+    for (let k = -2.5; k <= 2.5; k++) this.add(new THREE.ConeGeometry(0.05, 0.16, 6).rotateX(-Math.PI / 2), chrome, k * 0.4, 0.25 - PY, zb - 0.34, arm);
+    // hydraulcylindrar: fast i chassit, andra änden följer armen
+    this.hyd = [-1, 1].map(s => ({
+      mesh: this.add(new THREE.CylinderGeometry(0.05, 0.05, 1, 10), chrome),
+      base: new THREE.Vector3(s * 0.6, 0.85, -0.55), local: new THREE.Vector3(s * 0.72, 1.18 - PY, -1.85),
+    }));
+    this.setLoader(0);
     // nummer på huven
     const nr = cv(256, 128), ng = nr.getContext('2d');
     ng.fillStyle = lum(c0) > 0.55 ? '#111' : '#fff'; ng.font = 'italic 900 96px "Exo 2", sans-serif'; ng.textAlign = 'center'; ng.textBaseline = 'middle';
@@ -233,6 +243,23 @@ export class TraktorView extends SimpleView {
     for (const s of [-1, 1]) this.decal(nr, 0.9, 0.45, s * 0.505, 1.2, -1.1, s > 0 ? '+x' : '-x');
   }
 }
+
+const _up = new THREE.Vector3(0, 1, 0), _p = new THREE.Vector3(), _d = new THREE.Vector3();
+TraktorView.prototype.setLoader = function (k) {
+  if (k === this.loaderK) return;
+  this.loaderK = k;
+  const g = this.loaderGrp;
+  g.rotation.x = Math.max(0, Math.min(1, k)) * LOADER.maxAng;
+  g.updateMatrix();
+  for (const h of this.hyd) {
+    _p.copy(h.local).applyMatrix4(g.matrix);                       // armens punkt i modellens ram
+    _d.subVectors(_p, h.base);
+    const len = _d.length();
+    h.mesh.position.copy(h.base).addScaledVector(_d, 0.5);
+    h.mesh.quaternion.setFromUnitVectors(_up, _d.normalize());
+    h.mesh.scale.set(1, len, 1);
+  }
+};
 
 // ---------------- Glassbilen ----------------
 export class GlassView extends SimpleView {

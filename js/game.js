@@ -1,19 +1,19 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=13';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=13';
-import { buildWorld, gridSlots } from './world.js?v=13';
-import { createScene, ChaseCam } from './scene.js?v=13';
-import { makeCarView } from './vehicles3d.js?v=13';
-import { typeOf } from './vtypes.js?v=13';
-import { randomGear, cleanGear, mountOf } from './gear.js?v=13';
-import { makeLivery, randomSpec } from './livery.js?v=13';
-import { Vehicle, CP } from './vehicle.js?v=13';
-import { BotBrain } from './ai.js?v=13';
-import { Race } from './race.js?v=13';
-import { FX, Trails } from './fx.js?v=13';
-import { NameTag, SpeedPlate } from './tags.js?v=13';
-import { RemoteVeh, carInfo } from './net.js?v=13';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=14';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL } from './track.js?v=14';
+import { buildWorld, gridSlots } from './world.js?v=14';
+import { createScene, ChaseCam } from './scene.js?v=14';
+import { makeCarView } from './vehicles3d.js?v=14';
+import { typeOf } from './vtypes.js?v=14';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=14';
+import { makeLivery, randomSpec } from './livery.js?v=14';
+import { Vehicle, CP } from './vehicle.js?v=14';
+import { BotBrain } from './ai.js?v=14';
+import { Race } from './race.js?v=14';
+import { FX, Trails } from './fx.js?v=14';
+import { NameTag, SpeedPlate } from './tags.js?v=14';
+import { RemoteVeh, carInfo } from './net.js?v=14';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -84,7 +84,7 @@ export class Game {
     else this.nextId = Math.max(this.nextId, id + 1);
     const car = {
       id, name, isPlayer, spec, view, veh, remote,
-      remoteInput: { throttle: 0, brake: 0, steer: 0, handbrake: 0 },
+      remoteInput: { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0 },
       tag: new NameTag(this.scene, name, id * 7.3 + name.length, isPlayer),
       brain: isPlayer || remote || client ? null : new BotBrain(mulberry(id * 97 + 3)),
       trk: { i: 0, s: 0, lat: 0, y: 0 }, lap: 0, prog: 0, prevS: 0, place: 0,
@@ -479,7 +479,8 @@ export class Game {
     if (lz < a.T.half.z * 0.5 || gap > 0.6 || Math.abs(lx) > a.T.half.x + b.T.half.x * 0.85 || a.up.y < 0.5) return;
     const closing = (a.vel.x - b.vel.x) * a.fwd.x + (a.vel.z - b.vel.z) * a.fwd.z;
     const touching = gap < 0.3, pushing = touching && (a.input.throttle || 0) > 0.4;
-    if (closing < 2 && !pushing) return;
+    const lifting = loader && (a.loader || 0) > 0.04 && gap < 0.55;
+    if (closing < 2 && !pushing && !lifting) return;
     // lätta bilar rår inte på tunga: bussen plogar allt, stockcaren lyfter inte bussen
     const heavy = Math.min(1.4, Math.max(0.3, a.T.mass / b.T.mass));
     const k = heavy * Math.min(1.2, 0.5 + Math.max(0, closing) / 14);
@@ -512,7 +513,28 @@ export class Game {
       b.pressF = Math.min(b.pressF, 0.35); b.pressR = Math.min(b.pressR, 0.35);
       b.spinT = Math.max(b.spinT, 0.6);
     }
-    if (plow) {
+    if (lifting) {
+      // skopan uppe: ta tag i B:s närmaste ände och lyft den mot skopans kant (B tappar greppet, kan välta)
+      const s = (b.fwd.x * a.fwd.x + b.fwd.z * a.fwd.z) >= 0 ? -1 : 1, e = b.T.half.z * 0.75;
+      const ex = b.pos.x + b.fwd.x * s * e, ey = b.pos.y + b.fwd.y * s * e, ez = b.pos.z + b.fwd.z * s * e;
+      const lip = a.pos.y + loaderPose(a.T, a.loader).y + 0.35;
+      // lyfter bara så fort skopan själv rör sig (annars skjuts bilen iväg i stället för att lyftas)
+      const want = Math.min(1.2, Math.max(0, lip - ey + 0.3)), rising = b.vel.y < 1.2 + Math.max(0, a.loaderRate || 0) * 2.5;
+      const J = rising ? m * (CONF.GRAV * 0.45 + 9 * want + 6 * Math.max(0, a.loaderRate || 0)) * Math.min(1, heavy ** 1.5 * 1.2) * dt : 0;
+      if (J > 0) out.push({ veh: b, jx: a.fwd.x * J * 0.12, jy: J, jz: a.fwd.z * J * 0.12, px: ex, py: ey, pz: ez });
+      // traktorn trycks ner i nosen i stället för att själv tippa
+      const Ja = Math.min(J * 0.45, a.T.mass * 6 * dt);
+      if (Ja > 0) out.push({ veh: a, jx: 0, jy: -Ja, jz: 0, px: a.pos.x + a.fwd.x * a.T.half.z, py: a.pos.y, pz: a.pos.z + a.fwd.z * a.T.half.z });
+      b.pressF = Math.min(b.pressF, 0.3); b.pressR = Math.min(b.pressR, 0.2);
+      b.spinT = Math.max(b.spinT, 0.8);
+      B.lastHitBy = A; B.lastHitT = this.time;
+      if (a.loader > 0.4 && (!B.liftMsgT || this.time - B.liftMsgT > 3)) {
+        B.liftMsgT = this.time;
+        this.notify(A, `🚜 Du lyfter ${B.name}!`, 'good');
+        this.notify(B, `🚜 ${A.name} lyfter dig med skopan!`, 'bad');
+      }
+    }
+    if (plow && !(loader && (a.loader || 0) > 0.3)) {
       // V-plogen: åt den sida B sitter på (mitt framför: slumpa en gång per kontakt)
       if (Math.abs(lx) > 0.25 || !B.plowSide || this.time - (B.plowT || 0) > 1) B.plowSide = Math.sign(lx) || (Math.random() < 0.5 ? -1 : 1);
       B.plowT = this.time;
@@ -812,6 +834,7 @@ export class Game {
       const v = car.veh;
       const VT = v.T || car.view.T;
       v.wheels.forEach((w, k) => car.view.setWheel(k, (w.grounded ? w.dist : VT.rayLen) - VT.wheelR, w.spin, w.front ? v.steer : 0));
+      car.view.setLoader?.(v.loader || 0);
       // spöke efter omstart: blinka
       g.visible = !car.hidden && !(car.ghostT > 0 && Math.floor(this.time * 10) % 2 === 0);
       // namnskylt

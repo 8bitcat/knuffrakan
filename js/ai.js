@@ -1,6 +1,6 @@
 // Bottarna: kör i full gas i sin fil, byter fil, väjer för långsammare bilar och
 // tacklar ibland den som ligger bredvid.
-import { steerMaxAt } from './vehicle.js?v=13';
+import { steerMaxAt } from './vehicle.js?v=14';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -43,7 +43,11 @@ export class BotBrain {
       if (Math.abs(ds) < 6 && Math.abs(dl) > 1.6 && Math.abs(dl) < 6.5) side = o;
     }
     let lift = false;
-    if (ahead && this.tackleT <= 0) {
+    // traktor: kör upp bakom bilen framför och lyft den med skopan i stället för att väja
+    const scoop = v.T.loader && ahead && aheadD < 9 && this.aggr > 0.3;
+    inp.loader = scoop ? 1 : 0;
+    if (scoop) this.lane = ahead.trk.lat;
+    else if (ahead && this.tackleT <= 0) {
       // väj åt det håll som är fritt, annars lätta på gasen
       let dir = ahead.trk.lat > tk.lat ? -1 : 1;
       if ((dir < 0 && (blockL[0] || tk.lat < -11)) || (dir > 0 && (blockR[0] || tk.lat > 11))) dir = -dir;

@@ -1,11 +1,11 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=13';
-import { VTYPES } from './vtypes.js?v=13';
+import { PROTO } from './config.js?v=14';
+import { VTYPES } from './vtypes.js?v=14';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
-const ROW = 25;     // flyttal per bil i en ögonblicksbild
+const ROW = 26;     // flyttal per bil i en ögonblicksbild
 const HEAD = 6;     // [tid, fas, t, raceT, closeT, antal]
 const PHASES = ['idle', 'grid', 'count', 'race', 'results', 'lobby'];
 
@@ -98,7 +98,7 @@ export class NetHost {
     if (!car) return;
     if (d.t === 'in') {
       const r = car.remoteInput;
-      r.throttle = +d.a || 0; r.brake = +d.b || 0; r.steer = Math.max(-1, Math.min(1, +d.s || 0)); r.handbrake = +d.h || 0;
+      r.throttle = +d.a || 0; r.brake = +d.b || 0; r.steer = Math.max(-1, Math.min(1, +d.s || 0)); r.handbrake = +d.h || 0; r.loader = +d.k || 0;
     } else if (d.t === 'reset') g.requestReset(car);
     else if (d.t === 'ready') { g.setReady(car, d.on); this.lobbyT = 1; }
     else if (d.t === 'spec' && d.spec) { g.setSpec(car, d.spec); this.broadcast({ t: 'spec', id: car.id, spec: d.spec }, conn); }
@@ -148,7 +148,7 @@ export class NetHost {
       a[o + 19] = c.prog;
       a[o + 20] = v.vmax;
       a[o + 21] = c.saves ?? 3;
-      a[o + 22] = c.lockT || 0; a[o + 23] = c.flipT || 0; a[o + 24] = c.rstate || 0;
+      a[o + 22] = c.lockT || 0; a[o + 23] = c.flipT || 0; a[o + 24] = c.rstate || 0; a[o + 25] = v.loader || 0;
     });
     this.broadcast({ t: 's', b: a.buffer });
   }
@@ -257,7 +257,7 @@ export class NetClient {
     if (this.inT > 1 / 30 && this.conn.open) {
       this.inT = 0;
       const s = g.input.state;
-      this.conn.send({ t: 'in', a: +s.throttle.toFixed(2), b: +s.brake.toFixed(2), s: +s.steer.toFixed(3), h: s.handbrake });
+      this.conn.send({ t: 'in', a: +s.throttle.toFixed(2), b: +s.brake.toFixed(2), s: +s.steer.toFixed(3), h: s.handbrake, k: s.loader ? 1 : 0 });
     }
     if (this.buf.length < 1) return;
     const rt = performance.now() - 110;
@@ -282,7 +282,7 @@ export class NetClient {
       car.wrecked = !!(f & 1); car.ghostT = (f & 2) ? 1 : 0; car.drafting = !!(f & 4); car.finished = !!(f & 8);
       car.scrapeT = (f & 128) ? 0.15 : 0; car.grindT = (f & 256) ? 0.15 : 0; car.hidden = !!(f & 512);
       car.place = rb[18]; car.prog = rb[19]; car.veh.vmax = rb[20]; car.saves = rb[21];
-      car.lockT = rb[22]; car.flipT = rb[23]; car.rstate = rb[24];
+      car.lockT = rb[22]; car.flipT = rb[23]; car.rstate = rb[24]; car.veh.loader = rb[25];
       car.trk.s = car.trk.s || 0;
       g.track.project(car.veh.pos.x, car.veh.pos.z, g.track.idx(((rb[19] % g.track.L) + g.track.L) % g.track.L), car.trk);
     }

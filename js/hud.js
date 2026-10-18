@@ -1,8 +1,8 @@
-import { CONF } from './config.js?v=23';
-import { GEAR } from './gear.js?v=23';
-import { WEAPONS, WIDS } from './weapons.js?v=23';
-import { TRACKS } from './track.js?v=23';
-import { SPECIAL_KNAPP } from './vtypes.js?v=23';
+import { CONF } from './config.js?v=24';
+import { GEAR } from './gear.js?v=24';
+import { WEAPONS, WIDS } from './weapons.js?v=24';
+import { TRACKS } from './track.js?v=24';
+import { SPECIAL_KNAPP } from './vtypes.js?v=24';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };

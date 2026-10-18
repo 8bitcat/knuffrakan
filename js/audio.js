@@ -1,8 +1,8 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice, JetVoice } from './engines.js?v=23';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=23';
+import { EngineVoice, JetVoice } from './engines.js?v=24';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=24';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -192,10 +192,15 @@ export class GameAudio {
     if (!this.sl) {
       if (siren + spray + beam < 0.01) return;
       const mk = () => { const g = ctx.createGain(); g.gain.value = 0; g.connect(this.master); return g; };
-      // sirenen: två toner, fyrkantsvåg genom lågpass
-      const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 588;
-      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1700;
-      const sg = mk(); o.connect(lp); lp.connect(sg); o.start();
+      // sirenen: två toner (ba-bo) — två lite ostämda sågtänder genom lågpass, med lätt vibrato
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 588;
+      const o2 = ctx.createOscillator(); o2.type = 'square'; o2.frequency.value = 588; o2.detune.value = 9;
+      const vib = ctx.createOscillator(); vib.frequency.value = 5.5; const vg = ctx.createGain(); vg.gain.value = 6;
+      vib.connect(vg); vg.connect(o.frequency); vg.connect(o2.frequency);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
+      const o2g = ctx.createGain(); o2g.gain.value = 0.5;
+      const sg = mk(); o.connect(lp); o2.connect(o2g); o2g.connect(lp); lp.connect(sg); o.start(); o2.start(); vib.start();
+      this.slO2 = o2;
       // vattnet: brus genom bandpass
       const n = Math.floor(ctx.sampleRate * 2), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
       for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
@@ -212,8 +217,9 @@ export class GameAudio {
       this.sl = { o, sg, wg, bg };
     }
     const S = this.sl;
-    S.o.frequency.setTargetAtTime(Math.floor(t * 1.6) % 2 ? 588 : 784, t, 0.015);
-    S.sg.gain.setTargetAtTime(siren * 0.07, t, 0.15);
+    const f = Math.floor(t * 1.6) % 2 ? 588 : 784;
+    S.o.frequency.setTargetAtTime(f, t, 0.015); this.slO2?.frequency.setTargetAtTime(f, t, 0.015);
+    S.sg.gain.setTargetAtTime(siren * 0.085, t, 0.15);
     S.wg.gain.setTargetAtTime(spray * 0.26, t, 0.1);
     S.bg.gain.setTargetAtTime(beam * 0.15, t, 0.1);
   }
@@ -378,5 +384,6 @@ export class GameAudio {
     for (const k of KINDS) { const p = this.pool[k]?.[3]; if (p && k !== kind) p.set(0, 0, 0); }
     this.voice(kind, 3).set(v, throttle, on ? 0.65 : 0, 0, 1, 0);
     this.jingle(on && kind === 'glass' ? 0.6 : 0);
+    this.specialLoops(on && kind === 'brandbil' ? 0.7 : 0, 0, 0);          // brandbilens siren
   }
 }

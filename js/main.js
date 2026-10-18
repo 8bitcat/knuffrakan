@@ -1,21 +1,21 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=23';
-import { Game } from './game.js?v=23';
-import { HUD } from './hud.js?v=23';
-import { GameAudio } from './audio.js?v=23';
-import { Input } from './input.js?v=23';
-import { SHAPES } from './carmodel.js?v=23';
-import { makeCarView } from './vehicles3d.js?v=23';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=23';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=23';
-import { logoCanvas } from './world.js?v=23';
-import { BotBrain } from './ai.js?v=23';
-import { connectRoom, NetHost, NetClient } from './net.js?v=23';
-import { TRACKS } from './track.js?v=23';
-import { SOUND_OPTS } from './sounds.js?v=23';
-import { newGP } from './gp.js?v=23';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=23';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=24';
+import { Game } from './game.js?v=24';
+import { HUD } from './hud.js?v=24';
+import { GameAudio } from './audio.js?v=24';
+import { Input } from './input.js?v=24';
+import { SHAPES } from './carmodel.js?v=24';
+import { makeCarView } from './vehicles3d.js?v=24';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=24';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=24';
+import { logoCanvas } from './world.js?v=24';
+import { BotBrain } from './ai.js?v=24';
+import { connectRoom, NetHost, NetClient } from './net.js?v=24';
+import { TRACKS } from './track.js?v=24';
+import { SOUND_OPTS } from './sounds.js?v=24';
+import { newGP } from './gp.js?v=24';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=24';
 
 const PUBLIC = 'PUBLIK';
 
@@ -430,9 +430,10 @@ async function boot() {
       // brandbilens siren/vatten och UFO:ts stråle när de är igång — ju närmare, desto starkare
       const spk = (c, d) => {
         const k = c.veh.loader || 0, K = c.spec?.kind;
-        if (c.wrecked || c.hidden || k < 0.05) return;
-        if (K === 'brandbil') { const n = Math.max(0, 1 - d / 140) ** 1.3 * k; siren = Math.max(siren, n); spray = Math.max(spray, Math.max(0, 1 - d / 60) * k); }
-        else if (K === 'ufo') beam = Math.max(beam, Math.max(0, 1 - d / 70) ** 1.3 * k);
+        if (c.wrecked || c.hidden) return;
+        // brandbilen kör alltid med sirenen på (starkare när den sprutar)
+        if (K === 'brandbil') { siren = Math.max(siren, Math.max(0, 1 - d / 160) ** 1.3 * (0.6 + 0.4 * k)); spray = Math.max(spray, Math.max(0, 1 - d / 60) * k); }
+        else if (K === 'ufo' && k >= 0.05) beam = Math.max(beam, Math.max(0, 1 - d / 70) ** 1.3 * k);
       };
       spk(me, 0);
       for (const c of game.cars) {

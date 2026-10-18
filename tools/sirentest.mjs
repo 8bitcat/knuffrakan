@@ -1,0 +1,21 @@
+// Brandbilens siren: spelarens brandbil kör (utan att spruta) — sirenen ska låta, starkare när E hålls; och i Ljudlabbet
+import { createRequire } from 'module';
+const require = createRequire('D:/Qisy/QISYFrontend/QISYFrontend-1/package.json');
+const { chromium } = require('playwright');
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11', '--autoplay-policy=no-user-gesture-required'] });
+const page = await browser.newPage({ viewport: { width: 1100, height: 640 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message));
+await page.addInitScript(() => { localStorage.setItem('knuff_bana', 'hoppbacken'); localStorage.setItem('knuff_spec', JSON.stringify({ colors: ['#d8141c', '#ffd21f', '#fff'], pattern: 'split', number: 3, sponsor: 'TURBOFIL', shape: 1, kind: 'brandbil' })); });
+await page.goto(`${process.env.BASE || 'http://localhost:8810/'}`);
+await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
+await page.click('#solo');
+await page.waitForFunction(() => window.__game.race.phase === 'race' && window.__game.race.raceT > 4.5, null, { timeout: 60000 });
+const g = () => page.evaluate(() => { const a = window.__game.audio; return a.sl ? `sirenens volym ${a.sl.sg.gain.value.toFixed(3)} ton ${Math.round(a.sl.o.frequency.value)} Hz (ctx ${a.ctx.state})` : 'ingen siren byggd'; });
+await page.keyboard.down('ArrowUp'); await page.waitForTimeout(1500);
+console.log('kör utan att spruta:', await g(), '| fordon', await page.evaluate(() => window.__game.me.veh.T.id));
+await page.keyboard.down('KeyE'); await page.waitForTimeout(1200);
+console.log('sprutar (E):        ', await g());
+await page.keyboard.up('KeyE'); await page.keyboard.up('ArrowUp');
+console.log(errors.length ? errors.join('\n') : 'inga fel');
+await browser.close();

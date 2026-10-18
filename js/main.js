@@ -1,21 +1,21 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=22';
-import { Game } from './game.js?v=22';
-import { HUD } from './hud.js?v=22';
-import { GameAudio } from './audio.js?v=22';
-import { Input } from './input.js?v=22';
-import { SHAPES } from './carmodel.js?v=22';
-import { makeCarView } from './vehicles3d.js?v=22';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=22';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=22';
-import { logoCanvas } from './world.js?v=22';
-import { BotBrain } from './ai.js?v=22';
-import { connectRoom, NetHost, NetClient } from './net.js?v=22';
-import { TRACKS } from './track.js?v=22';
-import { SOUND_OPTS } from './sounds.js?v=22';
-import { newGP } from './gp.js?v=22';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=22';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=23';
+import { Game } from './game.js?v=23';
+import { HUD } from './hud.js?v=23';
+import { GameAudio } from './audio.js?v=23';
+import { Input } from './input.js?v=23';
+import { SHAPES } from './carmodel.js?v=23';
+import { makeCarView } from './vehicles3d.js?v=23';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=23';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=23';
+import { logoCanvas } from './world.js?v=23';
+import { BotBrain } from './ai.js?v=23';
+import { connectRoom, NetHost, NetClient } from './net.js?v=23';
+import { TRACKS } from './track.js?v=23';
+import { SOUND_OPTS } from './sounds.js?v=23';
+import { newGP } from './gp.js?v=23';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=23';
 
 const PUBLIC = 'PUBLIK';
 
@@ -123,7 +123,13 @@ async function boot() {
     if ('ontouchstart' in window) $('touch').classList.remove('hidden');
     tractorTip();
   };
-  const tractorTip = () => { if (spec.kind === 'traktor') hud.toast('🚜 Håll E (eller SKOPA) för att lyfta skopan — kör upp bakom någon och lyft!', 'good'); };
+  const TIPS = {
+    traktor: '🚜 Håll E (eller SKOPA) för att lyfta skopan — kör upp bakom någon och lyft!',
+    brandbil: '🚒 Håll E (eller VATTEN): vattenkanonen sprutar undan bilarna framför dig!',
+    stridsvagn: '💥 Tryck E (eller KANON): kanonen skjuter en granat — den laddar om på 4 sekunder',
+    ufo: '🛸 Håll E (eller STRÅLE): dragstrålen lyfter upp bilen framför dig!',
+  };
+  const tractorTip = () => { if (TIPS[spec.kind]) hud.toast(TIPS[spec.kind], 'good'); };
   const readName = () => {
     name = ($('namein').value || '').trim().slice(0, 16) || 'Spelare';
     try { localStorage.setItem('knuff_namn', name); } catch { /* ok */ }
@@ -199,7 +205,7 @@ async function boot() {
     showcase.group.position.set(f.x, f.y - showcase.T.modelY, f.z);
     showcase.group.quaternion.copy(game.track.quatAt(30));
     showcase.rest();
-    showcase.orbitR = 7.2 * Math.max(1, showcase.T.half.z / 2.42) * ({ bigfoot: 1.3, traktor: 1.25, glass: 1.1, rullstol: 0.55, elrullstol: 0.6, plan: 1.35 }[showcase.T.id] || 1);
+    showcase.orbitR = 7.2 * Math.max(1, showcase.T.half.z / 2.42) * ({ bigfoot: 1.3, traktor: 1.25, glass: 1.1, rullstol: 0.55, elrullstol: 0.6, plan: 1.35, gokart: 0.6, brandbil: 1.05, stridsvagn: 1.15, ufo: 1.1 }[showcase.T.id] || 1);
     game.scene.add(showcase.group);
     game.showcase = showcase;
   };
@@ -245,8 +251,11 @@ async function boot() {
         spec.kind = b.dataset.kind;
         // skolbussen är gul från början (färgen går att byta)
         if (spec.kind === 'bus' && !spec.busColored) { spec.colors = ['#ffc21a', '#16161a', '#ffffff']; }
+        if (spec.kind === 'brandbil' && !spec.fireColored) { spec.colors = ['#d8141c', '#ffd21f', '#ffffff']; }   // brandbilen är röd från början
+        if (VTYPES[spec.kind]?.besk) $('gdesc').textContent = `${VTYPES[spec.kind].namn}: ${VTYPES[spec.kind].besk}`;
       }
       if (b.dataset.p && spec.kind === 'bus') spec.busColored = true;
+      if (b.dataset.p && spec.kind === 'brandbil') spec.fireColored = true;
       if (b.id === 'gswap') spec.colors = [spec.colors[1], spec.colors[0], spec.colors[2]];
       if (b.dataset.tab) { setTab(b.dataset.tab); return; }
       if (b.dataset.gear) {
@@ -374,7 +383,7 @@ async function boot() {
   bind('lfart', 'oninput', () => { lab.v = +$('lfart').value; lab.auto = false; });
   game.labTick = (dt) => {
     if (!lab.open) return;
-    if (lab.auto) { lab.v = Math.min(110, lab.v + dt * ({ bus: 3.5, traktor: 3, bigfoot: 5, glass: 5.5, formel: 10, rullstol: 12, elrullstol: 10, plan: 7 }[lab.kind] || 8)); if (lab.v >= 110) lab.auto = false; $('lfart').value = Math.round(lab.v); }
+    if (lab.auto) { lab.v = Math.min(110, lab.v + dt * ({ bus: 3.5, traktor: 3, bigfoot: 5, glass: 5.5, formel: 10, rullstol: 12, elrullstol: 10, plan: 7, gokart: 11, brandbil: 4, stridsvagn: 3, ufo: 8 }[lab.kind] || 8)); if (lab.v >= 110) lab.auto = false; $('lfart').value = Math.round(lab.v); }
     $('lfartv').textContent = Math.round(lab.v * 3.6) + ' km/h';
     audio.preview(lab.kind, lab.v, lab.gas || lab.auto ? 1 : 0.15, lab.on);
     audio.scrape(lab.scrW ? 1 : 0, lab.scrC ? 1 : 0, lab.scrW || lab.scrC ? Math.max(15, lab.v) : 0);
@@ -417,7 +426,15 @@ async function boot() {
     if (game.me && mapT > 0.1) { mapT = 0; hud.drawMap(game); }
     if (game.me) {
       const me = game.me, others = [];
-      let pack = 0, glassNear = me.spec?.kind === 'glass' && !me.wrecked ? 0.3 : 0;
+      let pack = 0, glassNear = me.spec?.kind === 'glass' && !me.wrecked ? 0.3 : 0, siren = 0, spray = 0, beam = 0;
+      // brandbilens siren/vatten och UFO:ts stråle när de är igång — ju närmare, desto starkare
+      const spk = (c, d) => {
+        const k = c.veh.loader || 0, K = c.spec?.kind;
+        if (c.wrecked || c.hidden || k < 0.05) return;
+        if (K === 'brandbil') { const n = Math.max(0, 1 - d / 140) ** 1.3 * k; siren = Math.max(siren, n); spray = Math.max(spray, Math.max(0, 1 - d / 60) * k); }
+        else if (K === 'ufo') beam = Math.max(beam, Math.max(0, 1 - d / 70) ** 1.3 * k);
+      };
+      spk(me, 0);
       for (const c of game.cars) {
         if (c === me || c.hidden) continue;
         const dx = me.veh.pos.x - c.veh.pos.x, dy = me.veh.pos.y - c.veh.pos.y, dz = me.veh.pos.z - c.veh.pos.z;
@@ -425,6 +442,7 @@ async function boot() {
         if (d < 45) pack++;
         // glassbilen spelar sin melodi — ju närmare, desto starkare
         if (c.spec?.kind === 'glass' && !c.wrecked && d < 110) glassNear = Math.max(glassNear, (1 - d / 110) ** 1.4);
+        spk(c, d);
         if (d < 80) {
           // närmar sig bilen mig? (för dopplereffekten)
           const closing = ((c.veh.vel.x - me.veh.vel.x) * dx + (c.veh.vel.y - me.veh.vel.y) * dy + (c.veh.vel.z - me.veh.vel.z) * dz) / d;
@@ -438,7 +456,7 @@ async function boot() {
       let slide = me.veh.speed;
       if (scrCar && me.contactWith) { const o = me.contactWith.veh; slide = Math.hypot(me.veh.vel.x - o.vel.x, me.veh.vel.z - o.vel.z) + 4; }
       audio.update({ kind: me.spec?.kind || 'stock', v: me.veh.speed, throttle: me.veh.input.throttle, brake: me.veh.input.brake || 0, on: !me.wrecked,
-        slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0, scrWall, scrCar, slide, glassNear },
+        slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0, scrWall, scrCar, slide, glassNear, siren, spray, beam },
         others, me.veh.speed, pack, Math.min(dt, 0.1));
     }
     game.labTick?.(Math.min(dt, 0.1));

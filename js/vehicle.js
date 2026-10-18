@@ -2,9 +2,9 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=22';
-import { VTYPES } from './vtypes.js?v=22';
-import { frontParts, loaderPose } from './gear.js?v=22';
+import { CONF } from './config.js?v=23';
+import { VTYPES } from './vtypes.js?v=23';
+import { frontParts, loaderPose } from './gear.js?v=23';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -54,13 +54,14 @@ export class Vehicle {
       const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rx, p.ry, 0));
       const gd = RAPIER.ColliderDesc.cuboid(p.hx, p.hy, p.hz).setDensity(0)
         .setTranslation(p.x, p.y, p.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
-        .setFriction(p.fr).setRestitution(0.15).setCollisionGroups(GROUP_GEAR);
+        .setFriction(p.fr).setRestitution(p.wall ? 0 : 0.15).setCollisionGroups(p.wall ? GROUP_GHOST : GROUP_GEAR);
       const c = world.createCollider(gd, this.body);
-      c.isGear = true;
+      c.isGear = !p.wall; c.wallOnly = !!p.wall;
       this.colliders.push(c);
       if (p.id === 'skopa') this.loaderCol = c;
     }
-    this.loader = 0; this.loaderRate = 0;    // frontlastaren: 0 nere … 1 uppe
+    this.loader = 0; this.loaderRate = 0;    // frontlastaren: 0 nere … 1 uppe (specialförmågorna: hur mycket de är igång)
+    this.slipT = 0; this.slipK = 1;          // halt underlag: tid kvar och greppets faktor
     this.ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
     this.wheels = T.wheels.map(w => ({
       x: w.x, z: w.z, front: w.front, comp: 0, prevComp: 0, grounded: false, load: 0,
@@ -139,6 +140,25 @@ export class Vehicle {
         this.loaderCol.setRotationWrtParent({ x: Math.sin(h), y: 0, z: 0, w: Math.cos(h) });
       }
     }
+    // Specialförmågorna på E. this.loader = hur mycket den är igång (0..1, skickas till alla och syns),
+    // this.tank = vatten/energi kvar (0..1) — kanonen: laddningen inför nästa skott
+    if (T.special) {
+      const held = !off && !this.hold && inp.loader;
+      if (T.special === 'kanon') {
+        this.gunCD = Math.max(0, (this.gunCD || 0) - dt);
+        this.loader = Math.max(0, this.loader - dt * 1.7);                 // rekylen klingar av
+        if (held && this.gunCD <= 0) { this.gunCD = 4; this.loader = 1; this.wantShot = true; }
+        this.tank = 1 - this.gunCD / 4;
+      } else {
+        const cap = T.special === 'vatten' ? 6 : 4;                           // sekunder per full tank
+        if (this.tank == null) this.tank = 1;
+        const on = held && this.tank > 0.02 && (this.loader > 0.05 || this.tank > 0.15);
+        this.tank = on ? Math.max(0, this.tank - dt / cap) : Math.min(1, this.tank + dt / (cap * 2.2));
+        this.loader += clamp((on ? 1 : 0) - this.loader, -dt * 5, dt * 6);
+      }
+    }
+    // halt underlag (olja, vatten, dragstråle): greppet sänks några steg framåt
+    if (this.slipT > 0) { this.slipT -= dt; this.pressF = Math.min(this.pressF, this.slipK); this.pressR = Math.min(this.pressR, this.slipK * 0.85); }
 
     const sp = Math.abs(this.vLong);
     const vf = this.vel.dot(fwd), vr = this.vel.dot(right);
@@ -244,7 +264,7 @@ export class Vehicle {
     // Självrätning (arkad): vanliga sidokontakter i packet ska inte välta bilen.
     // Efter en riktig tackling (spinT) får den snurra och volta fritt.
     if (this.spinT <= 0 && up.y > 0.15) {
-      const near = grounded > 0 ? 1 : 0.35;
+      const near = grounded > 0 ? 1 : T.glide ? 0.8 : 0.35;      // planet: vingarna håller det plant i luften
       // vridning som för bilens upp-vektor mot världens upp
       const tx = -up.z, tz = up.x; // axel = up × Y → vrider upp-vektorn mot lodrätt
       const tilt = Math.hypot(up.x, up.z);
@@ -265,7 +285,9 @@ export class Vehicle {
     // Glidflyg (planet): i luften bär vingarna — det sjunker långsamt i stället för att falla och
     // farten vrids efter nosen. Lyfter aldrig uppåt, så det går inte att flyga över murarna.
     this.gliding = false;
-    if (T.glide && grounded === 0 && !off && this.spinT <= 0 && up.y > 0.4) {
+    // glid först efter en riktig luftfärd (inte på varje krön — då flöt planet iväg och var svårt att styra)
+    this.airTime = grounded === 0 ? (this.airTime || 0) + dt : 0;
+    if (T.glide && grounded === 0 && this.airTime > 0.35 && !off && this.spinT <= 0 && up.y > 0.4) {
       const lv = this.body.linvel(), hs = Math.hypot(lv.x, lv.z);
       // vingarna bär bara nära marken (inom 7 m) — annars seglar planet iväg över murarna där vägen lutar nedför
       this.ray.origin = { x: pos.x, y: pos.y, z: pos.z }; this.ray.dir = { x: 0, y: -1, z: 0 };
@@ -277,7 +299,7 @@ export class Vehicle {
         if (a > 0) this.applyJ(0, T.mass * a * dt, 0, pos.x, pos.y, pos.z);
       }
       // roder: ratten vrider planet runt lodlinjen
-      const cur = this.body.angvel(), want = -inSteer * 0.9;
+      const cur = this.body.angvel(), want = -inSteer * 0.6;
       this.body.setAngvel({ x: cur.x, y: cur.y + (want - cur.y) * Math.min(1, 3 * dt), z: cur.z }, true);
       // fenan: farten vrids mot nosens riktning
       const fl = Math.hypot(fwd.x, fwd.z), v2 = this.body.linvel();
@@ -365,7 +387,9 @@ export class Vehicle {
     this.readState();
   }
 
-  setGhost(on) { for (const c of this.colliders) c.setCollisionGroups(c.isGear ? (on ? GEAR_GHOST : GROUP_GEAR) : on ? GROUP_GHOST : GROUP_CAR); }
+  // halt underlag en stund: t sekunder med greppet k (det halaste vinner)
+  slip(t, k) { this.slipK = this.slipT > 0 ? Math.min(this.slipK, k) : k; this.slipT = Math.max(this.slipT, t); }
+  setGhost(on) { for (const c of this.colliders) if (!c.wallOnly) c.setCollisionGroups(c.isGear ? (on ? GEAR_GHOST : GROUP_GEAR) : on ? GROUP_GHOST : GROUP_CAR); }
 
   destroy() { this.sim.world.removeRigidBody(this.body); }
 }

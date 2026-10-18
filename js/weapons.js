@@ -3,7 +3,7 @@
 // efter ögonblicksbilderna: varje bil har vapen + "skjuter" i sin rad, projektilerna ligger sist i
 // bilden, och lådor/explosioner/chockvågor kommer som händelser.
 import * as THREE from 'three';
-import { F_GAP, F_RAMP, F_LAND } from './track.js?v=22';
+import { F_GAP, F_RAMP, F_LAND } from './track.js?v=23';
 
 export const WEAPONS = {
   raket: { namn: 'Raketer', ikon: '🚀', ammo: 3 },
@@ -17,7 +17,7 @@ export const WEAPONS = {
 export const WIDS = Object.keys(WEAPONS);                 // kod i ögonblicksbilden = index + 1, -1 = ruletten snurrar
 // vikt = a + b·p där p = 0 för ledaren och 1 för den sista
 const LOOT = { olja: [3, -2], minor: [2.5, -1.5], chock: [1.5, 0], harpun: [1, 1], raket: [0.6, 2], kulspruta: [0.5, 1.8], kanon: [0.15, 1.6] };
-const PT = { RAKET: 1, MINA: 2, OLJA: 3, KROK: 4 };
+const PT = { RAKET: 1, MINA: 2, OLJA: 3, KROK: 4, GRANAT: 5 };
 const PROW = 10;                                          // flyttal per projektil i ögonblicksbilden
 const WORLD_ONLY = (0xffff << 16) | 0x0002;              // strålar som bara träffar banan (inte bilar)
 const BOX_RESPAWN = 5;
@@ -299,9 +299,46 @@ export class Weapons {
     this.proj.push(p);
   }
 
+  // stridsvagnens kanon (E): en tung granat nästan rakt fram — siktar lite mot bilen i en smal kon
+  cannon(c) {
+    const g = this.g, v = c.veh, T = v.T, G = T.gun;
+    const p = { id: this.nextP++, type: PT.GRANAT, owner: c, pos: new THREE.Vector3(), vel: new THREE.Vector3(), born: g.simT, life: 1.6, a: 0, b: 0 };
+    p.pos.copy(v.pos).addScaledVector(v.up, T.modelY + G.y).addScaledVector(v.fwd, -G.z + 0.3);
+    const sp = 170 + Math.max(0, v.vLong);
+    const tg = this.target(c, 0.985, 160, 6);
+    if (tg) _d.copy(tg.veh.pos).addScaledVector(tg.veh.up, tg.veh.T.colY).addScaledVector(tg.veh.vel, tg.veh.pos.distanceTo(p.pos) / sp).sub(p.pos).normalize();
+    else _d.copy(v.fwd).addScaledVector(v.up, 0.015).normalize();
+    p.vel.copy(_d).multiplyScalar(sp);
+    // rekylen: stridsvagnen rycks bakåt
+    const J = T.mass * 1.2;
+    v.applyJ(-v.fwd.x * J, 0, -v.fwd.z * J, v.pos.x, v.pos.y + 0.5, v.pos.z);
+    if (tg && (!c.cannonMsgT || g.time - c.cannonMsgT > 2)) { c.cannonMsgT = g.time; g.notify(tg, `💥 ${c.name}s stridsvagn skjuter på dig!`, 'bad'); }
+    this.proj.push(p);
+  }
+
   stepProj(p, dt, now) {
     const g = this.g;
     if (now - p.born > p.life) { p.dead = true; return; }
+    if (p.type === PT.GRANAT) {
+      p.vel.y -= 5 * dt;
+      const sp = p.vel.length(), dir = _d.copy(p.vel).divideScalar(sp || 1), step = sp * dt;
+      let hitCar = null, ht = step + 0.4;
+      for (const o of g.cars) {
+        if (o === p.owner || o.wrecked || o.hidden || o.ghostT > 0) continue;
+        const t = rayBox(p.pos, dir, o, 0.3);
+        if (t >= 0 && t < ht) { ht = t; hitCar = o; }
+      }
+      const tw = this.rayWorld(p.pos, dir, Math.min(ht, step + 0.4));
+      if (hitCar || tw >= 0) {
+        const wall = tw >= 0 && (!hitCar || tw < ht);
+        p.pos.addScaledVector(dir, wall ? tw : ht);
+        this.explode(p.pos, p.owner, wall ? null : hitCar, 6.5, 19, 26);
+        p.dead = true; return;
+      }
+      p.pos.addScaledVector(p.vel, dt);
+      if (now - p.born > p.life - dt) { this.explode(p.pos, p.owner, null, 6.5, 16, 0); p.dead = true; }
+      return;
+    }
     if (p.type === PT.RAKET) {
       // målsökande: svänger mot närmaste bil framför
       const sp = p.vel.length(), dir = _d.copy(p.vel).divideScalar(sp || 1);
@@ -384,7 +421,7 @@ export class Weapons {
         const dx = o.veh.pos.x - p.pos.x, dz = o.veh.pos.z - p.pos.z, dy = o.veh.pos.y - p.pos.y;
         if (dx * dx + dz * dz > p.r * p.r || Math.abs(dy) > 2.5) continue;
         const v = o.veh;
-        v.pressF = Math.min(v.pressF, 0.12); v.pressR = Math.min(v.pressR, 0.1);
+        v.slip(0.12, 0.12);                                // (pressF nollställs varje steg — halkan bär över till nästa)
         v.spinT = Math.max(v.spinT, 0.6);
         if (!(o.oilT > now)) {
           o.oilT = now + 1.2;
@@ -568,6 +605,11 @@ export class Weapons {
       const sheen2 = new THREE.Mesh(new THREE.CircleGeometry(r * 0.35, 18).rotateX(-Math.PI / 2), M.oilSheen2); sheen2.position.set(-r * 0.3, 0.012, r * 0.25);
       const rim = new THREE.Mesh(new THREE.RingGeometry(r * 0.94, r * 1.04, 32).rotateX(-Math.PI / 2), M.oilRim); rim.scale.copy(blob.scale);
       obj.add(blob, sheen, sheen2, rim); obj.rotation.y = Math.random() * 6;
+    } else if (p.type === PT.GRANAT) {
+      M.shell ||= [new THREE.CylinderGeometry(0.11, 0.11, 0.55, 10).rotateX(Math.PI / 2), new THREE.ConeGeometry(0.11, 0.26, 10).rotateX(-Math.PI / 2).translate(0, 0, -0.4),
+        new THREE.CylinderGeometry(0.05, 0.17, 2.6, 8, 1, true).rotateX(Math.PI / 2).translate(0, 0, 1.55)];
+      obj.add(new THREE.Mesh(M.shell[0], M.gunDark), new THREE.Mesh(M.shell[1], M.steel));
+      const tr = new THREE.Mesh(M.shell[2], M.can); tr.renderOrder = 4; obj.add(tr);
     } else if (p.type === PT.KROK) {
       obj.add(new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.45, 8).rotateX(-Math.PI / 2), M.steel));
       v.cable = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 6), M.cable);
@@ -579,7 +621,8 @@ export class Weapons {
   drawProj(v, p, dt, now) {
     const g = this.g;
     v.obj.position.set(p.x, p.y, p.z);
-    if (v.type === PT.RAKET || v.type === PT.KROK) {
+    if (v.type === PT.GRANAT && Math.random() < 0.5) g.fx.smoke(_a.set(p.x, p.y, p.z), _b.set(0, 0, 0), false, 0.4);
+    if (v.type === PT.RAKET || v.type === PT.KROK || v.type === PT.GRANAT) {
       const sp = Math.hypot(p.vx, p.vy, p.vz);
       if (sp > 1) v.obj.quaternion.setFromUnitVectors(_a.set(0, 0, -1), _b.set(p.vx / sp, p.vy / sp, p.vz / sp));
     }

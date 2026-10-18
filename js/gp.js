@@ -1,7 +1,7 @@
 // Grand Prix: flera race i slumpad banordning, poäng per race (som F1), pokaler till de tre bästa.
 // Värden äger läget (game.gp) och skickar det till gästerna ({ t: 'gp' }); prispallen byggs hos alla.
 import * as THREE from 'three';
-import { TRACKS } from './track.js?v=22';
+import { TRACKS } from './track.js?v=23';
 
 export const GP_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];   // plats 11+ = 1 poäng
 export const ptsFor = (place) => GP_POINTS[place - 1] ?? 1;
@@ -65,14 +65,23 @@ export class Podium {
     this.spots = [];
     const H = [3.2, 2.2, 1.5], LAT = [0, -7.5, 7.5], COL = ['#d9a400', '#8a94a6', '#a8602a'];
     const cup = cupGeo(); this.geos.push(cup);
+    const ids = game.gp?.podium || [];
     const handle = new THREE.TorusGeometry(0.5, 0.09, 10, 20, Math.PI); this.geos.push(handle);
     this.cups = [];
     for (let k = 0; k < 3; k++) {
-      const h = H[k], lat = LAT[k];
+      const h = H[k], lat = LAT[k], sc = [1.5, 1.25, 1.1][k];
+      // blocket görs så djupt som fordonet kräver: bilen längst fram (nosen mot kameran), pokalen bakom med
+      // fritt avstånd — bussen, brandbilen och stridsvagnens kanon får inte gå in i pokalen
+      const T = game.carById?.(ids[k])?.veh?.T, G = T?.gear || [];
+      const half = T?.half?.z ?? 2.42;
+      const F = Math.max(half, T?.gun ? -T.gun.z : 0, T?.prop ? T.prop.z + 0.3 : 0, T?.nozzle ? -T.nozzle.z + 0.3 : 0, T?.loader ? half + 1.0 : 0)
+        + (G.some(x => x === 'plog' || x === 'kil' || x === 'ram') ? 1.5 : G.includes('bullbar') ? 0.3 : 0);
+      const Rr = half + (G.includes('pushbar') ? 0.4 : 0), tR = 1.55 * sc;
+      const D = Math.max(9, F + Rr + 2 * tR + 1.0), sCar = -D / 2 + 0.5 + F, sCup = sCar + Rr + 0.35 + tR;
       const tex = plateTex(String(k + 1), COL[k]); this.texs.push(tex);
       const side = new THREE.MeshStandardMaterial({ color: 0xf4f2ee, roughness: 0.5, emissive: 0x2a2a30 }), front = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.35 });
       this.mats.push(side, front);
-      const bg = new THREE.BoxGeometry(7, h, 9); this.geos.push(bg);
+      const bg = new THREE.BoxGeometry(7, h, D); this.geos.push(bg);
       // framsidan (mot kameran när den står bakom startlinjen) får siffran
       const block = new THREE.Mesh(bg, [side, side, side, side, front, front]);
       const pos = this.center.clone().addScaledVector(this.right, lat);
@@ -83,7 +92,6 @@ export class Podium {
       // pokalen: guld störst
       const metal = new THREE.MeshPhysicalMaterial({ color: METAL[k], metalness: 1, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.08 });
       this.mats.push(metal);
-      const sc = [1.5, 1.25, 1.1][k];
       const trophy = new THREE.Group();
       trophy.add(new THREE.Mesh(cup, metal));
       for (const sd of [-1, 1]) { const hd = new THREE.Mesh(handle, metal); hd.position.set(sd * 1.05, 1.9, 0); hd.rotation.z = sd * Math.PI / 2; trophy.add(hd); }
@@ -92,10 +100,10 @@ export class Podium {
       base.position.y = -0.25; trophy.add(base);
       trophy.scale.setScalar(sc);
       trophy.traverse(o => { if (o.isMesh) o.castShadow = true; });
-      trophy.position.set(pos.x, pos.y + h + 0.5 * sc, pos.z).addScaledVector(this.fwd, 2.6);   // bakom bilen (sett från kameran)
+      trophy.position.set(pos.x, pos.y + h + 0.5 * sc, pos.z).addScaledVector(this.fwd, sCup);   // bakom bilen (sett från kameran)
       this.grp.add(trophy);
       this.cups.push(trophy);
-      this.spots.push({ pos: new THREE.Vector3(pos.x, pos.y + h, pos.z).addScaledVector(this.fwd, -1.8), lat });
+      this.spots.push({ pos: new THREE.Vector3(pos.x, pos.y + h, pos.z).addScaledVector(this.fwd, sCar), lat });
     }
     // strålkastare på pallen (syns även på nattbanan)
     this.light = new THREE.PointLight(0xfff4e0, 2.6, 90, 1.1);

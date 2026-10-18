@@ -1,6 +1,6 @@
 // Bottarna: kör i full gas i sin fil, byter fil, väjer för långsammare bilar och
 // tacklar ibland den som ligger bredvid.
-import { steerMaxAt } from './vehicle.js?v=22';
+import { steerMaxAt } from './vehicle.js?v=23';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -22,9 +22,11 @@ export class BotBrain {
     const sp = v.speed;
     this.wob += dt;
 
+    // breda fordon (planets vingar m.fl.) håller sig längre in från murarna
+    const LM = Math.min(13.2, T.halfW - (v.T.wing ? 3.3 : v.T.half.x) - 0.9);
     this.nextLane -= dt;
     if (this.nextLane <= 0) {
-      this.lane = clamp(this.lane + (rnd() - 0.5) * 16, -12, 12);
+      this.lane = clamp(this.lane + (rnd() - 0.5) * 16, -LM + 1.2, LM - 1.2);
       this.nextLane = 3 + rnd() * 7;
     }
     // läget runt omkring
@@ -46,13 +48,18 @@ export class BotBrain {
     // traktor: kör upp bakom bilen framför och lyft den med skopan i stället för att väja
     const scoop = v.T.loader && ahead && aheadD < 9 && this.aggr > 0.3;
     inp.loader = scoop ? 1 : 0;
+    // specialförmågorna: vattenkanonen/dragstrålen mot bilen framför, kanonen när någon står i siktet
+    const SP = v.T.special, W = game.weapons;
+    if (SP && W && game.race?.phase === 'race' && this.aggr > 0.15) {
+      inp.loader = (SP === 'kanon' ? W.target(car, 0.985, 75, 9) : SP === 'vatten' ? W.target(car, 0.9, 16, 2) : W.target(car, 0.82, 11, 1.5)) ? 1 : 0;
+    }
     if (scoop) this.lane = ahead.trk.lat;
     else if (ahead && this.tackleT <= 0) {
       // väj åt det håll som är fritt, annars lätta på gasen
       let dir = ahead.trk.lat > tk.lat ? -1 : 1;
-      if ((dir < 0 && (blockL[0] || tk.lat < -11)) || (dir > 0 && (blockR[0] || tk.lat > 11))) dir = -dir;
-      const free = dir < 0 ? !blockL[0] && tk.lat > -11 : !blockR[0] && tk.lat < 11;
-      this.lane = clamp(tk.lat + dir * 5, -12.5, 12.5);
+      if ((dir < 0 && (blockL[0] || tk.lat < -LM + 2.2)) || (dir > 0 && (blockR[0] || tk.lat > LM - 2.2))) dir = -dir;
+      const free = dir < 0 ? !blockL[0] && tk.lat > -LM + 2.2 : !blockR[0] && tk.lat < LM - 2.2;
+      this.lane = clamp(tk.lat + dir * 5, -LM + 0.7, LM - 0.7);
       if (!free && aheadD < closing * 1.1) lift = true;
     }
     if (side && this.tackleT <= 0 && this.aggr > 0.55 && rnd() < dt * (side.isPlayer ? 0.9 : 0.22) * this.aggr) {
@@ -66,7 +73,7 @@ export class BotBrain {
       const tg = this.tackleTarget;
       if (tg && !tg.wrecked) laneT = tg.trk.lat + Math.sign(tg.trk.lat - tk.lat) * 1.2;
     }
-    laneT = clamp(laneT, -13.2, 13.2);
+    laneT = clamp(laneT, -LM, LM);
 
     // styr mot en punkt framför (pure pursuit)
     const ld = 16 + sp * 0.55;

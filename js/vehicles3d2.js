@@ -2,8 +2,8 @@
 // group, model, wheels[{holder, spin, base}], setWheel, rest, dent, uvNear, livery, resetDamage, dispose, T.
 // Modellens y = 0 är marken, fronten åt -z.
 import * as THREE from 'three';
-import { VTYPES } from './vtypes.js?v=22';
-import { LOADER } from './gear.js?v=22';
+import { VTYPES } from './vtypes.js?v=23';
+import { LOADER } from './gear.js?v=23';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const mkTex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
@@ -621,3 +621,331 @@ export class PlanView extends SimpleView {
     this.blur.material.opacity = 0.12 + 0.3 * k;
   }
 }
+
+// osynliga hjul (fysikens hjul finns, men fordonet har larvband/svävar)
+SimpleView.prototype.ghostWheels = function () {
+  for (const w of this.T.wheels) this.wheels.push({ holder: new THREE.Group(), spin: new THREE.Group(), base: w, hubY: 0, spinK: 1 });
+};
+// rund mjuk prick (vattendroppar, strålens ringar)
+let DROP = null;
+function dropTex() {
+  if (DROP) return DROP;
+  const c = cv(64, 64), g = c.getContext('2d'), rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  rg.addColorStop(0, 'rgba(240,250,255,1)'); rg.addColorStop(0.4, 'rgba(120,200,255,0.9)'); rg.addColorStop(1, 'rgba(60,150,255,0)');
+  g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+  DROP = mkTex(c);
+  return DROP;
+}
+
+// ---------------- Gokarten ----------------
+export class GokartView extends SimpleView {
+  constructor(spec) {
+    super(VTYPES.gokart, spec);
+    const c0 = spec.colors?.[0] || '#ffb21a', c1 = spec.colors?.[1] || '#16161a';
+    const paint = this.phys({ color: c0, roughness: 0.3, clearcoat: 0.9 });
+    const paint2 = this.phys({ color: c1, roughness: 0.35, clearcoat: 0.7 });
+    const chrome = this.std({ color: 0xdfe3ea, roughness: 0.2, metalness: 1 });
+    const steel = this.std({ color: 0x3a3d44, roughness: 0.4, metalness: 0.8 });
+    const black = this.std({ color: 0x141418, roughness: 0.7 });
+    // rörramen + golvplåten
+    for (const s of [-1, 1]) {
+      this.tube(0.022, [s * 0.36, 0.1, -0.82], [s * 0.36, 0.1, 0.78], chrome);
+      this.tube(0.02, [s * 0.36, 0.1, -0.82], [s * 0.2, 0.12, -0.95], chrome);
+    }
+    for (const z of [-0.6, 0.0, 0.6]) this.tube(0.02, [-0.36, 0.1, z], [0.36, 0.1, z], chrome);
+    this.box(0.68, 0.02, 1.4, steel, 0, 0.085, -0.05);
+    this.tube(0.026, [-0.6, 0.06, -0.68], [0.6, 0.06, -0.68], steel);                      // framaxeln
+    this.tube(0.03, [-0.66, 0.15, 0.62], [0.66, 0.15, 0.62], steel);                       // bakaxeln
+    // nosen + sidokåporna (plast i bilens färger)
+    this.add(profile([[-1.02, 0.06], [-1.02, 0.13], [-0.72, 0.22], [-0.5, 0.25], [-0.5, 0.06]], 0.78, 0.025), paint);
+    for (const s of [-1, 1]) this.add(profile([[-0.42, 0.07], [-0.42, 0.25], [0.42, 0.27], [0.52, 0.07]], 0.2, 0.025), paint2, s * 0.5, 0, 0);
+    // bakre stötfångaren
+    this.tube(0.028, [-0.62, 0.16, 1.0], [0.62, 0.16, 1.0], chrome);
+    for (const s of [-1, 1]) this.tube(0.024, [s * 0.62, 0.16, 1.0], [s * 0.36, 0.11, 0.72], chrome);
+    // sätet, ratten
+    this.box(0.4, 0.05, 0.38, black, 0, 0.17, 0.16);
+    const back = this.box(0.42, 0.46, 0.06, black, 0, 0.42, 0.38); back.rotation.x = -0.28;
+    this.tube(0.018, [0, 0.14, -0.58], [0, 0.45, -0.3], steel);
+    const wheel = this.add(new THREE.TorusGeometry(0.13, 0.022, 8, 22), black, 0, 0.47, -0.28); wheel.rotation.x = -1.0;
+    // motorn till höger bakom sätet + avgasröret
+    this.box(0.24, 0.24, 0.28, steel, 0.42, 0.28, 0.55);
+    this.add(new THREE.CylinderGeometry(0.1, 0.1, 0.12, 12).rotateZ(Math.PI / 2), paint2, 0.58, 0.3, 0.55);
+    this.tube(0.025, [0.42, 0.3, 0.7], [0.3, 0.42, 0.95], chrome);
+    // däcken: smala fram, breda bak
+    const tire = this.std({ color: 0x18181b, roughness: 0.9 }), rim = this.std({ color: c0, roughness: 0.3, metalness: 0.5 });
+    for (const w of this.T.wheels) this.wheel(w, w.front ? 0.14 : 0.155, w.front ? 0.13 : 0.2, [tire, tire, tire], rim, 0.6);
+    // nummerskylten på nosen
+    const nc = numCanvas(spec.number, lum(c0) > 0.55 ? '#111' : '#fff');
+    const nose = this.decal(nc, 0.24, 0.24, 0, 0.215, -0.72, '+z'); nose.rotation.set(-Math.PI / 2 + 0.35, 0, 0);
+    this.rider(0.2, 0.16, { footY: 0.12, footZ: -0.66, hands: [[-0.11, 0.49, -0.26], [0.11, 0.49, -0.26]] });
+  }
+}
+
+// ---------------- Brandbilen ----------------
+export class BrandbilView extends SimpleView {
+  constructor(spec) {
+    super(VTYPES.brandbil, spec);
+    const c0 = spec.colors?.[0] || '#d8141c', c1 = spec.colors?.[1] || '#ffd21f';
+    const red = this.phys({ color: c0, roughness: 0.35, clearcoat: 0.8 });
+    const dark = this.std({ color: 0x1b2234, roughness: 0.12, metalness: 0.4 });
+    const chrome = this.std({ color: 0xdfe3ea, roughness: 0.2, metalness: 1 });
+    const steel = this.std({ color: 0x9aa0aa, roughness: 0.35, metalness: 0.8 });
+    const black = this.std({ color: 0x141418, roughness: 0.7 });
+    // sidorna: luckor (rullgardiner), reflexrutor och RÄDDNINGSTJÄNST
+    const side = () => {
+      const c = cv(1024, 512), g = c.getContext('2d');
+      g.fillStyle = c0; g.fillRect(0, 0, 1024, 512);
+      for (let k = 0; k < 4; k++) {
+        const x = 30 + k * 248;
+        g.fillStyle = '#b8bdc6'; g.fillRect(x, 40, 220, 300);
+        g.fillStyle = '#8a909a'; for (let y = 48; y < 336; y += 16) g.fillRect(x + 4, y, 212, 3);
+        g.fillStyle = '#5a5f68'; g.fillRect(x + 90, 318, 40, 10);
+      }
+      // reflexband: rutor i två färger
+      for (let x = 0; x < 1024; x += 64) { g.fillStyle = (x / 64) % 2 ? c1 : '#ffffff'; g.fillRect(x, 360, 64, 50); g.fillStyle = (x / 64) % 2 ? '#ffffff' : c1; g.fillRect(x, 410, 64, 50); }
+      g.fillStyle = '#ffffff'; g.font = '900 54px Montserrat, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('RÄDDNINGSTJÄNST', 512, 488);
+      return c;
+    };
+    const sideT = this.tex(side());
+    const sideM = this.phys({ map: sideT, roughness: 0.4, clearcoat: 0.6 });
+    // skåpet bak (y 0,55–2,9) + hytten fram
+    this.box(2.4, 2.35, 5.45, [sideM, sideM, red, black, red, red], 0, 1.725, 0.875);
+    this.box(2.36, 2.05, 1.72, red, 0, 1.575, -2.74);
+    this.box(2.1, 0.3, 6.9, black, 0, 0.62, 0);                                       // chassit
+    const ws = this.box(2.1, 0.86, 0.04, dark, 0, 2.08, -3.61); ws.rotation.x = 0.06;   // vindrutan
+    for (const s of [-1, 1]) this.box(0.04, 0.72, 1.2, dark, s * 1.185, 2.1, -2.8);       // sidorutorna
+    // reflexband runt hytten
+    const band = cv(256, 64), bg = band.getContext('2d');
+    for (let x = 0; x < 256; x += 32) { bg.fillStyle = (x / 32) % 2 ? c1 : '#ffffff'; bg.fillRect(x, 0, 32, 32); bg.fillStyle = (x / 32) % 2 ? '#ffffff' : c1; bg.fillRect(x, 32, 32, 32); }
+    const bandM = this.std({ map: this.tex(band, 3, 1), roughness: 0.4 });
+    this.box(2.38, 0.22, 1.74, bandM, 0, 1.12, -2.74);
+    // grill, lampor, stötfångare
+    const gr = cv(128, 64), gg = gr.getContext('2d');
+    gg.fillStyle = '#16171b'; gg.fillRect(0, 0, 128, 64); gg.fillStyle = '#4a4d55'; for (let y = 6; y < 64; y += 10) gg.fillRect(6, y, 116, 4);
+    this.decal(gr, 1.2, 0.5, 0, 0.98, -3.61, '-z');
+    const lamp = this.std({ color: 0xfff6d0, emissive: 0xfff2c0, emissiveIntensity: 0.8 });
+    for (const s of [-1, 1]) this.box(0.34, 0.2, 0.04, lamp, s * 0.85, 0.98, -3.61);
+    this.box(2.44, 0.26, 0.16, chrome, 0, 0.58, -3.66);
+    this.box(2.44, 0.26, 0.16, chrome, 0, 0.58, 3.62);
+    // blåljusen: ramp på hyttaket + blixtljus i fronten (blinkar i setThrust)
+    this.blueA = this.std({ color: 0x1a4dff, emissive: 0x2a6bff, emissiveIntensity: 2, roughness: 0.2, transparent: true, opacity: 0.92 });
+    this.blueB = this.std({ color: 0x1a4dff, emissive: 0x2a6bff, emissiveIntensity: 0.1, roughness: 0.2, transparent: true, opacity: 0.92 });
+    this.box(1.9, 0.08, 0.32, black, 0, 2.64, -3.3);
+    for (const s of [-1, 1]) this.box(0.88, 0.16, 0.3, s < 0 ? this.blueA : this.blueB, s * 0.47, 2.76, -3.3);
+    for (const s of [-1, 1]) this.box(0.16, 0.08, 0.04, s < 0 ? this.blueB : this.blueA, s * 0.42, 1.25, -3.62);
+    for (const s of [-1, 1]) this.box(0.1, 0.22, 0.1, s < 0 ? this.blueA : this.blueB, s * 1.1, 2.75, 3.5);   // bak
+    // stegen på taket (vilar på stöd) + vattenkanonen på hyttaket
+    for (const s of [-1, 1]) this.tube(0.045, [s * 0.46, 3.1, -1.7], [s * 0.46, 3.1, 3.95], steel);
+    for (let z = -1.6; z < 3.9; z += 0.34) this.tube(0.022, [-0.46, 3.1, z], [0.46, 3.1, z], steel);
+    for (const z of [-1.4, 2.9]) { this.box(0.9, 0.18, 0.2, black, 0, 2.99, z); }
+    this.add(new THREE.CylinderGeometry(0.5, 0.55, 0.16, 18), steel, 0, 2.98, 2.5);         // stegens vridkrans
+    const N = this.T.nozzle;
+    this.add(new THREE.CylinderGeometry(0.13, 0.16, 0.24, 14), steel, 0, 2.72, -2.45);
+    this.tube(0.075, [0, 2.84, -2.45], [0, 3.02, -2.8], chrome);
+    this.add(new THREE.CylinderGeometry(0.05, 0.085, 0.3, 12).rotateX(-Math.PI / 2 + 0.12), chrome, 0, N.y, N.z + 0.12);
+    // slangvindan bak
+    this.add(new THREE.CylinderGeometry(0.34, 0.34, 1.3, 16).rotateZ(Math.PI / 2), this.std({ color: 0xe8e2c8, roughness: 0.8 }), 0, 1.35, 3.72);
+    // hjul
+    const tread = this.std({ color: 0x18181b, roughness: 0.9 }), hub = this.std({ color: 0xe6e8ec, roughness: 0.3, metalness: 0.5 });
+    for (const w of this.T.wheels) this.wheel(w, 0.5, 0.34, [tread, tread, tread], hub, 0.55);
+    // nummer på dörren
+    const nc = numCanvas(spec.number, '#ffffff');
+    for (const s of [-1, 1]) this.decal(nc, 0.5, 0.5, s * 1.19, 1.5, -2.4, s > 0 ? '+x' : '-x');
+    // vattenstrålen: en tät kärna nära munstycket + droppar i en båge (animeras i setLoader)
+    const jet = this.jetGrp = new THREE.Group(); jet.position.set(0, N.y, N.z - 0.1); this.model.add(jet);
+    const coreM = new THREE.MeshStandardMaterial({ color: 0x8fd0ff, emissive: 0x1a5a9a, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.8, depthWrite: false });
+    this.mats.push(coreM); this.coreM = coreM;
+    this.core = this.add(new THREE.CylinderGeometry(0.09, 0.32, 1, 12, 1, true).rotateX(Math.PI / 2).translate(0, 0, -0.5), coreM, 0, 0, 0, jet);
+    this.core.castShadow = false;
+    this.dropM = new THREE.SpriteMaterial({ map: dropTex(), transparent: true, depthWrite: false, opacity: 0.9 });
+    this.mats.push(this.dropM);
+    this.drops = Array.from({ length: 34 }, (_, i) => { const s = new THREE.Sprite(this.dropM); s.userData.u0 = i / 34; jet.add(s); return s; });
+    this.jetK = -1; this.setLoader(0);
+  }
+  // k = 0..1 hur mycket kanonen sprutar
+  setLoader(k) {
+    const t = performance.now() / 1000;
+    const on = k > 0.02;
+    this.jetGrp.visible = on;
+    if (!on) { this.jetK = 0; return; }
+    const L = 16 * Math.min(1, k * 1.3);
+    this.core.scale.set(1, 1, Math.min(6, L * 0.4));
+    this.core.rotation.x = 0.3;                        // strålen går uppåt först (syns över hytten), dropparna faller sedan
+    this.coreM.opacity = 0.8 * k;
+    this.dropM.opacity = 0.95 * k;
+    for (const s of this.drops) {
+      const u = (s.userData.u0 + t * 1.7) % 1;
+      s.position.set((Math.sin(u * 37 + s.userData.u0 * 9) * 0.4) * u, 1.6 * Math.sin(Math.PI * u * 0.9) - 2.5 * u * u, -L * u);
+      s.scale.setScalar((0.5 + u * 1.9) * (0.7 + 0.3 * k));
+    }
+  }
+  // blåljusen blinkar alltid (fort, växelvis)
+  setThrust(k, time) {
+    const a = Math.floor(time * 7) % 2 === 0;
+    this.blueA.emissiveIntensity = a ? 2.2 : 0.08;
+    this.blueB.emissiveIntensity = a ? 0.08 : 2.2;
+  }
+}
+
+// ---------------- Stridsvagnen ----------------
+export class StridsvagnView extends SimpleView {
+  constructor(spec) {
+    super(VTYPES.stridsvagn, spec);
+    const c0 = spec.colors?.[0] || '#5a6b3a', c1 = spec.colors?.[1] || '#2f3a22';
+    // kamouflage i bilens två färger
+    const camo = cv(512, 512), cg = camo.getContext('2d');
+    cg.fillStyle = c0; cg.fillRect(0, 0, 512, 512);
+    const blob = (col, n, r) => { cg.fillStyle = col; for (let k = 0; k < n; k++) { cg.beginPath(); cg.ellipse(Math.random() * 512, Math.random() * 512, r * (0.5 + Math.random()), r * (0.3 + Math.random() * 0.5), Math.random() * 3, 0, Math.PI * 2); cg.fill(); } };
+    blob(c1, 26, 60); blob('rgba(20,20,16,0.55)', 14, 40); blob('rgba(255,255,255,0.08)', 10, 50);
+    const camoT = this.tex(camo, 1, 1); camoT.wrapS = camoT.wrapT = THREE.RepeatWrapping; camoT.repeat.set(0.35, 0.35);
+    const paint = this.std({ map: camoT, roughness: 0.75, metalness: 0.15 });
+    const dark = this.std({ color: 0x23251f, roughness: 0.6, metalness: 0.4 });
+    const steel = this.std({ color: 0x3a3d44, roughness: 0.4, metalness: 0.8 });
+    const black = this.std({ color: 0x121214, roughness: 0.8 });
+    // larvbanden: länkar i en rullande textur + boggiehjul
+    const tc = cv(64, 64), tg = tc.getContext('2d');
+    tg.fillStyle = '#1c1d20'; tg.fillRect(0, 0, 64, 64); tg.fillStyle = '#3a3c42'; tg.fillRect(0, 0, 22, 64); tg.fillStyle = '#0e0e10'; tg.fillRect(40, 0, 6, 64);
+    this.trackT = this.tex(tc, 1, 1); this.trackT.wrapS = this.trackT.wrapT = THREE.RepeatWrapping; this.trackT.repeat.set(2.5, 2.5);
+    const trackM = this.std({ map: this.trackT, roughness: 0.9, metalness: 0.3 });
+    const trackShape = [[-3.05, 0.48], [-2.72, 0.06], [2.72, 0.06], [3.05, 0.48], [2.85, 0.98], [-2.85, 0.98]];
+    this.road = [];
+    for (const s of [-1, 1]) {
+      this.add(profile(trackShape, 0.6, 0.03), trackM, s * 1.2, 0, 0);
+      for (let k = 0; k < 6; k++) {
+        const g = new THREE.Group(); g.position.set(s * 1.52, 0.4, -2.3 + k * 0.92); this.model.add(g);
+        this.add(new THREE.CylinderGeometry(0.34, 0.34, 0.08, 18).rotateZ(Math.PI / 2), dark, 0, 0, 0, g);
+        this.add(new THREE.CylinderGeometry(0.12, 0.12, 0.1, 8).rotateZ(Math.PI / 2), steel, s * 0.01, 0, 0, g);
+        this.road.push(g);
+      }
+      for (const z of [-2.75, 2.75]) {
+        const g = new THREE.Group(); g.position.set(s * 1.52, 0.55, z); this.model.add(g);
+        this.add(new THREE.CylinderGeometry(0.3, 0.3, 0.09, 10).rotateZ(Math.PI / 2), steel, 0, 0, 0, g);
+        this.road.push(g);
+      }
+    }
+    // skrovet: sluttande front, stänkskärmar över banden
+    this.add(profile([[-3.15, 0.95], [-2.35, 1.5], [2.9, 1.5], [3.12, 1.12], [3.0, 0.62], [-2.7, 0.55]], 2.0, 0.05), paint);
+    this.add(profile([[-3.12, 1.0], [-2.9, 1.08], [2.95, 1.08], [3.1, 1.0]], 3.1, 0.02), paint);
+    for (const s of [-1, 1]) this.box(0.6, 0.3, 5.0, paint, s * 1.25, 1.2, 0.05);              // sidolådor över banden
+    // tornet med kanonen (i en egen grupp så den kan rekylera)
+    const tz = 0.25;
+    this.add(new THREE.CylinderGeometry(1.0, 1.05, 0.12, 24), dark, 0, 1.55, tz);
+    this.add(profile([[-1.2, 1.58], [-0.85, 2.2], [1.3, 2.2], [1.65, 1.9], [1.65, 1.58]], 2.0, 0.05), paint, 0, 0, tz);
+    this.box(0.7, 0.55, 0.35, paint, 0, 1.93, tz - 1.4);                                       // manteln
+    const gun = this.gunGrp = new THREE.Group(); gun.position.set(0, this.T.gun.y, tz - 1.5); this.model.add(gun);
+    const gl = -(this.T.gun.z - (tz - 1.5));                                                  // pipans längd
+    this.add(new THREE.CylinderGeometry(0.1, 0.12, gl, 14).rotateX(Math.PI / 2).translate(0, 0, -gl / 2), steel, 0, 0, 0, gun);
+    this.add(new THREE.CylinderGeometry(0.17, 0.17, 0.62, 14).rotateX(Math.PI / 2), paint, 0, 0, -gl * 0.45, gun);   // rökutsugaren
+    this.add(new THREE.CylinderGeometry(0.16, 0.16, 0.32, 12).rotateX(Math.PI / 2), dark, 0, 0, -gl + 0.16, gun);    // mynningsbromsen
+    // luckor, kulspruta, antenn, lådor
+    this.add(new THREE.CylinderGeometry(0.32, 0.34, 0.22, 16), paint, 0.55, 2.3, tz + 0.55);
+    this.add(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 16), dark, 0.55, 2.42, tz + 0.55);
+    this.tube(0.03, [0.55, 2.52, tz + 0.45], [0.55, 2.54, tz - 0.45], black);
+    this.box(0.12, 0.14, 0.4, black, 0.55, 2.5, tz + 0.55);
+    this.tube(0.012, [-0.7, 2.2, tz + 1.15], [-0.78, 3.9, tz + 1.35], black);
+    this.box(1.6, 0.4, 0.5, paint, 0, 1.95, tz + 1.88);                                        // korgen bak på tornet
+    for (const s of [-1, 1]) for (let k = 0; k < 3; k++) this.add(new THREE.CylinderGeometry(0.07, 0.07, 0.24, 8).rotateX(Math.PI / 2 - 0.5), dark, s * 1.0, 2.1 + k * 0.1, tz - 0.7 + k * 0.05);  // rökgranatkastare
+    // strålkastare + nummer på tornet
+    const lamp = this.std({ color: 0xfff6d0, emissive: 0xfff2c0, emissiveIntensity: 0.7 });
+    for (const s of [-1, 1]) this.box(0.18, 0.12, 0.05, lamp, s * 0.75, 1.32, -2.75);
+    const nc = numCanvas(spec.number, '#ffffff');
+    for (const s of [-1, 1]) this.decal(nc, 0.55, 0.55, s * 1.07, 1.95, tz + 0.3, s > 0 ? '+x' : '-x');
+    this.ghostWheels();
+    this.gunK = -1; this.setLoader(0);
+  }
+  // rekylen: pipan rycks bakåt när den skjuter och glider fram igen
+  setLoader(k) {
+    if (k === this.gunK) return;
+    this.gunK = k;
+    this.gunGrp.position.z = 0.25 - 1.5 + 0.7 * k * k;
+  }
+  setWheel(k, susLen, spin, steer) {
+    if (k !== 2) return;
+    for (const g of this.road) g.rotation.x = -spin * (this.T.wheelR / 0.34);
+    this.trackT.offset.x = (spin * this.T.wheelR * 2.5) % 1;
+  }
+}
+
+// ---------------- UFO:t ----------------
+export class UfoView extends SimpleView {
+  constructor(spec) {
+    super(VTYPES.ufo, spec);
+    const c0 = spec.colors?.[0] || '#2bd6e8', c1 = spec.colors?.[1] || '#16161a';
+    const metal = this.phys({ color: 0xc9ced8, roughness: 0.22, metalness: 0.9, clearcoat: 0.6 });
+    const paint = this.phys({ color: c0, roughness: 0.25, metalness: 0.4, clearcoat: 1 });
+    const dark = this.std({ color: lum(c1) > 0.5 ? 0x2a2c33 : c1, roughness: 0.4, metalness: 0.6 });
+    const skin = this.std({ color: 0x7be36a, roughness: 0.55 });
+    const eye = this.phys({ color: 0x050507, roughness: 0.05, clearcoat: 1 });
+    // tefatet: svarvad profil (radie, höjd)
+    const prof = [[0.001, 1.1], [0.85, 1.12], [1.5, 1.3], [1.72, 1.45], [1.56, 1.58], [0.98, 1.72], [0.001, 1.75]].map(([r, y]) => new THREE.Vector2(r, y));
+    this.add(new THREE.LatheGeometry(prof, 44), metal);
+    this.add(new THREE.TorusGeometry(1.66, 0.06, 8, 48).rotateX(Math.PI / 2), paint, 0, 1.45, 0);
+    this.add(new THREE.TorusGeometry(1.08, 0.04, 8, 40).rotateX(Math.PI / 2), paint, 0, 1.68, 0);
+    // ljusen runt kanten (snurrar)
+    this.rim = new THREE.Group(); this.rim.position.y = 1.47; this.model.add(this.rim);
+    const cols = [0xff3b6b, 0xffd21f, 0x5bff7a, 0x2bd6e8];
+    this.rimM = cols.map(c => { const m = new THREE.MeshBasicMaterial({ color: c, toneMapped: false }); this.mats.push(m); return m; });
+    for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; this.add(new THREE.SphereGeometry(0.075, 8, 6), this.rimM[k % 4], Math.cos(a) * 1.6, 0, Math.sin(a) * 1.6, this.rim); }
+    // kupolen (glas) med utomjordingen
+    const glass = this.phys({ color: 0xaee8ff, roughness: 0.02, metalness: 0, transparent: true, opacity: 0.3, clearcoat: 1 });
+    const dome = this.add(new THREE.SphereGeometry(0.74, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), glass, 0, 1.72, 0); dome.castShadow = false;
+    this.add(new THREE.CapsuleGeometry(0.17, 0.2, 4, 10), skin, 0, 1.86, 0.08);
+    const head = this.add(new THREE.SphereGeometry(0.22, 18, 14), skin, 0, 2.18, 0.02); head.scale.set(1, 1.15, 1);
+    for (const s of [-1, 1]) {
+      const e = this.add(new THREE.SphereGeometry(1, 12, 10), eye, s * 0.095, 2.2, -0.17); e.scale.set(0.075, 0.1, 0.04); e.rotation.z = s * 0.5;
+      this.tube(0.012, [s * 0.08, 2.4, 0.02], [s * 0.16, 2.55, 0.05], skin);
+      this.add(new THREE.SphereGeometry(0.035, 8, 6), this.rimM[s < 0 ? 0 : 1], s * 0.16, 2.56, 0.05);
+      this.tube(0.04, [s * 0.15, 1.95, 0.0], [s * 0.18, 1.85, -0.28], skin);              // armarna mot spakarna
+    }
+    this.box(0.5, 0.1, 0.2, dark, 0, 1.8, -0.36);                                           // instrumentbrädan
+    // undersidan: lysande ring + tre landningsbubblor
+    const glowM = new THREE.MeshBasicMaterial({ color: 0x9fffb0, transparent: true, opacity: 0.85, toneMapped: false }); this.mats.push(glowM);
+    const ring = this.add(new THREE.RingGeometry(0.5, 0.82, 32).rotateX(Math.PI / 2), glowM, 0, 1.105, 0); ring.castShadow = false;
+    for (let k = 0; k < 3; k++) { const a = k / 3 * Math.PI * 2 + 0.5; this.add(new THREE.SphereGeometry(0.16, 10, 8), dark, Math.cos(a) * 1.15, 1.18, Math.sin(a) * 1.15); }
+    // nummer på ovansidan av kanten
+    const nc = numCanvas(spec.number, lum(c0) > 0.55 ? '#111' : '#fff');
+    const top = this.decal(nc, 0.5, 0.5, 0, 1.71, -1.2, '+z'); top.rotation.set(-Math.PI / 2 + 0.3, 0, 0);
+    this.ghostWheels();
+    // dragstrålen: en genomskinlig kon från magen mot målet + ringar som åker mot UFO:t
+    const beamM = new THREE.MeshBasicMaterial({ color: 0x7dff9a, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+    this.mats.push(beamM); this.beamM = beamM;
+    this.beam = new THREE.Group(); this.group.add(this.beam);
+    const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 1.6, 1, 24, 1, true).translate(0, -0.5, 0), beamM); this.geos.push(cone.geometry);
+    cone.renderOrder = 5; this.beam.add(cone);
+    this.ringM = new THREE.MeshBasicMaterial({ color: 0xc8ffd2, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    this.mats.push(this.ringM);
+    const rg = new THREE.TorusGeometry(1, 0.04, 6, 28).rotateX(Math.PI / 2); this.geos.push(rg);
+    this.rings = [0, 1, 2, 3].map(i => { const m = new THREE.Mesh(rg, this.ringM); m.userData.u0 = i / 4; m.renderOrder = 6; this.beam.add(m); return m; });
+    this.beam.visible = false;
+    this.lastT = 0;
+  }
+  // strålen: k = styrka, to = målet i fordonets ram (null = snett ned framför)
+  setBeam(k, to) {
+    const on = k > 0.03;
+    this.beam.visible = on;
+    if (!on) return;
+    const from = _p.set(0, 1.1 + this.T.modelY, -0.5);
+    const tgt = to || _d.set(0, this.T.modelY + 0.2, -6);
+    const dir = _d2.subVectors(tgt, from), len = Math.max(0.5, dir.length());
+    this.beam.position.copy(from);
+    this.beam.quaternion.setFromUnitVectors(_dn, dir.normalize());
+    this.beam.scale.set(1, len, 1);
+    const t = performance.now() / 1000;
+    this.beamM.opacity = (0.22 + 0.1 * Math.sin(t * 23)) * k;
+    this.ringM.opacity = 0.55 * k;
+    for (const r of this.rings) {
+      const u = 1 - ((r.userData.u0 + t * 0.9) % 1);                 // rör sig mot UFO:t
+      r.position.y = -u; const w = 0.45 + 1.15 * u; r.scale.set(w, 1 / len, w);
+    }
+  }
+  // svävar: guppar lite, ljusen snurrar (fortare med gas)
+  setThrust(k, time) {
+    const dt = Math.min(0.1, Math.max(0, time - this.lastT)); this.lastT = time;
+    this.model.position.y = this.T.modelY + Math.sin(time * 2.3) * 0.06;
+    this.rim.rotation.y += dt * (1.2 + 3 * k);
+    const blink = Math.floor(time * 4) % 4;
+    this.rimM.forEach((m, i) => m.color.setHex([0xff3b6b, 0xffd21f, 0x5bff7a, 0x2bd6e8][(i + blink) % 4]));
+  }
+}
+const _d2 = new THREE.Vector3(), _dn = new THREE.Vector3(0, -1, 0);

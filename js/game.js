@@ -1,23 +1,23 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=22';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=22';
-import { themeOf } from './themes.js?v=22';
-import { LAVA_IN } from './world.js?v=22';
-import { buildWorld, gridSlots } from './world.js?v=22';
-import { createScene, ChaseCam } from './scene.js?v=22';
-import { makeCarView } from './vehicles3d.js?v=22';
-import { typeOf } from './vtypes.js?v=22';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=22';
-import { makeLivery, randomSpec } from './livery.js?v=22';
-import { Vehicle, CP } from './vehicle.js?v=22';
-import { BotBrain } from './ai.js?v=22';
-import { Race } from './race.js?v=22';
-import { FX, Trails } from './fx.js?v=22';
-import { NameTag, SpeedPlate } from './tags.js?v=22';
-import { RemoteVeh, carInfo } from './net.js?v=22';
-import { Weapons } from './weapons.js?v=22';
-import { newGP, shuffledTracks, award, Podium } from './gp.js?v=22';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=23';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=23';
+import { themeOf } from './themes.js?v=23';
+import { LAVA_IN } from './world.js?v=23';
+import { buildWorld, gridSlots } from './world.js?v=23';
+import { createScene, ChaseCam } from './scene.js?v=23';
+import { makeCarView } from './vehicles3d.js?v=23';
+import { typeOf } from './vtypes.js?v=23';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=23';
+import { makeLivery, randomSpec } from './livery.js?v=23';
+import { Vehicle, CP } from './vehicle.js?v=23';
+import { BotBrain } from './ai.js?v=23';
+import { Race } from './race.js?v=23';
+import { FX, Trails } from './fx.js?v=23';
+import { NameTag, SpeedPlate } from './tags.js?v=23';
+import { RemoteVeh, carInfo } from './net.js?v=23';
+import { Weapons } from './weapons.js?v=23';
+import { newGP, shuffledTracks, award, Podium } from './gp.js?v=23';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -390,8 +390,11 @@ export class Game {
       const spec = randomSpec(1000 + k * 17 + Math.floor(Math.random() * 1e5), name);
       spec.title = TITLES[Math.floor(Math.random() * TITLES.length)];
       const r = Math.random();
-      spec.kind = r < 0.1 ? 'bus' : r < 0.2 ? 'bigfoot' : r < 0.27 ? 'formel' : r < 0.33 ? 'traktor' : r < 0.39 ? 'glass' : r < 0.43 ? 'rullstol' : r < 0.47 ? 'elrullstol' : r < 0.51 ? 'plan' : 'stock';
+      spec.kind = r < 0.08 ? 'bus' : r < 0.16 ? 'bigfoot' : r < 0.22 ? 'formel' : r < 0.27 ? 'traktor' : r < 0.32 ? 'glass' : r < 0.35 ? 'rullstol' : r < 0.38 ? 'elrullstol' : r < 0.42 ? 'plan'
+        : r < 0.47 ? 'gokart' : r < 0.52 ? 'brandbil' : r < 0.56 ? 'stridsvagn' : r < 0.61 ? 'ufo' : 'stock';
       if (spec.kind === 'bus' && Math.random() < 0.7) spec.colors = ['#ffc21a', '#16161a', '#ffffff'];
+      if (spec.kind === 'brandbil' && Math.random() < 0.8) spec.colors = ['#d8141c', '#ffd21f', '#ffffff'];
+      if (spec.kind === 'stridsvagn' && Math.random() < 0.6) spec.colors = Math.random() < 0.5 ? ['#5a6b3a', '#2f3a22', '#ffffff'] : ['#c8b48a', '#8a7450', '#ffffff'];
       spec.gear = randomGear(Math.random, spec.kind);
       this.addCar({ name, isPlayer: false, spec });
     }
@@ -460,6 +463,9 @@ export class Game {
       if (car.brain) car.brain.update(dt, car, this);
       else Object.assign(car.veh.input, car.remote ? car.remoteInput : inp);
     }
+    // specialförmågorna vilar under starten (ingen kanonsalva in i ryggarna på griden)
+    const ph = this.race.phase;
+    if (ph === 'grid' || ph === 'count' || (ph === 'race' && this.race.raceT < 4)) for (const car of this.cars) if (car.veh.T.special) car.veh.input.loader = 0;
     const pushes = this.contacts(dt);
     for (const car of this.cars) car.veh.preStep(dt);
     // knuffarnas krafter läggs på efter preStep (räknas som egna impulser, inte smällar)
@@ -475,6 +481,7 @@ export class Game {
     this.crush(dt);
     this.jetBurn(dt);
     this.propSlash(dt);
+    this.specials(dt);
     this.weapons.step(dt);
     this.race.update(dt);
     for (const car of this.cars) this.carState(car, dt);
@@ -681,6 +688,89 @@ export class Game {
         if (B.health <= 0) this.wreck(B);
       }
     }
+  }
+
+  // Specialförmågorna på E (värden räknar): brandbilens vattenkanon sprutar undan bilarna framför,
+  // UFO:ts dragstråle lyfter bilen framför upp i luften, stridsvagnens kanon skjuter en granat
+  specials(dt) {
+    const grav = CONF.GRAV * (this.track.def.grav ?? 1);
+    for (const A of this.cars) {
+      const a = A.veh, SP = a.T.special;
+      if (!SP || A.wrecked || A.hidden) continue;
+      if (SP === 'kanon') { if (a.wantShot) { a.wantShot = false; if (!(A.ghostT > 0)) this.weapons.cannon(A); } continue; }
+      const k = a.loader || 0;
+      if (k < 0.05 || A.ghostT > 0) continue;
+      if (SP === 'strale') {
+        const B = this.beamTarget(A);
+        if (!B) continue;
+        const b = B.veh, m = b.T.mass;
+        // bilen hålls svävande 6,5 m framför och 1 m över UFO:ts mitt (fjäder + dämpning mot UFO:ts fart);
+        // tunga fordon orkar strålen sämre — bussen och stridsvagnen lyfts bara lite
+        const hx = a.pos.x + a.fwd.x * 6.5, hy = a.pos.y + 1.0, hz = a.pos.z + a.fwd.z * 6.5;
+        const w = Math.min(1, 2400 / m) * k;
+        let ax = (hx - b.pos.x) * 7 - (b.vel.x - a.vel.x) * 4, ay = (hy - b.pos.y) * 7 - (b.vel.y - a.vel.y) * 4, az = (hz - b.pos.z) * 7 - (b.vel.z - a.vel.z) * 4;
+        const n = Math.hypot(ax, ay, az);
+        if (n > 32) { ax *= 32 / n; ay *= 32 / n; az *= 32 / n; }
+        b.applyJ(m * ax * w * dt, m * (ay + grav) * w * dt, m * az * w * dt, b.pos.x, b.pos.y, b.pos.z);
+        b.slip(0.15, 0.3); b.spinT = Math.max(b.spinT, 0.4);
+        B.health -= 5 * k * dt / b.T.armor; B.lastDmgT = this.simT; B.lastHitBy = A; B.lastHitT = this.time;
+        if (!B.beamMsgT || this.time - B.beamMsgT > 3) {
+          B.beamMsgT = this.time;
+          this.notify(A, `🛸 Du har ${B.name} i dragstrålen!`, 'good');
+          this.notify(B, `🛸 ${A.name} lyfter dig med dragstrålen!`, 'bad');
+        }
+        if (B.health <= 0) this.wreck(B);
+        continue;
+      }
+      // vattenkanonen: en 16 m lång stråle som vidgar sig. Den gör vägen hal, knuffar i sidled och
+      // vrider bakvagnen — bilarna sladdar undan (lätta bilar mest)
+      const L = a.T.half.z;
+      for (const B of this.cars) {
+        if (B === A || B.wrecked || B.hidden || B.ghostT > 0) continue;
+        const b = B.veh;
+        const rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
+        const ahead = rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z - L, lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;
+        if (ahead < -b.T.half.z || ahead > 16 || Math.abs(ry) > 4 || Math.abs(lx) > 1.0 + Math.max(0, ahead) * 0.16 + b.T.half.x) continue;
+        const f = k * (1 - 0.45 * Math.max(0, ahead) / 16), m = b.T.mass;
+        const acc = Math.min(18, 26000 * f / m), sd = Math.sign(lx) || (Math.random() < 0.5 ? -1 : 1);
+        const jx = m * acc * (a.right.x * sd + a.fwd.x * 0.3) * dt, jz = m * acc * (a.right.z * sd + a.fwd.z * 0.3) * dt;
+        // i bakvagnen: bilen vrids och sladdar
+        b.applyJ(jx, m * acc * 0.08 * dt, jz, b.pos.x - b.fwd.x * b.T.half.z * 0.6, b.pos.y, b.pos.z - b.fwd.z * b.T.half.z * 0.6);
+        b.slip(0.25, 1 - 0.7 * f);
+        if (f > 0.35) b.spinT = Math.max(b.spinT, 0.5);
+        B.health -= 2.5 * f * dt / b.T.armor; B.lastDmgT = this.simT; B.lastHitBy = A; B.lastHitT = this.time;
+        if (!B.waterMsgT || this.time - B.waterMsgT > 3) {
+          B.waterMsgT = this.time;
+          this.notify(A, `💦 Du sprutar på ${B.name}!`, 'good');
+          this.notify(B, `💦 ${A.name} sprutar vatten på dig!`, 'bad');
+        }
+        if (B.health <= 0) this.wreck(B);
+      }
+    }
+  }
+  // UFO:ts dragstråle: närmaste bilen i strålens kon framför (samma uträkning hos värd och gäst — till bilden)
+  beamTarget(A) {
+    const a = A.veh;
+    let best = null, bd = 1e9;
+    for (const B of this.cars) {
+      if (B === A || B.wrecked || B.hidden || B.ghostT > 0) continue;
+      const b = B.veh, rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
+      const ahead = rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z, lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;
+      if (ahead < 1.5 || ahead > 12 || ry < -4 || ry > 5 || Math.abs(lx) > 2.4 + ahead * 0.2) continue;
+      const d = ahead + Math.abs(lx);
+      if (d < bd) { bd = d; best = B; }
+    }
+    return best;
+  }
+  // stridsvagnens skott: mynningsflamma, rök och smäll (båda sidor — ses som ett hopp i rekylen)
+  cannonFx(car) {
+    const v = car.veh, G = v.T.gun;
+    _v2.copy(v.pos).addScaledVector(v.up, v.T.modelY + G.y).addScaledVector(v.fwd, -G.z + 0.4);
+    this.fx.tackle(_v2, v.vel, _v3.copy(v.fwd), 1.6);
+    for (let k = 0; k < 8; k++) this.fx.fire(_v2, _v3.copy(v.fwd).multiplyScalar(14).add(v.vel), 1.3);
+    for (let k = 0; k < 10; k++) this.fx.smoke(_v2, _v3.copy(v.fwd).multiplyScalar(6 + Math.random() * 6).add(v.vel), false, 1.5);
+    const near = this.me ? (car === this.me ? 1 : Math.max(0, 1 - this.me.veh.pos.distanceTo(v.pos) / 160)) : 0.6;
+    this.audio?.cannon?.(near);
   }
 
   // Bigfootens hjul står på en annan bil: den krossas (skada + trycks ner)
@@ -907,7 +997,7 @@ export class Game {
     if (!car.wrecked && !inGap && v.grounded >= 2) {
       const i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];
       const rr = v.right.x * rhx + v.right.z * rhz, fr = v.fwd.x * rhx + v.fwd.z * rhz;
-      const reach = Math.abs(rr) * 0.98 + Math.abs(fr) * 2.45;
+      const reach = Math.abs(rr) * (v.T.wing ? 3.1 : 0.98) + Math.abs(fr) * 2.45;   // planet: vingspetsen
       const gap = T.halfW - (Math.abs(car.trk.lat) + reach);
       if (gap < 0.12) {
         v.wallT = 0.3;
@@ -976,6 +1066,21 @@ export class Game {
         // jetlågan: egen gas (värden ser alla) — gästen gissar på andras gas utifrån farten
         const thr = this.mode !== 'client' || car === this.me ? (v.input?.throttle || 0) : (v.speed < (v.vmax || 80) * 0.96 ? 1 : 0.5);
         car.view.setThrust(car.wrecked || car.hidden ? 0 : thr, this.time);
+      }
+      // specialförmågornas bild: kanonens mynningsflamma, vattnets stänk, dragstrålen mot målet
+      if (VT.special && !car.hidden) {
+        const k = v.loader || 0;
+        if (VT.special === 'kanon') { if (k > (car.spPrev ?? 0) + 0.4) this.cannonFx(car); car.spPrev = k; }
+        else if (VT.special === 'vatten') {
+          if (k > 0.05 && Math.random() < dt * 36) {
+            const d = 14 * Math.min(1, k * 1.3);
+            _v2.copy(v.pos).addScaledVector(v.fwd, -VT.nozzle.z + d).addScaledVector(v.up, VT.modelY + 0.5);
+            this.fx.snow(_v2, v.vel, 2);
+          }
+        } else if (VT.special === 'strale') {
+          const B = k > 0.03 ? this.beamTarget(car) : null;
+          car.view.setBeam?.(k, B ? car.view.group.worldToLocal(_v3.copy(B.veh.pos)) : null);
+        }
       }
       // spöke efter omstart: blinka
       g.visible = !car.hidden && !(car.ghostT > 0 && Math.floor(this.time * 10) % 2 === 0);
@@ -1062,8 +1167,10 @@ export class Game {
     this.skids.update(this.time);
 
     // Grand Prix: prispallen
-    if (this.race.phase === 'podium' && this.gp?.podium && !this.podium) this.podium = new Podium(this);
-    if (this.race.phase !== 'podium' && this.podium) { this.podium.dispose(); this.podium = null; }
+    // (byggs om om vinnarna kommer fram först efteråt hos gästen — blocken anpassas efter fordonen)
+    const pid = (this.gp?.podium || []).join();
+    if (this.podium && (this.race.phase !== 'podium' || this.podium.key !== pid)) { this.podium.dispose(); this.podium = null; }
+    if (this.race.phase === 'podium' && this.gp?.podium && !this.podium) { this.podium = new Podium(this); this.podium.key = pid; }
     if (this.podium) this.podium.frame(dt, this.gp.podium || []);
     // kamera
     const me = this.me;

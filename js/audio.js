@@ -1,12 +1,12 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice, JetVoice } from './engines.js?v=22';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=22';
+import { EngineVoice, JetVoice } from './engines.js?v=23';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=23';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol', 'plan'];
+const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol', 'plan', 'gokart', 'brandbil', 'stridsvagn', 'ufo'];
 // Glassbilens melodi: egen (inte någon glassbilsfirmas), speldosa i C-dur. [midi, åttondelar], 0 = paus
 const JINGLE = [
   [76, 1], [79, 1], [84, 1], [79, 1], [81, 1], [79, 1], [76, 2],
@@ -182,6 +182,40 @@ export class GameAudio {
     }
     this.scrape(me.scrWall ? 1 : 0, me.scrCar ? 1 : 0, me.slide ?? me.v);
     this.jingle(me.glassNear || 0);
+    this.specialLoops(me.siren || 0, me.spray || 0, me.beam || 0);
+  }
+
+  // brandbilens siren + vattenbrus och UFO:ts dragstråle — styrka 0..1 (efter avstånd)
+  specialLoops(siren, spray, beam) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.sl) {
+      if (siren + spray + beam < 0.01) return;
+      const mk = () => { const g = ctx.createGain(); g.gain.value = 0; g.connect(this.master); return g; };
+      // sirenen: två toner, fyrkantsvåg genom lågpass
+      const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 588;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1700;
+      const sg = mk(); o.connect(lp); lp.connect(sg); o.start();
+      // vattnet: brus genom bandpass
+      const n = Math.floor(ctx.sampleRate * 2), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      const ns = ctx.createBufferSource(); ns.buffer = b; ns.loop = true;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2300; bp.Q.value = 0.5;
+      const wg = mk(); ns.connect(bp); bp.connect(wg); ns.start();
+      // strålen: två toner som vobblar (rymdljud)
+      const b1 = ctx.createOscillator(); b1.type = 'sine'; b1.frequency.value = 150;
+      const b2 = ctx.createOscillator(); b2.type = 'triangle'; b2.frequency.value = 302;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 7; const lg = ctx.createGain(); lg.gain.value = 45;
+      lfo.connect(lg); lg.connect(b1.frequency); lg.connect(b2.frequency);
+      const bg = mk(), b2g = ctx.createGain(); b2g.gain.value = 0.35;
+      b1.connect(bg); b2.connect(b2g); b2g.connect(bg); b1.start(); b2.start(); lfo.start();
+      this.sl = { o, sg, wg, bg };
+    }
+    const S = this.sl;
+    S.o.frequency.setTargetAtTime(Math.floor(t * 1.6) % 2 ? 588 : 784, t, 0.015);
+    S.sg.gain.setTargetAtTime(siren * 0.07, t, 0.15);
+    S.wg.gain.setTargetAtTime(spray * 0.26, t, 0.1);
+    S.bg.gain.setTargetAtTime(beam * 0.15, t, 0.1);
   }
 
   // Glassbilen i närheten: melodin på speldosa, level 0..1 (schemaläggs en bit i förväg)
@@ -290,6 +324,12 @@ export class GameAudio {
     if (!this.ctx || near < 0.03) return;
     if (kind === 'kanon') { this.noise(0.14, 700, 0.6 * near); this.thump(70, 0.14, 0.45 * near); this.noise(0.05, 3500, 0.25 * near, 0, 'highpass'); }
     else { this.noise(0.08, 1600, 0.5 * near); this.thump(110, 0.08, 0.3 * near); this.noise(0.03, 5000, 0.2 * near, 0, 'highpass'); }
+  }
+  // stridsvagnens kanon: ett djupt dån
+  cannon(near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    this.thump(42, 0.7, 0.95 * near); this.noise(0.55, 800, 0.75 * near); this.noise(0.07, 4200, 0.4 * near, 0, 'highpass');
+    if (this.buf.explosion) this.play(this.buf.explosion, 0.45 * near, 1.35);
   }
   launch(near = 1) { if (!this.ctx) return; this.noise(0.6, 1400, 0.45 * near, 0, 'bandpass'); this.thump(90, 0.2, 0.3 * near); }
   blast(near = 1) {

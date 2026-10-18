@@ -1,11 +1,11 @@
 // Utseendet för skolbussen och bigfooten (stockcaren finns i carmodel.js).
 // Samma gränssnitt som CarView: group, setWheel, dent, uvNear, livery, resetDamage, dispose, rest.
 import * as THREE from 'three';
-import { CarView, SHAPES } from './carmodel.js?v=22';
-import { makeLivery } from './livery.js?v=22';
-import { VTYPES, typeOf } from './vtypes.js?v=22';
-import { addGear } from './gearview.js?v=22';
-import { FormelView, TraktorView, GlassView, RullstolView, ElrullstolView, PlanView } from './vehicles3d2.js?v=22';
+import { CarView, SHAPES } from './carmodel.js?v=23';
+import { makeLivery } from './livery.js?v=23';
+import { VTYPES, typeOf } from './vtypes.js?v=23';
+import { addGear } from './gearview.js?v=23';
+import { FormelView, TraktorView, GlassView, RullstolView, ElrullstolView, PlanView, GokartView, BrandbilView, StridsvagnView, UfoView } from './vehicles3d2.js?v=23';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const tex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
@@ -255,6 +255,10 @@ export function makeCarView(spec) {
   else if (T.id === 'rullstol') view = new RullstolView(spec);
   else if (T.id === 'elrullstol') view = new ElrullstolView(spec);
   else if (T.id === 'plan') view = new PlanView(spec);
+  else if (T.id === 'gokart') view = new GokartView(spec);
+  else if (T.id === 'brandbil') view = new BrandbilView(spec);
+  else if (T.id === 'stridsvagn') view = new StridsvagnView(spec);
+  else if (T.id === 'ufo') view = new UfoView(spec);
   else { view = new CarView(sh, makeLivery(spec, sh)); view.T = VTYPES.stock; view.rest = () => view.wheels.forEach((w, k) => view.setWheel(k, 0.18, 0, 0)); }
   addGear(view, spec);
   return view;

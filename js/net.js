@@ -1,9 +1,9 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=22';
-import { Weapons } from './weapons.js?v=22';
-import { VTYPES } from './vtypes.js?v=22';
+import { PROTO } from './config.js?v=23';
+import { Weapons } from './weapons.js?v=23';
+import { VTYPES } from './vtypes.js?v=23';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
 const ROW = 28;     // flyttal per bil i en ögonblicksbild
@@ -151,7 +151,7 @@ export class NetHost {
       a[o + 19] = c.prog;
       a[o + 20] = v.vmax;
       a[o + 21] = c.saves ?? 3;
-      a[o + 22] = c.lockT || 0; a[o + 23] = c.flipT || 0; a[o + 24] = c.rstate || 0; a[o + 25] = v.loader || 0;
+      a[o + 22] = c.lockT || 0; a[o + 23] = c.flipT || 0; a[o + 24] = c.rstate || 0; a[o + 25] = (v.loader || 0) + (v.T.special ? Math.round(Math.min(1, Math.max(0, v.tank ?? 1)) * 100) * 2 : 0);   // läge 0..1 + tank·200
       a[o + 26] = Weapons.code(c); a[o + 27] = c.weapon?.ammo || 0;
     });
     this.broadcast({ t: 's', b: a.buffer });
@@ -289,7 +289,7 @@ export class NetClient {
       car.wrecked = !!(f & 1); car.ghostT = (f & 2) ? 1 : 0; car.drafting = !!(f & 4); car.finished = !!(f & 8);
       car.scrapeT = (f & 128) ? 0.15 : 0; car.grindT = (f & 256) ? 0.15 : 0; car.hidden = !!(f & 512);
       car.place = rb[18]; car.prog = rb[19]; car.veh.vmax = rb[20]; car.saves = rb[21];
-      car.lockT = rb[22]; car.flipT = rb[23]; car.rstate = rb[24]; car.veh.loader = rb[25];
+      car.lockT = rb[22]; car.flipT = rb[23]; car.rstate = rb[24]; { const x = rb[25], hi = Math.floor(x / 2); car.veh.loader = x - hi * 2; car.veh.tank = hi / 100; }
       car.wcode = rb[26]; car.wammo = rb[27]; car.firing = !!(f & 1024);
       car.trk.s = car.trk.s || 0;
       g.track.project(car.veh.pos.x, car.veh.pos.z, g.track.idx(((rb[19] % g.track.L) + g.track.L) % g.track.L), car.trk);

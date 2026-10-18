@@ -3,9 +3,9 @@
 // det finns en fysikvärld (värden).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONF } from './config.js?v=22';
-import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, F_LAVA, JUMP } from './track.js?v=22';
-import { themeOf } from './themes.js?v=22';
+import { CONF } from './config.js?v=23';
+import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, F_LAVA, JUMP } from './track.js?v=23';
+import { themeOf } from './themes.js?v=23';
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const h2 = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };

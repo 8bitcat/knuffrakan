@@ -1,7 +1,8 @@
-import { CONF } from './config.js?v=22';
-import { GEAR } from './gear.js?v=22';
-import { WEAPONS, WIDS } from './weapons.js?v=22';
-import { TRACKS } from './track.js?v=22';
+import { CONF } from './config.js?v=23';
+import { GEAR } from './gear.js?v=23';
+import { WEAPONS, WIDS } from './weapons.js?v=23';
+import { TRACKS } from './track.js?v=23';
+import { SPECIAL_KNAPP } from './vtypes.js?v=23';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -91,8 +92,21 @@ export class HUD {
     }
     this.updateMates(game, racing);
     this.updateWeapon(game);
-    const tk = this.tk ||= document.getElementById('tk');
-    if (tk) { const on = me.spec?.kind === 'traktor'; if (tk.classList.contains('hidden') === on) tk.classList.toggle('hidden', !on); }
+    // E-knappen: traktorns skopa och specialförmågorna (pekskärm: knapp, dator: mätare över vapnet)
+    const tk = this.tk ||= document.getElementById('tk'), sp = this.sp ||= document.getElementById('spslot');
+    const lab = SPECIAL_KNAPP[me.spec?.kind] || '', tank = me.veh.T?.special ? Math.round((me.veh.tank ?? 1) * 100) : -1;
+    const sk = lab + tank;
+    if (sk !== this.spKey) {
+      this.spKey = sk;
+      if (tk) {
+        tk.classList.toggle('hidden', !lab); tk.textContent = lab;
+        tk.style.background = tank < 0 ? '' : `linear-gradient(to top, rgba(79,195,255,.6) ${tank}%, rgba(0,0,0,.3) ${tank}%)`;
+      }
+      if (sp) {
+        sp.classList.toggle('hidden', tank < 0);
+        if (tank >= 0) { sp.querySelector('.sn').textContent = lab; sp.querySelector('b').style.width = tank + '%'; sp.classList.toggle('full', tank >= 99); }
+      }
+    }
   }
 
   // Vapnet man har (nere i mitten): ruletten snurrar när man kört genom en låda

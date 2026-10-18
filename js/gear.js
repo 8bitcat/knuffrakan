@@ -25,7 +25,7 @@ export const GEAR = {
 export const GEAR_IDS = Object.keys(GEAR);
 
 // platser som fordonet redan har fyllt (traktorns frontlastare sitter fram)
-export const blockedSlot = (kind, slot) => (kind === 'traktor' || kind === 'plan') && slot === 'front';
+export const blockedSlot = (kind, slot) => (kind === 'traktor' || kind === 'plan' || kind === 'ufo') && slot === 'front';
 
 // giltig lista: kända saker, en per plats, inom budget (i den ordning de valdes)
 export function cleanGear(list, kind) {
@@ -117,6 +117,14 @@ MOUNT.elrullstol = { fz: 0.9, w: 0.6, bump: 0.3, roof: 1.55, rear: 1.0, deck: 1.
   plow: [0.05, 0.6], plowL: 0.7, wedge: [0.05, 0.4], wedgeL: 1.0 };
 MOUNT.plan = { fz: 2.95, w: 0.6, bump: 0.6, roof: 1.72, rear: 2.9, deck: 1.6, sideY: 0.85, sideL: 2.0, cab: [-1.4, 0.2], belt: 1.25,
   plow: [0.1, 0.9], plowL: 0.9, wedge: [0.1, 0.6], wedgeL: 1.3 };
+MOUNT.gokart = { fz: 1.05, w: 0.68, bump: 0.2, roof: 1.08, rear: 1.02, deck: 0.5, sideY: 0.2, sideL: 1.2, cab: [-0.2, 0.45], belt: 0.36,
+  plow: [0.04, 0.42], plowL: 0.55, wedge: [0.04, 0.28], wedgeL: 0.8, noHood: true, wind: [0.4, -0.9, 0.72, -0.78] };
+MOUNT.brandbil = { fz: 3.65, w: 1.2, bump: 0.6, roof: 3.0, rear: 3.6, deck: 3.0, sideY: 0.95, sideL: 5.0, cab: [-3.3, 3.3], belt: 1.5,
+  plow: [0.15, 1.1], plowL: 1.1, wedge: [0.14, 0.78], wedgeL: 1.6, roofCage: true, noHood: true, wind: [1.55, -3.66, 2.6, -3.6] };
+MOUNT.stridsvagn = { fz: 3.15, w: 1.5, bump: 0.7, roof: 2.3, rear: 3.1, deck: 1.5, sideY: 0.8, sideL: 4.4, cab: [-0.8, 1.4], belt: 1.45,
+  plow: [0.1, 1.05], plowL: 0.9, wedge: [0.1, 0.72], wedgeL: 1.4, roofCage: true, noHood: true, wind: [1.5, -1.0, 2.2, -0.96] };
+MOUNT.ufo = { fz: 1.7, w: 1.4, bump: 1.35, roof: 2.4, rear: 1.7, deck: 1.75, sideY: 1.45, sideL: 1.6, cab: [-0.55, 0.55], belt: 1.75,
+  plow: [1.05, 1.6], plowL: 0.7, wedge: [1.05, 1.4], wedgeL: 0.9, roofCage: true, noHood: true, wind: [1.8, -0.72, 2.25, -0.45] };
 MOUNT.bus.roofCage = true;
 export const mountOf = (T) => MOUNT[T.id] || MOUNT.stock;
 
@@ -138,7 +146,13 @@ export function frontParts(T) {
   // traktorns frontlastare: skopan längst fram (0,24–1,0 m över marken när den är nere)
   if (T.loader) { const p = loaderPose(T, 0); out.push({ id: 'skopa', hx: 1.18, hy: 0.38, hz: 0.24, x: 0, y: p.y, z: p.z, rx: p.rx, ry: 0, fr: 0.15 }); }
   // planets högvinge: bara mot andra bilar (stockcars kör under, höga fordon slår i)
-  if (T.wing) out.push({ id: 'planvinge', hx: 3.1, hy: 0.06, hz: 0.58, x: 0, y: y0 + 1.84, z: -0.55, rx: 0, ry: 0, fr: 0.1 });
+  // solid: krockar som karossen — även med murarna, så vingspetsarna aldrig går igenom muren
+  if (T.wing) {
+    // vingen känner bara murarna (i tyngdpunktens höjd): muren knuffar planet i sidled utan att välta det och
+    // vingspetsarna hamnar aldrig utanför banan. Mot bilar går vingen över/under — annars lyfte den sig på
+    // grannarnas tak och planet voltade.
+    out.push({ id: 'vingvakt', hx: 3.1, hy: 0.3, hz: 0.58, x: 0, y: 0, z: -0.55, rx: 0, ry: 0, fr: 0.02, wall: true });
+  }
   return out;
 }
 

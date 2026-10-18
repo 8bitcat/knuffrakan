@@ -2,9 +2,9 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=24';
-import { VTYPES } from './vtypes.js?v=24';
-import { frontParts, loaderPose } from './gear.js?v=24';
+import { CONF } from './config.js?v=25';
+import { VTYPES, SPECIALS } from './vtypes.js?v=25';
+import { frontParts, loaderPose } from './gear.js?v=25';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -67,7 +67,7 @@ export class Vehicle {
       x: w.x, z: w.z, front: w.front, comp: 0, prevComp: 0, grounded: false, load: 0,
       dist: T.rayLen, spin: 0, hit: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), slip: 0,
     }));
-    this.input = { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0, fire: 0 };
+    this.input = { throttle: 0, brake: 0, steer: 0, handbrake: 0, loader: 0, fire: 0, side: 0 };
     this.steer = 0;
     this.vmax = CONF.BASE_KMH / 3.6;
     this.powerMul = 1;
@@ -143,18 +143,24 @@ export class Vehicle {
     // Specialförmågorna på E. this.loader = hur mycket den är igång (0..1, skickas till alla och syns),
     // this.tank = vatten/energi kvar (0..1) — kanonen: laddningen inför nästa skott
     if (T.special) {
-      const held = !off && !this.hold && inp.loader;
-      if (T.special === 'kanon') {
+      const S = SPECIALS[T.special], held = !off && !this.hold && inp.loader;
+      if (S.cd) {
+        // tryck: avfyras (wantShot → game.specialFire), läget hoppar till 1 och klingar av (rekyl/blixt syns hos alla)
         this.gunCD = Math.max(0, (this.gunCD || 0) - dt);
-        this.loader = Math.max(0, this.loader - dt * 1.7);                 // rekylen klingar av
-        if (held && this.gunCD <= 0) { this.gunCD = 4; this.loader = 1; this.wantShot = true; }
-        this.tank = 1 - this.gunCD / 4;
+        this.loader = Math.max(0, this.loader - dt * 1.7);
+        if (held && this.gunCD <= 0 && (!S.ground || this.grounded >= 2)) { this.gunCD = S.cd; this.loader = 1; this.wantShot = true; }
+        this.tank = 1 - this.gunCD / S.cd;
       } else {
-        const cap = T.special === 'vatten' ? 6 : 4;                           // sekunder per full tank
+        // håll: tanken töms medan man håller, fylls på långsamt
         if (this.tank == null) this.tank = 1;
         const on = held && this.tank > 0.02 && (this.loader > 0.05 || this.tank > 0.15);
-        this.tank = on ? Math.max(0, this.tank - dt / cap) : Math.min(1, this.tank + dt / (cap * 2.2));
+        this.tank = on ? Math.max(0, this.tank - dt / S.hold) : Math.min(1, this.tank + dt / (S.hold * (S.refill || 2.2)));
         this.loader += clamp((on ? 1 : 0) - this.loader, -dt * 5, dt * 6);
+      }
+      // nitro: en extra knuff framåt som får gå förbi toppfarten (upp till 30 %)
+      if (T.special === 'nitro' && this.loader > 0.05) {
+        const x = Math.max(0, this.vLong) / (this.vmax * 1.3), J = T.mass * 13 * this.loader * clamp(1 - x * x * x, 0, 1) * dt;
+        if (J > 0) this.applyJ(this.fwd.x * J, this.fwd.y * J, this.fwd.z * J, this.pos.x, this.pos.y, this.pos.z);
       }
     }
     // halt underlag (olja, vatten, dragstråle): greppet sänks några steg framåt
@@ -186,9 +192,10 @@ export class Vehicle {
     // jetmotor: trycker kroppen rakt framåt (även i luften, lite svagare) — samma toppfartsspärr som motorn
     this.thrust = 0;
     if (T.jet && !this.hold && throttle > 0.02) {
-      const x = Math.max(0, this.vLong) / this.vmax;
+      const ab = T.special === 'efterbrann' ? this.loader : 0;           // efterbrännkammaren: mer tryck, högre toppfart
+      const x = Math.max(0, this.vLong) / (this.vmax * (1 + 0.2 * ab));
       this.thrust = throttle * clamp(1 - x * x * x, -0.7, 1);
-      const J = T.mass * T.jet * this.powerMul * this.thrust * (this.grounded === 0 ? 0.55 : 1) * dt;
+      const J = T.mass * T.jet * (1 + 1.0 * ab) * this.powerMul * this.thrust * (this.grounded === 0 ? 0.55 : 1) * dt;
       this.applyJ(fwd.x * J, fwd.y * J, fwd.z * J, pos.x, pos.y, pos.z);
     }
 

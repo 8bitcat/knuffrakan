@@ -1,8 +1,8 @@
-import { CONF } from './config.js?v=24';
-import { GEAR } from './gear.js?v=24';
-import { WEAPONS, WIDS } from './weapons.js?v=24';
-import { TRACKS } from './track.js?v=24';
-import { SPECIAL_KNAPP } from './vtypes.js?v=24';
+import { CONF } from './config.js?v=25';
+import { GEAR } from './gear.js?v=25';
+import { WEAPONS, WIDS } from './weapons.js?v=25';
+import { TRACKS } from './track.js?v=25';
+import { SPECIAL_KNAPP } from './vtypes.js?v=25';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -94,7 +94,7 @@ export class HUD {
     this.updateWeapon(game);
     // E-knappen: traktorns skopa och specialförmågorna (pekskärm: knapp, dator: mätare över vapnet)
     const tk = this.tk ||= document.getElementById('tk'), sp = this.sp ||= document.getElementById('spslot');
-    const lab = SPECIAL_KNAPP[me.spec?.kind] || '', tank = me.veh.T?.special ? Math.round((me.veh.tank ?? 1) * 100) : -1;
+    const lab = SPECIAL_KNAPP[me.veh.T?.id || me.spec?.kind || 'stock'] || '', tank = me.veh.T?.special ? Math.round((me.veh.tank ?? 1) * 100) : -1;
     const sk = lab + tank;
     if (sk !== this.spKey) {
       this.spKey = sk;
@@ -107,6 +107,17 @@ export class HUD {
         if (tank >= 0) { sp.querySelector('.sn').textContent = lab; sp.querySelector('b').style.width = tank + '%'; sp.classList.toggle('full', tank >= 99); }
       }
     }
+  }
+
+  // glasskulan träffade: rutan kladdas ner en stund (tonar bort)
+  splat() {
+    const el = this.spl ||= document.getElementById('splat');
+    if (!el) return;
+    const cols = ['#ff9ec7', '#7a4a2b', '#fff3c4', '#ff5fa2', '#9fe3c0'];
+    el.innerHTML = Array.from({ length: 7 }, (_, i) => `<i style="left:${4 + Math.random() * 72}%;top:${4 + Math.random() * 62}%;width:${16 + Math.random() * 22}vmin;height:${14 + Math.random() * 20}vmin;background:${cols[i % cols.length]};transform:rotate(${Math.round(Math.random() * 360)}deg)"></i>`).join('');
+    el.style.transition = 'none'; el.style.opacity = '1'; el.classList.remove('hidden');
+    clearTimeout(this.splT);
+    this.splT = setTimeout(() => { el.style.transition = 'opacity 1.3s'; el.style.opacity = '0'; }, 1500);
   }
 
   // Vapnet man har (nere i mitten): ruletten snurrar när man kört genom en låda

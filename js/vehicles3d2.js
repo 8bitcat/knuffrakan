@@ -2,8 +2,8 @@
 // group, model, wheels[{holder, spin, base}], setWheel, rest, dent, uvNear, livery, resetDamage, dispose, T.
 // Modellens y = 0 är marken, fronten åt -z.
 import * as THREE from 'three';
-import { VTYPES } from './vtypes.js?v=24';
-import { LOADER } from './gear.js?v=24';
+import { VTYPES } from './vtypes.js?v=25';
+import { LOADER } from './gear.js?v=25';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const mkTex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
@@ -173,7 +173,9 @@ export class FormelView extends SimpleView {
     sg.fillStyle = lum(c0) > 0.55 ? '#111' : '#fff'; sg.font = 'italic 900 78px "Exo 2", sans-serif'; sg.textAlign = 'center'; sg.textBaseline = 'middle';
     sg.fillText(String(spec.sponsor || 'KNUFFRAKAN').slice(0, 12), 256, 66);
     for (const s of [-1, 1]) this.decal(spC, 1.05, 0.26, s * 0.715, 0.32, 0.45, s > 0 ? '+x' : '-x');
+    this.nitroF = this.nitroKit([[-0.2, 0.4, 2.08, 0.09], [0.2, 0.4, 2.08, 0.09]]);
   }
+  setLoader(k) { updNitro(this.nitroF, k); }                // nitron (E)
 }
 
 // ---------------- Traktorn ----------------
@@ -416,6 +418,27 @@ function updFlame(f, k) {
   f.glow.scale.setScalar(r * (2.2 + 4.5 * k) * fl);
 }
 
+// nitroflammor bakåt (blå): pts = [[x, y, z, radie]], k = 0..1 i updNitro
+SimpleView.prototype.nitroKit = function (pts) {
+  const K = flameKit();
+  return pts.map(([x, y, z, r]) => {
+    const grp = new THREE.Group(); grp.position.set(x, y, z); this.model.add(grp);
+    const mk = (mat) => { const m = new THREE.Mesh(K.cone, mat); m.renderOrder = 5; grp.add(m); return m; };
+    const f = { r, grp, outer: mk(K.blue), core: mk(K.core), glow: new THREE.Sprite(K.glow) };
+    f.glow.renderOrder = 6; grp.add(f.glow); grp.visible = false;
+    return f;
+  });
+};
+function updNitro(list, k) {
+  for (const f of list) {
+    f.grp.visible = k > 0.03;
+    if (!f.grp.visible) continue;
+    const fl = 0.8 + 0.4 * Math.random(), len = (0.4 + 1.8 * k) * fl;
+    f.outer.scale.set(f.r * 1.3, f.r * 1.3, len); f.core.scale.set(f.r * 0.6, f.r * 0.6, len * 0.6);
+    f.glow.scale.setScalar(f.r * 6 * k * fl);
+  }
+}
+
 // sittande förare: höfterna vid (0, seatY, seatZ)
 SimpleView.prototype.rider = function (seatY, seatZ, { footY, footZ, hands }) {
   const sp = this.spec, tones = ['#f1c7a5', '#e0ac69', '#c68642', '#8d5524'];
@@ -480,8 +503,10 @@ export class RullstolView extends SimpleView {
     const nc = numCanvas(spec.number, '#ffffff');
     for (const s of [-1, 1]) this.decal(nc, 0.2, 0.2, s * 0.155, 0.82, 0.66, s > 0 ? '+x' : '-x');
     this.rider(0.56, -0.02, { footY: 0.17, footZ: -0.5, hands: [[-0.45, 0.5, 0.1], [0.45, 0.5, 0.1]] });
+    this.boost = 0;
   }
-  setThrust(k) { for (const f of this.flames) updFlame(f, k); }
+  setLoader(k) { this.boost = k; }                          // efterbrännkammaren (E): lågan blir mer än dubbelt så lång
+  setThrust(k) { for (const f of this.flames) updFlame(f, k * (1 + 1.2 * this.boost)); }
 }
 
 // ---------------- Jet-elrullstolen ----------------

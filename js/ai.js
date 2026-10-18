@@ -1,6 +1,6 @@
 // Bottarna: kör i full gas i sin fil, byter fil, väjer för långsammare bilar och
 // tacklar ibland den som ligger bredvid.
-import { steerMaxAt } from './vehicle.js?v=24';
+import { steerMaxAt } from './vehicle.js?v=25';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -14,6 +14,12 @@ export class BotBrain {
     this.tackleT = 0; this.tackleLat = 0;
     this.stuckT = 0; this.wob = rnd() * 10;
     this._f = {};
+  }
+
+  // inga hopp/lyft nära broar, raviner, lava, hoppbackar (bottarna flög av banan)
+  calmAhead(T, tk) {
+    for (let d = -10; d <= 60; d += 10) if (T.flags[T.idx(T.wrapS(tk.s + d))] & (1 | 2 | 8 | 16 | 32 | 64)) return false;
+    return true;
   }
 
   update(dt, car, game) {
@@ -50,8 +56,28 @@ export class BotBrain {
     inp.loader = scoop ? 1 : 0;
     // specialförmågorna: vattenkanonen/dragstrålen mot bilen framför, kanonen när någon står i siktet
     const SP = v.T.special, W = game.weapons;
+    inp.side = 0;
     if (SP && W && game.race?.phase === 'race' && this.aggr > 0.15) {
-      inp.loader = (SP === 'kanon' ? W.target(car, 0.985, 75, 9) : SP === 'vatten' ? W.target(car, 0.9, 16, 2) : W.target(car, 0.82, 11, 1.5)) ? 1 : 0;
+      let want = false;
+      if (SP === 'kanon') want = !!W.target(car, 0.985, 75, 9);
+      else if (SP === 'vatten') want = !!W.target(car, 0.9, 16, 2);
+      else if (SP === 'strale') want = !!W.target(car, 0.82, 11, 1.5);
+      else if (SP === 'tuta') want = !!W.target(car, 0.8, 18, 3);
+      // bigfooten: hoppa när någon är nära (de åker med och får stöten när den landar) eller ligger en bit framför
+      else if (SP === 'hopp') want = sp > 12 && this.calmAhead(T, tk) && (game.cars.some(o => o !== car && !o.wrecked && !o.hidden && o.veh.pos.distanceTo(v.pos) < 8) || !!W.target(car, 0.93, 25, 8));
+      else if (SP === 'lyft') want = sp > 18 && this.calmAhead(T, tk) && !!W.target(car, 0.92, 14, 4);
+      else if (SP === 'glass') want = !!W.target(car, 0.95, 50, 8);
+      else if (SP === 'elchock') want = game.cars.some(o => o !== car && !o.wrecked && !o.hidden && o.veh.pos.distanceTo(v.pos) < 5);
+      else if (SP === 'banan') want = game.cars.some(o => { if (o === car || o.wrecked || o.hidden) return false; const dx = o.veh.pos.x - v.pos.x, dz = o.veh.pos.z - v.pos.z, d = Math.hypot(dx, dz); return d > 4 && d < 25 && (dx * v.fwd.x + dz * v.fwd.z) / d < -0.85; });
+      else if (SP === 'tackla') {
+        if (side && this.aggr > 0.3) { const dx = side.veh.pos.x - v.pos.x, dz = side.veh.pos.z - v.pos.z; inp.side = Math.sign(dx * v.right.x + dz * v.right.z) || 1; want = true; }
+      } else if (SP === 'nitro' || SP === 'efterbrann') {
+        // gasa med nitron på raksträckorna när tanken är full, tills den är tom
+        const t = v.tank ?? 1;
+        if (this.boosting) { if (t < 0.05) this.boosting = false; } else if (t > 0.95 && (!ahead || aheadD > 25) && sp > 15) this.boosting = true;
+        want = this.boosting;
+      }
+      inp.loader = want ? 1 : 0;
     }
     if (scoop) this.lane = ahead.trk.lat;
     else if (ahead && this.tackleT <= 0) {

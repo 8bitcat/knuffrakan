@@ -1,9 +1,9 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=24';
-import { Weapons } from './weapons.js?v=24';
-import { VTYPES } from './vtypes.js?v=24';
+import { PROTO } from './config.js?v=25';
+import { Weapons } from './weapons.js?v=25';
+import { VTYPES } from './vtypes.js?v=25';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
 const ROW = 28;     // flyttal per bil i en ögonblicksbild
@@ -241,7 +241,8 @@ export class NetClient {
       case 'finish': g.clientFinish(d); break;
       case 'results': g.clientResults(d); break;
       case 'old': g.hud?.toast('Någon kör en annan version — ladda om sidan', 'bad'); break;
-      case 'wb': case 'wx': case 'wsh': g.weapons?.onEvent(d); break;
+      case 'wb': case 'wx': case 'wsh': case 'wgl': case 'wbn': case 'wsk': g.weapons?.onEvent(d); break;
+      case 'splat': g.hud?.splat?.(); break;
       case 'gp': g.gp = d.gp; g.hud?.gpChanged?.(g); break;
     }
   }

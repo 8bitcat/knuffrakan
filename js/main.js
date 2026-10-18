@@ -1,21 +1,21 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=24';
-import { Game } from './game.js?v=24';
-import { HUD } from './hud.js?v=24';
-import { GameAudio } from './audio.js?v=24';
-import { Input } from './input.js?v=24';
-import { SHAPES } from './carmodel.js?v=24';
-import { makeCarView } from './vehicles3d.js?v=24';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=24';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=24';
-import { logoCanvas } from './world.js?v=24';
-import { BotBrain } from './ai.js?v=24';
-import { connectRoom, NetHost, NetClient } from './net.js?v=24';
-import { TRACKS } from './track.js?v=24';
-import { SOUND_OPTS } from './sounds.js?v=24';
-import { newGP } from './gp.js?v=24';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=24';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=25';
+import { Game } from './game.js?v=25';
+import { HUD } from './hud.js?v=25';
+import { GameAudio } from './audio.js?v=25';
+import { Input } from './input.js?v=25';
+import { SHAPES } from './carmodel.js?v=25';
+import { makeCarView } from './vehicles3d.js?v=25';
+import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=25';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=25';
+import { logoCanvas } from './world.js?v=25';
+import { BotBrain } from './ai.js?v=25';
+import { connectRoom, NetHost, NetClient } from './net.js?v=25';
+import { TRACKS } from './track.js?v=25';
+import { SOUND_OPTS } from './sounds.js?v=25';
+import { newGP } from './gp.js?v=25';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=25';
 
 const PUBLIC = 'PUBLIK';
 
@@ -123,13 +123,10 @@ async function boot() {
     if ('ontouchstart' in window) $('touch').classList.remove('hidden');
     tractorTip();
   };
-  const TIPS = {
-    traktor: '🚜 Håll E (eller SKOPA) för att lyfta skopan — kör upp bakom någon och lyft!',
-    brandbil: '🚒 Håll E (eller VATTEN): vattenkanonen sprutar undan bilarna framför dig!',
-    stridsvagn: '💥 Tryck E (eller KANON): kanonen skjuter en granat — den laddar om på 4 sekunder',
-    ufo: '🛸 Håll E (eller STRÅLE): dragstrålen lyfter upp bilen framför dig!',
+  const tractorTip = () => {
+    const T = VTYPES[spec.kind || 'stock'], tip = spec.kind === 'traktor' ? '🚜 Håll E (eller SKOPA) för att lyfta skopan — kör upp bakom någon och lyft!' : SPECIALS[T?.special]?.tips;
+    if (tip) hud.toast(tip, 'good');
   };
-  const tractorTip = () => { if (TIPS[spec.kind]) hud.toast(TIPS[spec.kind], 'good'); };
   const readName = () => {
     name = ($('namein').value || '').trim().slice(0, 16) || 'Spelare';
     try { localStorage.setItem('knuff_namn', name); } catch { /* ok */ }

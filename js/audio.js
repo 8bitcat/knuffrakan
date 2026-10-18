@@ -1,8 +1,8 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice, JetVoice } from './engines.js?v=24';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=24';
+import { EngineVoice, JetVoice } from './engines.js?v=25';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=25';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -330,6 +330,45 @@ export class GameAudio {
     if (!this.ctx || near < 0.03) return;
     if (kind === 'kanon') { this.noise(0.14, 700, 0.6 * near); this.thump(70, 0.14, 0.45 * near); this.noise(0.05, 3500, 0.25 * near, 0, 'highpass'); }
     else { this.noise(0.08, 1600, 0.5 * near); this.thump(110, 0.08, 0.3 * near); this.noise(0.03, 5000, 0.2 * near, 0, 'highpass'); }
+  }
+  // skolbussens tuta: ett tretonsackord
+  horn(near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    const ctx = this.ctx, t = ctx.currentTime, g = ctx.createGain(), lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 1500;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3 * near, t + 0.03);
+    g.gain.setValueAtTime(0.3 * near, t + 0.8); g.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+    lp.connect(g); g.connect(this.master);
+    for (const f of [233, 294, 349]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(lp); o.start(t); o.stop(t + 1.05); }
+  }
+  // elchock: sprakande högt brus + surrande såg
+  zap(near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(70, t); o.frequency.linearRampToValueAtTime(160, t + 0.35);
+    g.gain.setValueAtTime(0.22 * near, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.5);
+    this.noise(0.4, 5000, 0.4 * near, 0, 'highpass');
+    for (let i = 0; i < 6; i++) this.noise(0.03, 2800, 0.4 * near, Math.random() * 0.35, 'highpass');
+  }
+  // sus: nitro, efterbrännkammare, tackling, planet som lyfter
+  whoosh(near = 1) { if (!this.ctx || near < 0.03) return; this.noise(0.55, 900, 0.5 * near, 0, 'bandpass'); this.noise(0.3, 3200, 0.22 * near, 0.04, 'highpass'); }
+  // plopp: glasskulan kastas, bananskalet släpps (f = tonhöjd)
+  plopp(near = 1, f = 520) {
+    if (!this.ctx || near < 0.03) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.4, t + 0.14);
+    g.gain.setValueAtTime(0.35 * near, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.2);
+  }
+  // boing: någon halkade på bananskalet
+  boing(near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(520, t + 0.12); o.frequency.exponentialRampToValueAtTime(140, t + 0.5);
+    lfo.frequency.value = 18; lg.gain.value = 40; lfo.connect(lg); lg.connect(o.frequency);
+    g.gain.setValueAtTime(0.32 * near, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    o.connect(g); g.connect(this.master); o.start(t); lfo.start(t); o.stop(t + 0.6); lfo.stop(t + 0.6);
   }
   // stridsvagnens kanon: ett djupt dån
   cannon(near = 1) {

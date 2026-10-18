@@ -1,23 +1,23 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=24';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=24';
-import { themeOf } from './themes.js?v=24';
-import { LAVA_IN } from './world.js?v=24';
-import { buildWorld, gridSlots } from './world.js?v=24';
-import { createScene, ChaseCam } from './scene.js?v=24';
-import { makeCarView } from './vehicles3d.js?v=24';
-import { typeOf } from './vtypes.js?v=24';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=24';
-import { makeLivery, randomSpec } from './livery.js?v=24';
-import { Vehicle, CP } from './vehicle.js?v=24';
-import { BotBrain } from './ai.js?v=24';
-import { Race } from './race.js?v=24';
-import { FX, Trails } from './fx.js?v=24';
-import { NameTag, SpeedPlate } from './tags.js?v=24';
-import { RemoteVeh, carInfo } from './net.js?v=24';
-import { Weapons } from './weapons.js?v=24';
-import { newGP, shuffledTracks, award, Podium } from './gp.js?v=24';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=25';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=25';
+import { themeOf } from './themes.js?v=25';
+import { LAVA_IN } from './world.js?v=25';
+import { buildWorld, gridSlots } from './world.js?v=25';
+import { createScene, ChaseCam } from './scene.js?v=25';
+import { makeCarView } from './vehicles3d.js?v=25';
+import { typeOf } from './vtypes.js?v=25';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=25';
+import { makeLivery, randomSpec } from './livery.js?v=25';
+import { Vehicle, CP } from './vehicle.js?v=25';
+import { BotBrain } from './ai.js?v=25';
+import { Race } from './race.js?v=25';
+import { FX, Trails } from './fx.js?v=25';
+import { NameTag, SpeedPlate } from './tags.js?v=25';
+import { RemoteVeh, carInfo } from './net.js?v=25';
+import { Weapons } from './weapons.js?v=25';
+import { newGP, shuffledTracks, award, Podium } from './gp.js?v=25';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -628,7 +628,8 @@ export class Game {
       if (!T.jetX || A.wrecked || A.hidden || A.ghostT > 0) continue;
       const thr = a.input.throttle || 0;
       if (thr < 0.1) continue;
-      const len = 0.18 + 2.1 * thr, heat = Math.max(0, (thr - 0.4) / 0.6);   // bränner först över halv gas
+      const ab = T.special === 'efterbrann' ? a.loader || 0 : 0;           // efterbrännkammaren: längre och hetare låga
+      const len = (0.18 + 2.1 * thr) * (1 + 1.2 * ab), heat = Math.max(0, (thr - 0.4) / 0.6) * (1 + ab);   // bränner först över halv gas
       for (const B of this.cars) {
         if (B === A || B.wrecked || B.hidden || B.ghostT > 0) continue;
         const b = B.veh;
@@ -697,7 +698,14 @@ export class Game {
     for (const A of this.cars) {
       const a = A.veh, SP = a.T.special;
       if (!SP || A.wrecked || A.hidden) continue;
-      if (SP === 'kanon') { if (a.wantShot) { a.wantShot = false; if (!(A.ghostT > 0)) this.weapons.cannon(A); } continue; }
+      if (a.wantShot) { a.wantShot = false; if (!(A.ghostT > 0)) this.specialFire(A, SP); }
+      // bigfootens monsterhopp: när den landar igen får alla runt omkring en stöt
+      if (a.stompArmed) {
+        if (this.simT - a.stompT > 4) a.stompArmed = false;
+        else if (this.simT - a.stompT > 0.45 && a.grounded >= 2) { a.stompArmed = false; this.weapons.shock(A, 9, 15, 6, 10, `🦶 ${A.name}s monsterhopp!`); }
+      }
+      if (A.dashT > 0) this.dashHit(A, dt);
+      if (SP !== 'vatten' && SP !== 'strale') continue;
       const k = a.loader || 0;
       if (k < 0.05 || A.ghostT > 0) continue;
       if (SP === 'strale') {
@@ -748,6 +756,163 @@ export class Game {
       }
     }
   }
+  // Tryck-förmågorna (värden): avfyras en gång per tryck
+  specialFire(A, SP) {
+    const a = A.veh, m = a.T.mass;
+    if (SP === 'kanon') this.weapons.cannon(A);
+    else if (SP === 'glass') this.weapons.glass(A);
+    else if (SP === 'banan') this.weapons.banana(A);
+    else if (SP === 'hopp') {
+      // hydrauliken skjuter upp bigfooten (landningen ger stöten — se specials)
+      a.applyJ(a.fwd.x * m * 2, m * 9, a.fwd.z * m * 2, a.pos.x, a.pos.y, a.pos.z);
+      a.stompArmed = true; a.stompT = this.simT;
+    } else if (SP === 'lyft') {
+      // planet lyfter — vingarna glidflyger sedan över bilarna
+      a.applyJ(a.fwd.x * m * 3, m * 7.5, a.fwd.z * m * 3, a.pos.x, a.pos.y, a.pos.z);
+    } else if (SP === 'tuta') this.horn(A);
+    else if (SP === 'elchock') this.zap(A);
+    else if (SP === 'tackla') {
+      // åt det håll man styr — annars mot bilen bredvid (bottarna säger själva vilket håll: input.side)
+      const inp = a.input;
+      let sd = inp.side || (Math.abs(inp.steer || 0) > 0.25 ? Math.sign(inp.steer) : 0);
+      if (!sd) {
+        let bd = 9;
+        for (const B of this.cars) {
+          if (B === A || B.wrecked || B.hidden) continue;
+          const rx = B.veh.pos.x - a.pos.x, rz = B.veh.pos.z - a.pos.z;
+          const ahead = rx * a.fwd.x + rz * a.fwd.z, lx = rx * a.right.x + rz * a.right.z;
+          if (Math.abs(ahead) < 5 && Math.abs(lx) < bd) { bd = Math.abs(lx); sd = Math.sign(lx); }
+        }
+      }
+      if (!sd) sd = Math.random() < 0.5 ? -1 : 1;
+      a.applyJ(a.right.x * m * 11 * sd, m * 1.2, a.right.z * m * 11 * sd, a.pos.x, a.pos.y, a.pos.z);
+      A.dashT = 0.4; A.dashSd = sd; A.dashHit = new Set();
+      A.hitCD = 0.45;                     // den som tacklar tar inte skada av sin egen smäll
+    }
+  }
+  // sidotacklingen: den första bilen på den sidan får en rejäl smäll + snurr
+  dashHit(A, dt) {
+    A.dashT -= dt;
+    const a = A.veh;
+    for (const B of this.cars) {
+      if (B === A || B.wrecked || B.hidden || B.ghostT > 0 || A.dashHit.has(B)) continue;
+      const b = B.veh, rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
+      const ahead = rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z, lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;
+      if (Math.abs(ahead) > a.T.half.z + b.T.half.z || lx * A.dashSd <= 0 || Math.abs(lx) > a.T.half.x + b.T.half.x + 0.8 || Math.abs(ry) > 2.5) continue;
+      A.dashHit.add(B);
+      const m = b.T.mass, k = Math.min(1.6, Math.max(0.5, a.T.mass / m)) ** 0.7, sd = A.dashSd;
+      b.applyJ(a.right.x * m * 9 * sd * k, m * 2.5 * k, a.right.z * m * 9 * sd * k, b.pos.x, b.pos.y + 0.3, b.pos.z);
+      b.spinT = Math.max(b.spinT, 1.0); b.slip(0.5, 0.3);
+      B.health -= 6 * k / b.T.armor; B.lastDmgT = this.simT; B.lastHitBy = A; B.lastHitT = this.time;
+      _v2.copy(a.pos).addScaledVector(a.right, sd * a.T.half.x);
+      this.fx.tackle(_v2, a.vel, _v3.copy(a.right).multiplyScalar(sd), 1.4);
+      this.emit({ t: 'wsk', p: [+_v2.x.toFixed(2), +_v2.y.toFixed(2), +_v2.z.toFixed(2)], d: [+(a.right.x * sd).toFixed(2), +(a.right.z * sd).toFixed(2)] });
+      if (A === this.me || B === this.me) this.audio?.crash(16, 1);
+      this.notify(A, `💥 Sidotackling på ${B.name}!`, 'good');
+      this.notify(B, `💥 ${A.name} tacklade dig från sidan!`, 'bad');
+      if (B.health <= 0) this.wreck(B);
+    }
+  }
+  // skolbussens tuta: bilarna framför (upp till 24 m) blåses åt sidan och tappar greppet
+  horn(A) {
+    const a = A.veh;
+    for (const B of this.cars) {
+      if (B === A || B.wrecked || B.hidden || B.ghostT > 0) continue;
+      const b = B.veh, rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
+      const ahead = rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z - a.T.half.z, lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;
+      if (ahead < -1 || ahead > 24 || Math.abs(lx) > 3 + Math.max(0, ahead) * 0.35 || Math.abs(ry) > 4) continue;
+      const k = 1 - Math.max(0, ahead) / 26, m = b.T.mass, w = Math.min(1.2, 3000 / m) ** 0.5, sd = Math.sign(lx) || (Math.random() < 0.5 ? -1 : 1);
+      b.applyJ((a.right.x * sd * 9 + a.fwd.x * 2) * m * k * w, m * 1.5 * k * w, (a.right.z * sd * 9 + a.fwd.z * 2) * m * k * w, b.pos.x, b.pos.y, b.pos.z);
+      b.spinT = Math.max(b.spinT, 0.6 * k); b.slip(0.5, 0.5);
+      B.health -= 3 * k / b.T.armor; B.lastDmgT = this.simT; B.lastHitBy = A; B.lastHitT = this.time;
+      this.notify(B, `📯 ${A.name} tutade bort dig!`, 'bad');
+      if (B.health <= 0) this.wreck(B);
+    }
+  }
+  // jet-elrullstolens elchock: alla inom 7 m får en stöt, tappar greppet och snurrar
+  zap(A) {
+    const a = A.veh;
+    let n = 0;
+    for (const B of this.cars) {
+      if (B === A || B.wrecked || B.hidden || B.ghostT > 0) continue;
+      const b = B.veh, d = b.pos.distanceTo(a.pos);
+      if (d > 7) continue;
+      const k = 1 - d / 7, m = b.T.mass;
+      _v2.subVectors(b.pos, a.pos); _v2.y = 0; _v2.normalize();
+      b.applyJ(_v2.x * m * 4 * k, m * 2 * k, _v2.z * m * 4 * k, b.pos.x, b.pos.y, b.pos.z);
+      b.spinT = Math.max(b.spinT, 0.8); b.slip(0.8, 0.3);
+      B.health -= (4 + 8 * k) / b.T.armor; B.lastDmgT = this.simT; B.lastHitBy = A; B.lastHitT = this.time;
+      this.notify(B, `⚡ ${A.name} gav dig en elchock!`, 'bad');
+      n++;
+      if (B.health <= 0) this.wreck(B);
+    }
+    if (n) this.notify(A, `⚡ Elchock på ${n} ${n === 1 ? 'bil' : 'bilar'}!`, 'good');
+  }
+
+  // ---- förmågornas bild (båda sidor: läget hoppar till 1 när en tryck-förmåga avfyras) ----
+  nearMe(car) { return this.me ? (car === this.me ? 1 : Math.max(0, 1 - this.me.veh.pos.distanceTo(car.veh.pos) / 150)) : 0.6; }
+  specialPulse(car, SP) {
+    const v = car.veh, near = this.nearMe(car);
+    if (SP === 'kanon') this.cannonFx(car);
+    else if (SP === 'elchock') {
+      for (const B of this.cars) {
+        if (B === car || B.hidden || B.wrecked || B.veh.pos.distanceTo(v.pos) > 7.5) continue;
+        this.bolt(v.pos, B.veh.pos); this.fx.sparks(B.veh.pos, B.veh.vel, 10, 5);
+      }
+      for (let k = 0; k < 4; k++) { const a = Math.random() * 6.3; this.bolt(v.pos, _v2.set(v.pos.x + Math.cos(a) * 4, v.pos.y - 0.6, v.pos.z + Math.sin(a) * 4)); }
+      this.audio?.zap?.(near);
+    } else if (SP === 'tuta') { this.hornFx(car); this.audio?.horn?.(near); }
+    else if (SP === 'tackla') {
+      for (let k = 0; k < 6; k++) this.fx.tireSmoke(_v2.copy(v.pos).addScaledVector(v.fwd, (Math.random() - 0.5) * 3).addScaledVector(v.up, -0.4), v.vel);
+      this.audio?.whoosh?.(near);
+    } else if (SP === 'hopp') {
+      for (let k = 0; k < 10; k++) this.fx.smoke(_v2.copy(v.pos).addScaledVector(v.up, -1.4), v.vel, false, 1.3);
+      this.audio?.hiss?.(0.5 * near); this.audio?.thump?.(60, 0.3, 0.4 * near);
+    } else if (SP === 'lyft') { this.audio?.whoosh?.(near); this.audio?.rev?.(); }
+    else if (SP === 'glass') this.audio?.plopp?.(near, 620);
+    else if (SP === 'banan') this.audio?.plopp?.(near, 300);
+  }
+  // blixt: en taggig ljusstrimma som syns en kort stund
+  bolt(a, b) {
+    const pts = [];
+    for (let i = 0; i <= 8; i++) {
+      const p = new THREE.Vector3().lerpVectors(a, b, i / 8);
+      if (i > 0 && i < 8) p.add(new THREE.Vector3((Math.random() - 0.5) * 0.9, (Math.random() - 0.5) * 0.9, (Math.random() - 0.5) * 0.9));
+      pts.push(p);
+    }
+    this.boltM ||= new THREE.MeshBasicMaterial({ color: 0xc8ecff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.06, 4), this.boltM);
+    this.scene.add(m); (this.sfx ||= []).push({ m, t: 0.28, kind: 'bolt' });
+  }
+  // tutan: ljudvågor (ringar) som far framåt från bussen
+  hornFx(car) {
+    const v = car.veh;
+    this.hornG ||= new THREE.TorusGeometry(1, 0.07, 6, 36);
+    for (let k = 0; k < 3; k++) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xfff2a0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+      const m = new THREE.Mesh(this.hornG, mat);
+      m.quaternion.setFromUnitVectors(_v2.set(0, 0, 1), v.fwd);
+      const o = new THREE.Vector3().copy(v.pos).addScaledVector(v.fwd, v.T.half.z + 0.4).addScaledVector(v.up, 0.4);
+      this.scene.add(m); (this.sfx ||= []).push({ m, t: 0.8 + k * 0.14, life: 0.8, delay: k * 0.14, kind: 'wave', o, dir: v.fwd.clone(), vel: v.vel.clone() });
+    }
+  }
+  updateSpecialFx(dt) {
+    if (!this.sfx?.length) return;
+    for (const s of this.sfx) {
+      s.t -= dt;
+      if (s.kind === 'bolt') { s.m.visible = Math.random() < 0.8; continue; }
+      const age = s.life - s.t;                                     // tid sedan vågen började (efter fördröjningen)
+      if (s.t > s.life) { s.m.visible = false; continue; }
+      const u = Math.max(0, age) / s.life;
+      s.m.visible = true;
+      s.m.position.copy(s.o).addScaledVector(s.dir, u * 22).addScaledVector(s.vel, Math.max(0, age));
+      s.m.scale.setScalar(1.2 + u * 5);
+      s.m.material.opacity = 0.75 * (1 - u);
+    }
+    for (const s of this.sfx) if (s.t <= 0) { this.scene.remove(s.m); if (s.kind === 'bolt') s.m.geometry.dispose(); else s.m.material.dispose(); }
+    this.sfx = this.sfx.filter(s => s.t > 0);
+  }
+
   // UFO:ts dragstråle: närmaste bilen i strålens kon framför (samma uträkning hos värd och gäst — till bilden)
   beamTarget(A) {
     const a = A.veh;
@@ -1069,9 +1234,11 @@ export class Game {
       }
       // specialförmågornas bild: kanonens mynningsflamma, vattnets stänk, dragstrålen mot målet
       if (VT.special && !car.hidden) {
-        const k = v.loader || 0;
-        if (VT.special === 'kanon') { if (k > (car.spPrev ?? 0) + 0.4) this.cannonFx(car); car.spPrev = k; }
-        else if (VT.special === 'vatten') {
+        const k = v.loader || 0, prev = car.spPrev ?? 0;
+        car.spPrev = k;
+        if (k > prev + 0.4) this.specialPulse(car, VT.special);                       // en tryck-förmåga avfyrades
+        if ((VT.special === 'nitro' || VT.special === 'efterbrann') && k >= 0.1 && prev < 0.1) { this.audio?.whoosh?.(this.nearMe(car)); if (car === this.me) this.audio?.rev?.(); }
+        if (VT.special === 'vatten') {
           if (k > 0.05 && Math.random() < dt * 36) {
             const d = 14 * Math.min(1, k * 1.3);
             _v2.copy(v.pos).addScaledVector(v.fwd, -VT.nozzle.z + d).addScaledVector(v.up, VT.modelY + 0.5);
@@ -1163,6 +1330,7 @@ export class Game {
       if (near > 0.05) this.audio?.blast?.(near * 0.8);
     });
     this.fx.update(dt);
+    this.updateSpecialFx(dt);
     this.trails.update(this.time);
     this.skids.update(this.time);
 

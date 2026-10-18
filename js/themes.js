@@ -62,5 +62,29 @@ export const THEMES = {
     mtn: [0xf4fbff, 0x8ab0cc, 0xc8e0f0], mtnShape: 'cone',
     flora: 'ice', redTrees: false, valley: 'ice', air: 'snow',
   },
+  // Djungelbanan: fuktig grönblå himmel, gröna berg, palmer och lövträd, floder under broarna
+  djungel: {
+    ...SNO,
+    sky: { hor: 0xd8f0d8, mid: 0x9fd8d0, top: 0x4aa0c8, cloud: 0xffffff, shade: 0x8aa8a0, stars: 0, aurora: 0, clouds: 1 },
+    fog: 0.0006,
+    hemi: [0xe8ffe0, 0x4a6a3a, 1.0], sun: [0xfff4d8, 1.35], envGround: 0x5a8a4a,
+    ground: [0x4f8f3a, 0x3f7a30, 0x6a5a40], crack: null,
+    asphalt: [74, 60, 50], line: 0xfff6d8,
+    conc: 0x8f9a78, safer: 0x2a9a4a, post: 0x4a3a2a,
+    mtn: [0x5aa04a, 0x3f6a38, 0x3a7a3a], mtnShape: 'cone',
+    flora: 'jungle', redTrees: false, valley: 'water', air: null,
+  },
+  // Månbanan: svart himmel full av stjärnor, jorden på himlen, grått stoft och kratrar
+  mane: {
+    ...SNO,
+    sky: { hor: 0x07080e, mid: 0x030409, top: 0x000000, cloud: 0x101018, shade: 0x000000, stars: 1, aurora: 0, clouds: 0 },
+    fog: 0.00012,
+    hemi: [0x9aa8c8, 0x2a2a30, 0.6], sun: [0xffffff, 1.9], envGround: 0x6a6a70,
+    ground: [0x8e8e94, 0x7a7a80, 0x55555c], crack: null,
+    asphalt: [52, 52, 58], line: 0xffd21f,
+    conc: 0xc8c8cc, safer: 0xff7a1a, post: 0x55555c,
+    mtn: [0xb0b0b6, 0x6a6a70, 0x8a8a90], mtnShape: 'cone',
+    flora: 'moon', redTrees: false, valley: 'dust', air: null, earth: true,
+  },
 };
 export const themeOf = (def) => THEMES[def?.theme] || SNO;

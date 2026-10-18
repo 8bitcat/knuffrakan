@@ -1,7 +1,7 @@
 // KNUFFRAKAN — global konfiguration.
 // PROTO bumpas vid varje släpp (nätkompatibilitet + cache-brytning).
-export const VERSION = '0.18.0';
-export const PROTO = 21;
+export const VERSION = '0.19.0';
+export const PROTO = 22;
 
 export const CONF = {
   DT: 1 / 60,

@@ -1,6 +1,7 @@
-import { CONF } from './config.js?v=21';
-import { GEAR } from './gear.js?v=21';
-import { WEAPONS, WIDS } from './weapons.js?v=21';
+import { CONF } from './config.js?v=22';
+import { GEAR } from './gear.js?v=22';
+import { WEAPONS, WIDS } from './weapons.js?v=22';
+import { TRACKS } from './track.js?v=22';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -42,7 +43,9 @@ export class HUD {
       if (this.el.flash.textContent !== txt && n > 0) { this.flash(txt); game.audio?.beep(false); }
     }
     this.el.status.textContent = r.statusText();
+    this.game = game;
     this.updateLobby(game);
+    this.updateGP(game);
     if (!me) return;
     const racing = r.phase === 'race' || r.phase === 'results';
     this.el.placeN.textContent = racing ? me.place : '–';
@@ -50,7 +53,7 @@ export class HUD {
     const km = (x) => (x / 1000).toFixed(1).replace('.', ',');
     const laps = r.laps;
     const lapTxt = laps > 1 ? `VARV ${Math.min(laps, Math.max(1, me.lap + 1))}/${laps}` : `${km(Math.max(0, me.prog))} / ${km(r.dist)} km`;
-    this.el.lap.textContent = racing ? (me.finished ? 'I MÅL' : lapTxt) : (r.phase === 'lobby' ? 'LOBBY' : 'STARTGRID');
+    this.el.lap.textContent = racing ? (me.finished ? 'I MÅL' : lapTxt) : (r.phase === 'lobby' ? 'LOBBY' : r.phase === 'podium' ? 'PRISUTDELNING' : 'STARTGRID');
     if (racing && laps > 1 && me.lap + 1 !== this.lastLap) {
       if (this.lastLap && me.lap + 1 > this.lastLap && me.lap + 1 <= laps) this.flash(me.lap + 1 === laps ? 'SISTA VARVET!' : `VARV ${me.lap + 1}`);
       this.lastLap = me.lap + 1;
@@ -118,11 +121,17 @@ export class HUD {
     const myId = game.me.id, isHost = game.mode === 'host';
     const players = info.players || [];
     const mine = players.find(p => p.id === myId);
-    const key = JSON.stringify(players) + isHost;
+    const gp = info.gp;
+    const key = JSON.stringify(players) + isHost + JSON.stringify(gp);
     if (key !== this.lobbyKey) {
       this.lobbyKey = key;
-      this.el.lroom.textContent = info.pub ? 'ÖPPET RACE' : 'RUM ' + info.room;
-      this.el.ltrack.innerHTML = this.trackButtons(info.track, isHost, info.laps);
+      this.el.lroom.textContent = info.pub ? 'ÖPPET RACE' : (gp ? '🏆 GRAND PRIX · RUM ' : 'RUM ') + info.room;
+      // Grand Prix: värden väljer hur många banor (de slumpas när man startar)
+      this.el.ltrack.innerHTML = gp
+        ? `<div class="gpn">Antal banor (slumpad ordning)</div>` + [[3, '3'], [5, '5'], [0, 'ALLA ' + TRACKS.length]].map(([n, t]) =>
+          `<button data-gpn="${n}" class="${gp.count === n ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${t}</button>`).join('')
+        : this.trackButtons(info.track, isHost, info.laps);
+      this.el.lstart.textContent = gp ? 'STARTA GRAND PRIX' : 'STARTA RACE';
       this.el.lshare.textContent = info.pub ? 'Alla som trycker KÖR! hamnar här' : `Kompisar skriver ${info.room} och trycker EGET RUM`;
       this.el.lplayers.innerHTML = players.map(p => `<div class="lp${p.ready ? ' ready' : ''}${p.id === myId ? ' me' : ''}">
         <span class="chip" style="background:linear-gradient(135deg,${esc(p.c1)} 55%,${esc(p.c2)} 55%)">${esc(String(p.nr ?? ""))}</span>
@@ -136,7 +145,7 @@ export class HUD {
     let tt;
     if (info.readyT != null) tt = `Alla är redo — start om ${Math.max(1, Math.ceil(info.readyT))}`;
     else if (info.pub && info.t > 0) tt = `Startar av sig själv om ${Math.ceil(info.t)} s`;
-    else if (isHost) tt = n > 1 ? 'Tryck STARTA RACE när alla är här' : 'Väntar på kompisar… eller starta direkt';
+    else if (isHost) tt = n > 1 ? (gp ? 'Tryck STARTA GRAND PRIX när alla är här' : 'Tryck STARTA RACE när alla är här') : 'Väntar på kompisar… eller starta direkt';
     else tt = 'Väntar på att värden startar…';
     if (this.el.ltimer.textContent !== tt) this.el.ltimer.textContent = tt;
   }
@@ -192,12 +201,52 @@ export class HUD {
     }
   }
 
-  showResults(results) {
-    const rows = results.slice(0, 20).map(r => `<tr class="${r.isPlayer ? 'me' : ''}"><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.time != null ? fmt(r.time) : '—'}</td><td>${r.kos ? '💥'.repeat(Math.min(5, r.kos)) : ''}</td></tr>`).join('');
-    this.el.results.innerHTML = `<h2>RESULTAT</h2><table><tr><th>#</th><th>Förare</th><th>Tid</th><th>Utslagna</th></tr>${rows}</table>`;
+  showResults(results, game = this.game) {
+    this.lastRes = results;
+    const gp = game?.gp;
+    const inGP = gp?.on && gp.order?.length && gp.stage !== 'lobby';
+    const rows = results.slice(0, inGP ? 10 : 20).map(r => `<tr class="${r.isPlayer ? 'me' : ''}"><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.time != null ? fmt(r.time) : '—'}</td><td>${r.kos ? '💥'.repeat(Math.min(5, r.kos)) : ''}</td></tr>`).join('');
+    let html = `<h2>RESULTAT${inGP ? ' — ' + esc(game.track.namn) : ''}</h2><table><tr><th>#</th><th>Förare</th><th>Tid</th><th>Utslagna</th></tr>${rows}</table>`;
+    // Grand Prix-tabellen under racets resultat
+    if (inGP) {
+      const medal = ['🥇', '🥈', '🥉'];
+      const t = (gp.table || []).map((r, i) => `<tr class="${game.me && r.id === game.me.id ? 'me' : ''}"><td class="pl">${medal[i] || i + 1}</td><td>${esc(r.name)}</td><td><b>${r.pts}</b> p</td><td>${r.last ? '+' + r.last : ''}</td></tr>`).join('');
+      const next = gp.order[gp.idx + 1];
+      const nx = next ? `Nästa: ${esc((TRACKS.find(x => x.id === next) || {}).namn || next)}` : '🏆 Sista banan klar — prisutdelning!';
+      html += `<div class="gpt"><h3>GRAND PRIX · efter bana ${gp.idx + 1} av ${gp.order.length}</h3><table>${t}</table><div class="nx">${nx}</div></div>`;
+    }
+    this.el.results.innerHTML = html;
     this.el.results.classList.remove('hidden');
   }
-  hideResults() { this.el.results.classList.add('hidden'); }
+  // Grand Prix-läget ändrades (poäng kom efter resultatet): rita om
+  gpChanged(game) {
+    this.game = game; this.lobbyKey = '';
+    if (this.lastRes && !this.el.results.classList.contains('hidden')) this.showResults(this.lastRes, game);
+  }
+  // prisutdelningen: de tre bästa med pokaler + resten
+  updateGP(game) {
+    const fin = this.gpF ||= document.getElementById('gpfinal'), badge = this.gpB ||= document.getElementById('gpb');
+    const gp = game.gp, ph = game.race.phase;
+    if (badge) {
+      const txt = gp?.on && gp.order?.length && (ph === 'grid' || ph === 'count' || ph === 'race') ? `🏆 GRAND PRIX · BANA ${gp.idx + 1}/${gp.order.length}` : '';
+      if (badge.textContent !== txt) { badge.textContent = txt; badge.classList.toggle('hidden', !txt); }
+    }
+    if (!fin) return;
+    if (ph === 'podium' && !this.el.results.classList.contains('hidden')) this.hideResults();
+    const show = ph === 'podium' && gp?.table?.length;
+    const key = show ? JSON.stringify(gp.table) : '';
+    if (key === this.finKey) return;
+    this.finKey = key;
+    fin.classList.toggle('hidden', !show);
+    if (!show) return;
+    const medal = ['🥇', '🥈', '🥉'], T = gp.table;
+    const pod = [1, 0, 2].filter(i => T[i]).map(i => `<div>${medal[i]} ${esc(T[i].name)}<span>${T[i].pts} poäng · ${T[i].wins} segrar</span></div>`).join('');
+    const rest = T.slice(3).map((r, i) => `${i + 4}. ${esc(r.name)} ${r.pts} p`).join(' · ');
+    fin.innerHTML = `<h2>🏆 ${esc(T[0].name)} VANN GRAND PRIX!</h2><div class="pod">${pod}</div>${rest ? `<div class="rest">${rest}</div>` : ''}`;
+  }
+
+  hideResultsGP() { this.lastRes = null; }
+  hideResults() { this.el.results.classList.add('hidden'); this.lastRes = null; }
 }
 
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }

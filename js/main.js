@@ -1,20 +1,21 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=21';
-import { Game } from './game.js?v=21';
-import { HUD } from './hud.js?v=21';
-import { GameAudio } from './audio.js?v=21';
-import { Input } from './input.js?v=21';
-import { SHAPES } from './carmodel.js?v=21';
-import { makeCarView } from './vehicles3d.js?v=21';
-import { VTYPES, KINDS, typeOf } from './vtypes.js?v=21';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=21';
-import { logoCanvas } from './world.js?v=21';
-import { BotBrain } from './ai.js?v=21';
-import { connectRoom, NetHost, NetClient } from './net.js?v=21';
-import { TRACKS } from './track.js?v=21';
-import { SOUND_OPTS } from './sounds.js?v=21';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=21';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=22';
+import { Game } from './game.js?v=22';
+import { HUD } from './hud.js?v=22';
+import { GameAudio } from './audio.js?v=22';
+import { Input } from './input.js?v=22';
+import { SHAPES } from './carmodel.js?v=22';
+import { makeCarView } from './vehicles3d.js?v=22';
+import { VTYPES, KINDS, typeOf } from './vtypes.js?v=22';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=22';
+import { logoCanvas } from './world.js?v=22';
+import { BotBrain } from './ai.js?v=22';
+import { connectRoom, NetHost, NetClient } from './net.js?v=22';
+import { TRACKS } from './track.js?v=22';
+import { SOUND_OPTS } from './sounds.js?v=22';
+import { newGP } from './gp.js?v=22';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=22';
 
 const PUBLIC = 'PUBLIK';
 
@@ -144,7 +145,7 @@ async function boot() {
   };
   const startSolo = () => { if (busy) return; readName(); audio.start(); game.setTrack(trackChoice); startLocal(); };
   // Online: gå med i rummet, finns ingen värd blir man värd
-  const startOnline = async (room) => {
+  const startOnline = async (room, opts = {}) => {
     if (busy) return;
     busy = true;
     readName(); audio.start();
@@ -157,9 +158,10 @@ async function boot() {
     if (res.role === 'host') {
       game.net = new NetHost(game, res.peer);
       game.room = room; game.isPublic = room === PUBLIC;
+      if (opts.gp) game.gp = newGP();
       game.setTrack(trackChoice);
       startLocal();
-      hud.toast(room === PUBLIC ? 'Du är först här — andra kan gå med i lobbyn' : `Rum ${room}: dela koden med dina kompisar!`, 'good');
+      hud.toast(room === PUBLIC ? 'Du är först här — andra kan gå med i lobbyn' : opts.gp ? `🏆 Grand Prix-rum ${room}: dela koden med dina kompisar!` : `Rum ${room}: dela koden med dina kompisar!`, 'good');
     } else {
       game.becomeClient();
       game.room = room; game.isPublic = room === PUBLIC;
@@ -175,6 +177,12 @@ async function boot() {
   };
   bind('play', 'onclick', () => startOnline(PUBLIC));
   bind('solo', 'onclick', startSolo);
+  // Grand Prix-rum: egen kod (eller en påhittad) — kompisarna går med med EGET RUM
+  bind('gpbtn', 'onclick', () => {
+    let code = ($('roomin').value || '').toUpperCase().replace(/[^A-ZÅÄÖ0-9]/g, '').slice(0, 6);
+    if (code.length < 3) { const L = 'ABCDEFGHJKLMNPRSTUVWXYZ'; code = 'GP' + Array.from({ length: 3 }, () => L[Math.floor(Math.random() * L.length)]).join(''); $('roomin').value = code; }
+    startOnline(code, { gp: true });
+  });
   bind('roombtn', 'onclick', () => {
     const code = ($('roomin').value || '').toUpperCase().replace(/[^A-ZÅÄÖ0-9]/g, '').slice(0, 6);
     if (code.length < 3) { $('roomin').focus(); $('netstatus').textContent = 'Skriv en kod på minst 3 tecken'; return; }
@@ -301,6 +309,8 @@ async function boot() {
   const renderMenuTracks = () => { const el = $('mtrack'); if (el) el.innerHTML = hud.trackButtons(trackChoice, true, 1); };
   renderMenuTracks();
   const pickTrack = (e) => {
+    const n = e.target.closest('[data-gpn]');
+    if (n) { game.gpSetCount(+n.dataset.gpn); hud.lobbyKey = ''; return; }
     const b = e.target.closest('[data-track]');
     if (!b) return;
     trackChoice = b.dataset.track;

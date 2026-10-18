@@ -1,6 +1,6 @@
 // Bottarna: kör i full gas i sin fil, byter fil, väjer för långsammare bilar och
 // tacklar ibland den som ligger bredvid.
-import { steerMaxAt } from './vehicle.js?v=21';
+import { steerMaxAt } from './vehicle.js?v=22';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -91,7 +91,7 @@ export class BotBrain {
     for (let d = 8; d < span; d += 12) {
       const k = Math.abs(T.sampleAt(tk.s + d, this._f).k);
       if (k < 1e-5) continue;
-      const vs = Math.sqrt(1.9 * 14 * (T.def?.grip ?? 1) / k);       // halt (isbanan) → bromsa tidigare
+      const vs = Math.sqrt(1.9 * 14 * (T.def?.grip ?? 1) * (T.def?.grav ?? 1) / k);   // halt (isbanan) / låg tyngd (månen) → bromsa tidigare
       if (sp > vs) need = Math.max(need, (sp * sp - vs * vs) / (2 * d));
     }
     inp.throttle = 1; inp.brake = 0; inp.handbrake = 0;

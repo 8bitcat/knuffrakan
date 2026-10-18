@@ -1,14 +1,14 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=21';
-import { Weapons } from './weapons.js?v=21';
-import { VTYPES } from './vtypes.js?v=21';
+import { PROTO } from './config.js?v=22';
+import { Weapons } from './weapons.js?v=22';
+import { VTYPES } from './vtypes.js?v=22';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
 const ROW = 28;     // flyttal per bil i en ögonblicksbild
 const HEAD = 6;     // [tid, fas, t, raceT, closeT, antal]
-const PHASES = ['idle', 'grid', 'count', 'race', 'results', 'lobby'];
+const PHASES = ['idle', 'grid', 'count', 'race', 'results', 'lobby', 'podium'];
 
 function loadPeer() {
   if (window.Peer) return Promise.resolve(window.Peer);
@@ -90,7 +90,7 @@ export class NetHost {
       if (this.clients.has(conn)) return;
       const car = g.addRemotePlayer(String(d.name || 'Gäst').slice(0, 16), d.spec, conn);
       this.clients.set(conn, car);
-      conn.send({ t: 'welcome', you: car.id, track: g.trackId, cars: g.cars.map(carInfo), winner: g.race.lastWinner });
+      conn.send({ t: 'welcome', you: car.id, track: g.trackId, cars: g.cars.map(carInfo), winner: g.race.lastWinner, gp: g.gpPublic?.() });
       this.broadcast({ t: 'add', car: carInfo(car) }, conn);
       g.notifyAll(`👋 ${car.name} är med!`);
       return;
@@ -242,6 +242,7 @@ export class NetClient {
       case 'results': g.clientResults(d); break;
       case 'old': g.hud?.toast('Någon kör en annan version — ladda om sidan', 'bad'); break;
       case 'wb': case 'wx': case 'wsh': g.weapons?.onEvent(d); break;
+      case 'gp': g.gp = d.gp; g.hud?.gpChanged?.(g); break;
     }
   }
   onSnap(a) {

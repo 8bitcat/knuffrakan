@@ -184,3 +184,18 @@ button { font-family: inherit; cursor: pointer; }
 #wslot.roll { border-color: #ffc23a; }
 #touch #tw { right: 190px; bottom: 132px; width: 82px; height: 82px; font-size: 16px; background: rgba(255, 70, 40, 0.45); }
 @media (max-width: 900px) { #wslot { bottom: 130px; font-size: 18px; } }
+/* Grand Prix */
+.row2.room .gp { background: linear-gradient(135deg, #ffc72c, #ff8a1c); color: #1a1205; border-color: #ffd86a; }
+#gpb { font: italic 900 14px "Exo 2", sans-serif; color: #ffc72c; letter-spacing: 1px; }
+.gpn { width: 100%; font: 700 12px Montserrat, sans-serif; opacity: .8; text-transform: uppercase; margin-bottom: 2px; }
+#ltrack button[data-gpn] { font: 800 14px Montserrat, sans-serif; padding: 8px 12px; border-radius: 10px; border: 2px solid #334; background: #1a1c2a; color: #fff; }
+#ltrack button[data-gpn].on { border-color: #ffc72c; color: #ffc72c; }
+#results .gpt { margin-top: 12px; border-top: 2px solid #ffc72c55; padding-top: 8px; }
+#results .gpt h3 { margin: 0 0 6px; font: italic 900 20px "Exo 2", sans-serif; color: #ffc72c; text-align: center; }
+#results .gpt .nx { text-align: center; font-weight: 800; margin-top: 6px; opacity: .9; }
+#results td.pl { color: #ffc72c; font-weight: 900; }
+#gpfinal { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); background: rgba(12, 12, 24, .78); border: 2px solid #ffc72c; border-radius: 18px; padding: 10px 22px; min-width: 360px; text-align: center; }
+#gpfinal h2 { margin: 0 0 6px; font: italic 900 30px "Exo 2", sans-serif; color: #ffc72c; }
+#gpfinal .pod { display: flex; gap: 18px; justify-content: center; font: italic 900 20px "Exo 2", sans-serif; }
+#gpfinal .pod div span { display: block; font: 700 13px Montserrat, sans-serif; opacity: .85; }
+#gpfinal .rest { margin-top: 6px; font: 600 13px Montserrat, sans-serif; opacity: .8; }

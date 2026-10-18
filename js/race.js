@@ -1,8 +1,9 @@
 // Racet: (lobby →) startgrid → nedräkning → race (ett varv) → resultat → lobby/ny grid.
 // Online samlas man i lobbyn (kör runt fritt) tills värden startar eller alla är redo.
 // Packracing: toppfarten styrs av placeringen (sist går fortast) + suget bakom bilar.
-import { CONF } from './config.js?v=21';
-import { gridSlots } from './world.js?v=21';
+import { CONF } from './config.js?v=22';
+import { gridSlots } from './world.js?v=22';
+import { gpLaps } from './gp.js?v=22';
 
 export class Race {
   constructor(game) {
@@ -17,7 +18,7 @@ export class Race {
     this.num = 0;
   }
 
-  get laps() { return this.g.track.def.laps || CONF.LAPS; }
+  get laps() { const d = this.g.track.def, gp = this.g.gp; return gp?.on && gp.stage !== 'lobby' ? gpLaps(d) : (d.laps || CONF.LAPS); }
   get dist() { return this.laps * this.g.track.L; }
   // online (värd eller gäst) = lobby mellan racen; ensam = racen rullar på
   get lobbyMode() { return !!this.g.net; }
@@ -45,7 +46,17 @@ export class Race {
 
   startFromLobby() {
     if (this.phase !== 'lobby') return;
+    if (this.g.gp?.on && this.g.mode === 'host') { this.g.gpStart(); return; }
     this.toGrid(3);
+  }
+
+  // Grand Prix slut: alla parkeras, prispallen visar de tre bästa
+  toPodium() {
+    const g = this.g;
+    this.phase = 'podium'; this.t = 32;
+    g.hud?.hideResults();
+    for (const car of g.cars) { if (car.wrecked) g.unwreck(car); g.parkBot(car, null); }
+    g.world3d.gantry.setLights(5, true);
   }
 
   toGrid(wait = CONF.GRID_WAIT) {
@@ -151,12 +162,18 @@ export class Race {
       if ((this.closeT !== -1 && this.closeT <= 0) || allDone || this.raceT > 400) this.end();
     } else if (this.phase === 'results') {
       this.t -= dt;
-      if (this.t <= 0) { if (this.lobbyMode) this.toLobby(); else this.toGrid(); }
+      if (this.t <= 0) {
+        if (g.gp?.on && g.gp.stage === 'standings' && g.mode === 'host') g.gpNext();
+        else if (this.lobbyMode) this.toLobby(); else this.toGrid();
+      }
+    } else if (this.phase === 'podium') {
+      this.t -= dt;
+      if (this.t <= 0 && g.mode === 'host') g.gpDone();
     }
   }
 
   end() {
-    this.phase = 'results'; this.t = CONF.RESULTS_T;
+    this.phase = 'results'; this.t = this.g.gp?.on ? 14 : CONF.RESULTS_T;
     this.results = this.order.map((c, i) => ({ place: i + 1, name: c.name, time: c.finished ? c.finishT : null, isPlayer: c.isPlayer, kos: c.raceStats?.kos || 0, car: c }));
     this.g.onRaceEnd?.(this.results);
     for (const c of this.g.cars) c.veh.vmax = CONF.BASE_KMH * 0.7 / 3.6;
@@ -165,6 +182,9 @@ export class Race {
   statusText() {
     const p = this.phase;
     if (p === 'lobby') return 'LOBBY — kör runt och värm upp';
+    const gp = this.g.gp;
+    if (p === 'results' && gp?.on && gp.order?.length) return (gp.idx + 1 < gp.order.length ? 'Nästa bana om ' : 'Prisutdelningen om ') + Math.ceil(this.t);
+    if (p === 'podium') return '🏆 GRAND PRIX — PRISUTDELNING';
     if (p === 'results' && this.lobbyMode) return 'Tillbaka till lobbyn om ' + Math.ceil(this.t);
     if (p === 'grid') return 'Start om ' + Math.ceil(this.t + CONF.COUNTDOWN);
     if (p === 'count') return 'Gör dig redo…';

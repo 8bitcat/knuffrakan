@@ -3,9 +3,9 @@
 // det finns en fysikvärld (värden).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONF } from './config.js?v=21';
-import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, F_LAVA, JUMP } from './track.js?v=21';
-import { themeOf } from './themes.js?v=21';
+import { CONF } from './config.js?v=22';
+import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, F_LAVA, JUMP } from './track.js?v=22';
+import { themeOf } from './themes.js?v=22';
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const h2 = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -359,7 +359,9 @@ function buildBarriers(ctx) {
         if (t < 0) continue;
         // fysiken är högre än betongen (osynlig vägg ovanför) — annars glider en bil som lyft lite rakt över;
         // det blå stängslet i kurvorna är solitt ända upp, och i tunnlarna går väggen upp till taket
-        const h = (T.flags[i] & F_TUNNEL) ? 9.5 : t === 1 ? 5.0 : t === 2 ? 3.8 : t === 3 ? 7.4 : 4.0, th = 0.8;
+        // låg tyngdkraft (månen): bilarna flyger högre av smällarna → högre osynlig vägg
+        const lowG = Math.max(1, 1 + (1 / (T.def.grav ?? 1) - 1) * 0.6);
+        const h = (T.flags[i] & F_TUNNEL) ? 9.5 : (t === 1 ? 5.0 : t === 2 ? 3.8 : t === 3 ? 7.4 : 4.0) * lowG, th = 0.8;
         const lat = side * (base + th);
         R.set(T.rx[i], T.ry[i], T.rz[i]); U.set(T.ux[i], T.uy[i], T.uz[i]); B.set(-T.fx[i], -T.fy[i], -T.fz[i]);
         M.makeBasis(R, U, B); Q.setFromRotationMatrix(M);
@@ -1077,14 +1079,15 @@ function buildValleys(ctx) {
     if (f.type !== 'valley') continue;
     const kind = ctx.theme.valley;
     if (kind !== 'ice') {
-      const len = f.lv * 1.5, tex = kind === 'lava' ? (ctx.lavaTex ||= lavaTex()) : sandBedTex();
-      tex.repeat.set(kind === 'lava' ? 10 : 6, kind === 'lava' ? 1.2 : 1);
-      const mat = kind === 'lava' ? new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }) : new THREE.MeshLambertMaterial({ map: tex });
+      const len = f.lv * 1.5, tex = kind === 'lava' ? (ctx.lavaTex ||= lavaTex()) : kind === 'water' ? (ctx.waterTex ||= waterTex()) : kind === 'dust' ? dustBedTex() : sandBedTex();
+      tex.repeat.set(kind === 'lava' || kind === 'water' ? 10 : 6, kind === 'lava' || kind === 'water' ? 1.2 : 1);
+      const mat = kind === 'lava' ? new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
+        : kind === 'water' ? new THREE.MeshLambertMaterial({ map: tex, emissive: 0x0a3050, transparent: true, opacity: 0.92 }) : new THREE.MeshLambertMaterial({ map: tex });
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(len, 46).rotateX(-Math.PI / 2), mat);
       floor.rotation.y = Math.atan2(-f.tx, -f.tz);
       floor.position.set(f.x, f.floorY + 0.35, f.z);
       scene.add(floor);
-      boardAt(ctx, f.s0 - 120, T.halfW + 4, signTex(f.namn || 'BRON', kind === 'lava' ? 'LAVA UNDER!' : 'HÅLL I DIG!', kind === 'lava' ? '#ff6a1e' : '#ffb21a'));
+      boardAt(ctx, f.s0 - 120, T.halfW + 4, signTex(f.namn || 'BRON', kind === 'lava' ? 'LAVA UNDER!' : 'HÅLL I DIG!', kind === 'lava' ? '#ff6a1e' : kind === 'water' ? '#4fc3ff' : '#ffb21a'));
       continue;
     }
     const tex = canvasTex(512, 128, (c, w, h) => {
@@ -1173,6 +1176,8 @@ export function buildWorld(ctx) {
   buildMountainsThemed(ctx, terr);
   const lava = buildLava(ctx);
   const air = makeAir(ctx);
+  const earth = ctx.theme.earth ? earthMesh() : null;
+  if (earth) ctx.scene.add(earth);
   const gantry = buildGantry(ctx);
   const screen = buildScreen(ctx, terr);
   buildArrow(ctx, terr);
@@ -1184,6 +1189,8 @@ export function buildWorld(ctx) {
     update(dt, time, cam, fx, onBoom) {
       if (lava) lava.offset.y -= dt * 0.08;
       if (ctx.lavaTex && ctx.lavaTex !== lava) ctx.lavaTex.offset.x += dt * 0.03;
+      if (ctx.waterTex) ctx.waterTex.offset.x += dt * 0.12;
+      if (earth && cam) earth.position.set(cam.x - 2600, cam.y + 2300, cam.z - 4200);
       for (const p of ctx.plumes || []) { p.s.position.y = p.base.y + 60 + ((time * 14 + p.k * 90) % 540); p.s.material.opacity = 0.85 * (1 - ((time * 14 + p.k * 90) % 540) / 540); }
       air(dt, time, cam, fx, onBoom);
     },
@@ -1286,6 +1293,8 @@ function buildFlora(ctx, terr) {
   const lam = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   if (fl === 'dead') return scatter(ctx, terr, [deadTreeGeo(), rockGeo(0x221a1c), rockGeo(0x3a2826, 0.9)], [0.45, 0.35, 0.2], 2600, lam);
   if (fl === 'cactus') return scatter(ctx, terr, [cactusGeo(), shrubGeo(), rockGeo(0xb8623e, 0.8), barrelGeo()], [0.3, 0.35, 0.2, 0.15], 3200, lam);
+  if (fl === 'jungle') return scatter(ctx, terr, [palmGeo(), broadleafGeo(), jungleBushGeo()], [0.3, 0.4, 0.3], 4600, lam);
+  if (fl === 'moon') { moonBase(ctx, terr); return scatter(ctx, terr, [craterGeo(), rockGeo(0x7a7a80, 0.8), rockGeo(0x9a9aa0, 0.5)], [0.4, 0.35, 0.25], 1800, lam, 14); }
   if (fl === 'ice') {
     const ice = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x16344a, transparent: true, opacity: 0.9 });
     return scatter(ctx, terr, [iceGeo(), iceBlockGeo(), pineGeo(true)], [0.35, 0.25, 0.4], 3600, [ice, ice, lam]);
@@ -1602,4 +1611,90 @@ function makeAir(ctx) {
       for (let i = balls.length - 1; i >= 0; i--) if (balls[i].dead) balls.splice(i, 1);
     }
   };
+}
+
+// ---------- Djungeln: palmer, lövträd, buskar med blommor ----------
+function palmGeo() {
+  const parts = [];
+  let x = 0, y = 0, lean = 0;
+  for (let k = 0; k < 6; k++) {                       // böjd stam
+    const h = 1.6, seg = new THREE.CylinderGeometry(0.28 - k * 0.02, 0.32 - k * 0.02, h, 7).translate(0, h / 2, 0).rotateZ(-lean).translate(x, y, 0);
+    parts.push(colorGeo(seg, k % 2 ? 0x8a6a42 : 0x7a5a36));
+    x += Math.sin(lean) * h; y += Math.cos(lean) * h; lean += 0.07;
+  }
+  for (let k = 0; k < 8; k++) {                       // blad som hänger
+    const a = (k / 8) * Math.PI * 2;
+    const leaf = new THREE.BoxGeometry(0.9, 0.06, 4.2).translate(0, 0, 2.1).rotateX(0.55).rotateY(a).translate(x, y + 0.2, 0);
+    parts.push(colorGeo(leaf, k % 2 ? 0x3f9a3a : 0x2f8a34));
+  }
+  parts.push(colorGeo(new THREE.SphereGeometry(0.45, 7, 5).translate(x, y - 0.1, 0), 0x6a4a22));   // kokosnötter
+  return mergeColored(parts);
+}
+function broadleafGeo() {
+  const parts = [colorGeo(new THREE.CylinderGeometry(0.5, 0.8, 9, 7).translate(0, 4.5, 0), 0x5a4030)];
+  for (const [x, y, z, r, c] of [[0, 10, 0, 4.2, 0x2f6a2a], [2.6, 8.6, 1, 3, 0x3f8a34], [-2.4, 9, -1.2, 3.2, 0x356f2c], [0.6, 12, -0.8, 2.8, 0x4a9a3a]]) {
+    parts.push(colorGeo(new THREE.IcosahedronGeometry(r, 0).scale(1, 0.7, 1).translate(x, y, z), c));
+  }
+  return mergeColored(parts);
+}
+function jungleBushGeo() {
+  const parts = [];
+  for (const [x, z, r] of [[0, 0, 1.4], [1.2, 0.5, 1], [-1, 0.6, 1.1], [0.3, -1.1, 0.9]]) parts.push(colorGeo(new THREE.IcosahedronGeometry(r, 0).scale(1, 0.75, 1).translate(x, r * 0.6, z), 0x3aa040));
+  for (const [x, y, z, c] of [[0.5, 1.5, 0.6, 0xff3b6b], [-0.6, 1.3, 0.3, 0xffd21f], [0.1, 1.6, -0.7, 0xff7a1a]]) parts.push(colorGeo(new THREE.SphereGeometry(0.22, 6, 4).translate(x, y, z), c));
+  return mergeColored(parts);
+}
+// ---------- Månen: kratrar, stenblock och en månbas vid starten ----------
+function craterGeo() {
+  return mergeColored([
+    colorGeo(new THREE.TorusGeometry(6, 1.3, 6, 18).rotateX(Math.PI / 2).scale(1, 0.35, 1).translate(0, 0.1, 0), 0xa2a2a8),
+    colorGeo(new THREE.CircleGeometry(5.6, 18).rotateX(-Math.PI / 2).translate(0, -0.05, 0), 0x5e5e64),
+  ]);
+}
+function moonBase(ctx, terr) {
+  const T = ctx.track, s = T.wrapS(120), f = T.sampleAt(s);
+  const white = new THREE.MeshStandardMaterial({ color: 0xeeeef2, roughness: 0.4, metalness: 0.2 });
+  const panel = new THREE.MeshStandardMaterial({ color: 0x1a3a8a, roughness: 0.25, metalness: 0.6, emissive: 0x06102a });
+  const lamp = new THREE.MeshBasicMaterial({ color: 0x9fe8ff, toneMapped: false });
+  for (const sd of [-1, 1]) {
+    const lat = sd * (T.halfW + 60);
+    const cx = f.x + f.rx * lat, cz = f.z + f.rz * lat, cy = terr.heightAt(cx, cz);
+    for (const [dx, dz, r] of [[0, 0, 9], [16, 6, 6], [-14, 8, 5.5]]) {
+      const d = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), white);
+      d.position.set(cx + dx, cy - 0.3, cz + dz); d.castShadow = true; ctx.scene.add(d);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 0.98, 0.18, 6, 24).rotateX(Math.PI / 2), lamp);
+      ring.position.set(cx + dx, cy + 0.6, cz + dz); ctx.scene.add(ring);
+    }
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 22, 6), white); mast.position.set(cx - 4, cy + 11, cz - 12); ctx.scene.add(mast);
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(3, 16, 8, 0, Math.PI * 2, 0, Math.PI / 3), white); dish.position.set(cx - 4, cy + 22, cz - 12); dish.rotation.x = -1; ctx.scene.add(dish);
+    for (let k = 0; k < 4; k++) { const p = new THREE.Mesh(new THREE.BoxGeometry(6, 0.15, 3.2), panel); p.position.set(cx + 22 + k * 7, cy + 2.2, cz - 10); p.rotation.x = -0.5; ctx.scene.add(p); }
+  }
+}
+// jorden på månhimlen (följer kameran — oändligt långt bort)
+function earthMesh() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#1e5fb8'; g.fillRect(0, 0, 512, 256);
+  for (let k = 0; k < 26; k++) { g.fillStyle = k % 3 ? '#3f8a3a' : '#8a7a4a'; g.beginPath(); g.ellipse(Math.random() * 512, 40 + Math.random() * 176, 20 + Math.random() * 60, 10 + Math.random() * 30, Math.random() * 3, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = 'rgba(255,255,255,0.75)'; for (let k = 0; k < 40; k++) { g.beginPath(); g.ellipse(Math.random() * 512, Math.random() * 256, 20 + Math.random() * 50, 4 + Math.random() * 8, 0, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 512, 14); g.fillRect(0, 242, 512, 14);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.SphereGeometry(420, 32, 16), new THREE.MeshLambertMaterial({ map: t, emissive: 0x0a1a30, fog: false }));
+  m.frustumCulled = false;
+  return m;
+}
+function waterTex() {
+  const t = canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = '#2a7ab8'; c.fillRect(0, 0, w, h);
+    for (let k = 0; k < 90; k++) { c.strokeStyle = `rgba(${Math.random() < 0.5 ? '180,230,255' : '20,80,140'},0.45)`; c.lineWidth = 2; c.beginPath(); const x = Math.random() * w, y = Math.random() * h; c.moveTo(x, y); c.quadraticCurveTo(x + 14, y - 6, x + 28, y); c.stroke(); }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+function dustBedTex() {
+  const t = canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = '#6a6a70'; c.fillRect(0, 0, w, h);
+    for (let k = 0; k < 60; k++) { c.fillStyle = `rgba(${Math.random() < 0.5 ? '40,40,46' : '150,150,156'},0.4)`; c.beginPath(); c.arc(Math.random() * w, Math.random() * h, 2 + Math.random() * 12, 0, Math.PI * 2); c.fill(); }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
 }

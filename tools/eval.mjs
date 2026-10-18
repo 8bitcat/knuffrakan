@@ -8,6 +8,9 @@ const page = await browser.newPage({ viewport: { width: 1200, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+// bana=X i adressen: spelet läser banan från localStorage (inte adressen) — sätt den innan sidan laddas
+const bana = new URLSearchParams(query.replace(/^[?]/, '')).get('bana');
+if (bana) await page.addInitScript((b) => localStorage.setItem('knuff_bana', b), bana);
 await page.goto(`http://localhost:${process.env.PORT || 8810}/${query}`);
 await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
 await page.waitForTimeout(+secs * 1000);

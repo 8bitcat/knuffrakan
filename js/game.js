@@ -1,22 +1,23 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=21';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=21';
-import { themeOf } from './themes.js?v=21';
-import { LAVA_IN } from './world.js?v=21';
-import { buildWorld, gridSlots } from './world.js?v=21';
-import { createScene, ChaseCam } from './scene.js?v=21';
-import { makeCarView } from './vehicles3d.js?v=21';
-import { typeOf } from './vtypes.js?v=21';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=21';
-import { makeLivery, randomSpec } from './livery.js?v=21';
-import { Vehicle, CP } from './vehicle.js?v=21';
-import { BotBrain } from './ai.js?v=21';
-import { Race } from './race.js?v=21';
-import { FX, Trails } from './fx.js?v=21';
-import { NameTag, SpeedPlate } from './tags.js?v=21';
-import { RemoteVeh, carInfo } from './net.js?v=21';
-import { Weapons } from './weapons.js?v=21';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=22';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=22';
+import { themeOf } from './themes.js?v=22';
+import { LAVA_IN } from './world.js?v=22';
+import { buildWorld, gridSlots } from './world.js?v=22';
+import { createScene, ChaseCam } from './scene.js?v=22';
+import { makeCarView } from './vehicles3d.js?v=22';
+import { typeOf } from './vtypes.js?v=22';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=22';
+import { makeLivery, randomSpec } from './livery.js?v=22';
+import { Vehicle, CP } from './vehicle.js?v=22';
+import { BotBrain } from './ai.js?v=22';
+import { Race } from './race.js?v=22';
+import { FX, Trails } from './fx.js?v=22';
+import { NameTag, SpeedPlate } from './tags.js?v=22';
+import { RemoteVeh, carInfo } from './net.js?v=22';
+import { Weapons } from './weapons.js?v=22';
+import { newGP, shuffledTracks, award, Podium } from './gp.js?v=22';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -44,6 +45,7 @@ export class Game {
     this.nextId = 1;
     this.orbit = 0;
     this.mode = 'host';   // 'host' (även ensam) eller 'client'
+    this.gp = null;       // Grand Prix-läget (värden äger det, gästerna får en kopia)
     this.net = null;
     this.myId = null;
   }
@@ -66,6 +68,8 @@ export class Game {
     this.scene.add(this.worldGroup);
     this.world3d = buildWorld({ scene: this.worldGroup, track: this.track, RAPIER: this.RAPIER, world: this.world });
     this.sceneApi?.applyTheme?.(themeOf(def));
+    // banans tyngdkraft (månen 0,45)
+    this.world.gravity = { x: 0, y: -CONF.GRAV * (def.grav ?? 1), z: 0 };
     this.trackId = def.id;
     this.trails?.clear(); this.skids?.clear();
     for (const c of this.cars || []) { c.trk.i = 0; c.lap = 0; c.prevS = 0; }
@@ -253,6 +257,7 @@ export class Game {
     const r = this.race;
     return {
       room: this.room || '', pub: !!this.isPublic, t: r.t, readyT: r.readyT ?? null, track: this.trackId, laps: this.track.def.laps || 1,
+      gp: this.gp ? { stage: this.gp.stage, count: this.gp.count } : null,
       players: this.cars.filter(c => this.isHuman(c)).map(c => ({
         id: c.id, name: c.name, ready: !!c.ready, host: c === this.me, nr: c.spec.number,
         c1: c.spec.colors?.[0] || '#888', c2: c.spec.colors?.[1] || '#444', gear: cleanGear(c.spec.gear, c.spec.kind),
@@ -269,15 +274,58 @@ export class Game {
   }
   onWinner(car) { this.notifyAll(`🏁 ${car.name} vann!`); }
   onRaceEnd(results) {
+    // Grand Prix: poäng till spelarna efter placering
+    if (this.gp?.on && this.gp.stage === 'race' && this.mode === 'host') {
+      award(this.gp, results, (c) => this.isHuman(c));
+      this.gp.stage = 'standings';
+      this.gpSend();
+    }
     const res = results.map(r => ({ place: r.place, name: r.name, time: r.time, kos: r.kos, id: r.car.id }));
     this.showResults(res);
     this.emit({ t: 'results', res });
   }
   showResults(res) {
     const mine = res.map(r => ({ ...r, isPlayer: !!this.me && r.id === this.me.id }));
-    this.hud?.showResults(mine);
+    this.hud?.showResults(mine, this);
     const me = mine.find(r => r.isPlayer);
     if (me) this.onLocalResult?.(me);
+  }
+
+  // ---------- Grand Prix (värden) ----------
+  gpPublic() {
+    const g = this.gp;
+    return g ? { on: g.on, stage: g.stage, count: g.count, order: g.order, idx: g.idx, table: g.table, podium: g.podium } : null;
+  }
+  gpSend() { if (this.gp) this.emit({ t: 'gp', gp: this.gpPublic() }); this.hud?.gpChanged?.(this); }
+  gpSetCount(n) { if (this.mode !== 'host' || !this.gp || this.gp.stage !== 'lobby') return; this.gp.count = n; this.gpSend(); }
+  // start: banorna slumpas, alla spelare börjar på 0 poäng
+  gpStart() {
+    const gp = this.gp;
+    gp.order = shuffledTracks(gp.count); gp.idx = -1; gp.podium = [];
+    gp.table = this.cars.filter(c => this.isHuman(c)).map(c => ({ id: c.id, name: c.name, pts: 0, wins: 0, last: 0, c1: c.spec?.colors?.[0] || '#888' }));
+    this.notifyAll(`🏆 GRAND PRIX! ${gp.order.length} banor i slumpad ordning`, 'good');
+    this.gpNext();
+  }
+  // nästa bana — eller prispallen när alla är körda
+  gpNext() {
+    const gp = this.gp;
+    if (gp.idx + 1 < gp.order.length) {
+      gp.idx++; gp.stage = 'race';
+      if (this.setTrack(gp.order[gp.idx])) this.emit({ t: 'track', id: this.trackId });
+      this.gpSend();
+      this.race.toGrid(CONF.GRID_WAIT);
+      this.flashAll(`BANA ${gp.idx + 1} AV ${gp.order.length}: ${this.track.namn}`);
+    } else {
+      gp.stage = 'final';
+      gp.podium = gp.table.slice(0, 3).map(r => r.id);
+      this.gpSend();
+      this.race.toPodium();
+    }
+  }
+  gpDone() {
+    this.gp.stage = 'lobby';
+    this.gpSend();
+    this.race.toLobby();
   }
 
   // ---------- Nätverk: gästen ----------
@@ -294,6 +342,7 @@ export class Game {
   clientWelcome(d) {
     for (const c of this.cars.slice()) this.removeCar(c);
     if (d.track) this.setTrack(d.track);
+    this.gp = d.gp || null;
     this.myId = d.you;
     for (const info of d.cars) this.addCarFromInfo(info);
     this.me = this.carById(this.myId);
@@ -841,14 +890,14 @@ export class Game {
     const wallOut = Math.abs(ox * T.rx[gi] + oy * T.ry[gi] + oz * T.rz[gi]) - T.halfW;
     const inGap = !!(car.trk.f & F_GAP);
     const dyRoad = ox * T.ux[gi] + oy * T.uy[gi] + oz * T.uz[gi], inTunnel = !!(car.trk.f & F_TUNNEL);
-    const nearRoad = dyRoad > -2.5 && dyRoad < (inTunnel ? 9.5 : 12);
+    const nearRoad = dyRoad > -2.5 && dyRoad < (inTunnel ? 9.5 : 12 / Math.min(1, T.def.grav ?? 1));
     if (!car.wrecked && !inGap && wallOut > 0.9 && wallOut < 10 && nearRoad) {
       const sd = Math.sign(car.trk.lat), i = car.trk.i, rhx = -T.hz[i], rhz = T.hx[i];
       const lv = v.body.linvel(), vl = lv.x * rhx + lv.z * rhz;
       const back = wallOut + 1.6;
       const p = v.body.translation();
       v.body.setTranslation({ x: p.x - rhx * sd * back, y: p.y, z: p.z - rhz * sd * back }, true);
-      this.wallGuardN = (this.wallGuardN || 0) + 1;
+      this.wallGuardN = (this.wallGuardN || 0) + 1; this.guardLog?.push([Math.round(car.trk.s), +wallOut.toFixed(1), +dyRoad.toFixed(1), car.trk.f, Math.round(v.speed * 3.6)]);
       if (vl * sd > 0) v.body.setLinvel({ x: lv.x - rhx * vl * 1.3, y: lv.y, z: lv.z - rhz * vl * 1.3 }, true);
       v.readState();
       T.project(v.pos.x, v.pos.z, i, car.trk);
@@ -1012,9 +1061,16 @@ export class Game {
     this.trails.update(this.time);
     this.skids.update(this.time);
 
+    // Grand Prix: prispallen
+    if (this.race.phase === 'podium' && this.gp?.podium && !this.podium) this.podium = new Podium(this);
+    if (this.race.phase !== 'podium' && this.podium) { this.podium.dispose(); this.podium = null; }
+    if (this.podium) this.podium.frame(dt, this.gp.podium || []);
     // kamera
     const me = this.me;
-    if (this.showcase) {
+    if (this.podium) {
+      this.podium.camera(this.camera, dt);
+      this.plate.mesh.visible = false;
+    } else if (this.showcase) {
       // garaget: kameran går runt den visade bilen
       this.orbit += dt * 0.35;
       const p = this.showcase.group.position;

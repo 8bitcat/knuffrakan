@@ -2,7 +2,7 @@
 // hopp med glipa, tunnlar genom berg, en dalbro och en bro där banan korsar sig själv.
 // Allt (väg, murar, terräng, AI, placeringar) utgår från samma sampling var 4:e meter.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=21';
+import { CONF } from './config.js?v=22';
 
 // ---------- Banorna ----------
 // SNÖBERGET: start/mål vid (0,0), körriktning +x.
@@ -67,6 +67,17 @@ const CTRL_IS = [
   [-600, 900], [-1000, 750], [-1150, 450], [-1000, 150], [-600, 0],
 ];
 
+// DJUNGELBANAN: slingrar genom regnskogen
+const CTRL_DJUNGEL = [
+  [0, 0], [600, 0], [1100, -100], [1400, -400], [1450, -850], [1200, -1250], [750, -1400], [300, -1250],
+  [0, -950], [-300, -700], [-750, -750], [-1150, -1000], [-1550, -950], [-1800, -600], [-1700, -200], [-1300, 50], [-700, 80],
+];
+// MÅNBANAN: stor slinga med långa raksträckor — med halv tyngdkraft blir hoppen jättelånga
+const CTRL_MANE = [
+  [0, 0], [800, 0], [1600, 0], [2160, -160], [2400, -560], [2240, -1040], [1680, -1280], [880, -1360],
+  [0, -1360], [-800, -1320], [-1440, -1120], [-1760, -720], [-1680, -280], [-1200, -40], [-640, 0],
+];
+
 export const TRACKS = [
   {
     id: 'snoberget', namn: 'SNÖBERGET', besk: 'Klassikern — 10,8 km med långa backar och krön', laps: 1,
@@ -122,6 +133,27 @@ export const TRACKS = [
     id: 'is', namn: 'ISBANAN', besk: 'Hal is och doserade kurvor under norrskenet — 3 varv', laps: 3, theme: 'is',
     grip: 0.72, bank: { k: 150, max: 0.32 },
     ctrl: CTRL_IS, hills: [2, 1, 0.5], crests: [], features: [],
+  },
+  {
+    id: 'djungel', namn: 'DJUNGELBANAN', besk: 'Regnskog, floder under broarna och tunneln genom templet — 2 varv', laps: 2, theme: 'djungel',
+    ctrl: CTRL_DJUNGEL, hills: [14, 6, 3], crests: [{ s: 0.3, h: 6, w: 45 }, { s: 0.92, h: 5, w: 45 }],
+    features: [
+      { type: 'jump', at: 0.088 },
+      { type: 'valley', at: 0.18, len: 170, depth: 26, namn: 'FLODEN' },
+      { type: 'tunnel', at: 0.42, len: 300, namn: 'TEMPLET' },
+      { type: 'valley', at: 0.74, len: 160, depth: 30, namn: 'VATTENFALLET' },
+    ],
+  },
+  {
+    id: 'mane', namn: 'MÅNBANAN', besk: 'Halv tyngdkraft, kratrar och jättehopp — jorden lyser på himlen — 2 varv', laps: 2, theme: 'mane',
+    grav: 0.45, grip: 1.6,
+    ctrl: CTRL_MANE, hills: [10, 6, 3], crests: [{ s: 0.25, h: 6, w: 50 }, { s: 0.48, h: 7, w: 55 }, { s: 0.82, h: 6, w: 50 }],
+    features: [
+      { type: 'jump', at: 0.1 },
+      { type: 'jump', at: 0.36 },
+      { type: 'valley', at: 0.55, len: 180, depth: 34, namn: 'STORA KRATERN' },
+      { type: 'jump', at: 0.68 },
+    ],
   },
 ];
 export const trackDef = (id) => TRACKS.find(t => t.id === id) || TRACKS[0];

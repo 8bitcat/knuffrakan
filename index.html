@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="sv" data-v="25">
+<html lang="sv" data-v="26">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,800;1,900&family=Michroma&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=25">
+<link rel="stylesheet" href="css/style.css?v=26">
 <script type="importmap">
 {
   "imports": {
@@ -29,6 +29,7 @@
 
 <div id="menu" class="hidden">
   <div class="mcard">
+    <button id="musbtn" class="chk icon" title="Musik — egna låtar eller Knuffrakan-låten">🎵</button>
     <div id="menulogo"></div>
     <p class="tag">Packracing i 300 km/h genom snöbergen. Ju längre bak du ligger, desto fortare går du — knuffa dig fram!<br><span class="sub">KÖR! = race online med alla som spelar just nu · Eget rum = bara ni som har koden</span></p>
     <input id="namein" maxlength="16" placeholder="Ditt namn" autocomplete="off">
@@ -48,7 +49,7 @@
     </div>
     <div class="keys">
       <b>W / ↑</b> gas · <b>S / ↓</b> broms/back · <b>A D / ← →</b> styr · <b>Mellanslag</b> handbroms ·
-      <b>R</b> tillbaka på banan · <b>F</b> vapen (kör genom ?-lådorna) · <b>E</b> fordonets specialförmåga · <b>C</b> kamera · <b>M</b> ljud
+      <b>R</b> tillbaka på banan · <b>F</b> vapen (kör genom ?-lådorna) · <b>E</b> fordonets specialförmåga · <b>C</b> kamera · <b>M</b> ljud · <b>N</b> musik
     </div>
     <div id="ver"></div>
   </div>
@@ -80,6 +81,22 @@
   <div class="grow end"><span></span><button id="ldone" class="big">KLAR</button></div>
 </div>
 
+<div id="musik" class="hidden">
+  <h2>MUSIK</h2>
+  <p class="lsub">Välj vad ni vill köra till. Egna låtar (MP3 eller MIDI) spelas bara hos dig och sparas i den här webbläsaren — välj flera på en gång eller dra in dem i fönstret. N slår av och på.</p>
+  <div class="lsec">
+    <div id="mval" class="opts">
+      <button data-mus="av">🔇 Ingen musik</button>
+      <button data-mus="tema">🎹 Knuffrakan-låten</button>
+      <button data-mus="egen">📁 Egna låtar</button>
+    </div>
+    <div id="mlist"></div>
+    <div class="lctl"><label class="small filebtn">➕ LÄGG TILL LÅTAR…<input id="mfile" type="file" multiple accept=".mid,.midi,.mp3,.ogg,.wav,.m4a,.aac,.webm,audio/*" hidden></label><span id="mname"></span></div>
+    <div class="lctl"><span>Volym</span><input id="mvol" type="range" min="0" max="100" value="60"><b id="mvolv">60 %</b></div>
+  </div>
+  <div class="grow end"><span></span><button id="mdone" class="big">KLAR</button></div>
+</div>
+
 <div id="garage" class="hidden">
   <h2>GARAGE</h2>
   <div class="gtabs"><button data-tab="look" class="on">UTSEENDE</button><button data-tab="gear">🔧 TILLBEHÖR</button></div>
@@ -106,6 +123,7 @@
     <button id="sb-garage" class="chk">GARAGE</button>
     <button id="sb-cam" class="chk">KAMERA</button>
     <button id="sb-mute" class="chk">LJUD</button>
+    <button id="sb-mus" class="chk">MUSIK</button>
   </div>
   <div id="place"><span id="placeN">–</span><span id="placeOf">/20</span><div class="plbl">PLATS</div></div>
   <div id="raceinfo"><div id="gpb" class="hidden"></div><div id="lap">STARTGRID</div><div id="timer">0:00.00</div><div class="hb"><div id="healthbar"></div></div><div id="draft">SUG ≫</div><div id="bonus"></div><div id="saves"></div><div id="mates"></div></div>
@@ -140,6 +158,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=25"></script>
+<script type="module" src="js/main.js?v=26"></script>
 </body>
 </html>

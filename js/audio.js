@@ -1,8 +1,8 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice, JetVoice } from './engines.js?v=25';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=25';
+import { EngineVoice, JetVoice } from './engines.js?v=26';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=26';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -73,6 +73,7 @@ export class GameAudio {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -12; comp.ratio.value = 4; comp.attack.value = 0.004;
     this.master.connect(comp); comp.connect(ctx.destination);
+    this.comp = comp;                                               // musiken går hit (förbi tunnelekot)
     // eko i tunnlarna
     this.echo = ctx.createDelay(1); this.echo.delayTime.value = 0.085;
     const fb = ctx.createGain(); fb.gain.value = 0.42;
@@ -149,6 +150,7 @@ export class GameAudio {
     this.muted = m;
     try { localStorage.setItem('knuff_mute', m ? '1' : '0'); } catch { /* privat läge */ }
     if (this.master) this.master.gain.value = m ? 0 : this.vol;
+    this.music?.applyVol?.();
   }
 
   // me = { kind, v, throttle, brake, on, slip, drift, scrWall, scrCar, slide },

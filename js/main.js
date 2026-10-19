@@ -1,21 +1,22 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=25';
-import { Game } from './game.js?v=25';
-import { HUD } from './hud.js?v=25';
-import { GameAudio } from './audio.js?v=25';
-import { Input } from './input.js?v=25';
-import { SHAPES } from './carmodel.js?v=25';
-import { makeCarView } from './vehicles3d.js?v=25';
-import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=25';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=25';
-import { logoCanvas } from './world.js?v=25';
-import { BotBrain } from './ai.js?v=25';
-import { connectRoom, NetHost, NetClient } from './net.js?v=25';
-import { TRACKS } from './track.js?v=25';
-import { SOUND_OPTS } from './sounds.js?v=25';
-import { newGP } from './gp.js?v=25';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=25';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=26';
+import { Game } from './game.js?v=26';
+import { Music } from './music.js?v=26';
+import { HUD } from './hud.js?v=26';
+import { GameAudio } from './audio.js?v=26';
+import { Input } from './input.js?v=26';
+import { SHAPES } from './carmodel.js?v=26';
+import { makeCarView } from './vehicles3d.js?v=26';
+import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=26';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=26';
+import { logoCanvas } from './world.js?v=26';
+import { BotBrain } from './ai.js?v=26';
+import { connectRoom, NetHost, NetClient } from './net.js?v=26';
+import { TRACKS } from './track.js?v=26';
+import { SOUND_OPTS } from './sounds.js?v=26';
+import { newGP } from './gp.js?v=26';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=26';
 
 const PUBLIC = 'PUBLIK';
 
@@ -88,6 +89,7 @@ async function boot() {
 
   const hud = new HUD();
   const audio = new GameAudio();
+  const music = audio.music = new Music(audio);
   const input = new Input();
   input.bindTouch(document);
   // vald bana (minns mellan besök)
@@ -122,6 +124,7 @@ async function boot() {
     hud.show(true);
     if ('ontouchstart' in window) $('touch').classList.remove('hidden');
     tractorTip();
+    music.autoplay();
   };
   const tractorTip = () => {
     const T = VTYPES[spec.kind || 'stock'], tip = spec.kind === 'traktor' ? '🚜 Håll E (eller SKOPA) för att lyfta skopan — kör upp bakom någon och lyft!' : SPECIALS[T?.special]?.tips;
@@ -386,6 +389,54 @@ async function boot() {
     audio.scrape(lab.scrW ? 1 : 0, lab.scrC ? 1 : 0, lab.scrW || lab.scrC ? Math.max(15, lab.v) : 0);
   };
 
+  // ---------- Musik: Knuffrakan-låten eller en egen fil (MIDI/MP3) ----------
+  const syncMusBtn = () => { $('sb-mus').textContent = music.choice === 'av' ? 'MUSIK AV' : 'MUSIK PÅ'; };
+  const escH = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const renderMusic = async () => {
+    for (const b of document.querySelectorAll('#mval button')) b.classList.toggle('on', b.dataset.mus === music.choice);
+    const L = await music.getList();
+    $('mlist').innerHTML = L.map((f, i) => `<div class="mrow${music.choice === 'egen' && i === music.idx % L.length ? ' on' : ''}"><button class="small" data-mi="${i}">▶</button><span>${f.midi ? '🎹' : '🎵'} ${escH(f.name)}</span><button class="small" data-mx="${i}">✕</button></div>`).join('');
+    $('mname').textContent = L.length ? `${L.length} ${L.length === 1 ? 'låt' : 'låtar'} — spelas efter varandra` : 'inga egna låtar än';
+    $('mvol').value = Math.round(music.vol * 100); $('mvolv').textContent = Math.round(music.vol * 100) + ' %';
+    syncMusBtn();
+  };
+  const openMusic = async () => { await audio.start(); $('musik').classList.remove('hidden'); $('menu').classList.add('dim'); renderMusic(); };
+  const closeMusic = () => { $('musik').classList.add('hidden'); $('menu').classList.remove('dim'); };
+  const loadMusic = async (files) => {
+    files = [...(files || [])];
+    if (!files.length) return;
+    await audio.start();
+    const r = await music.addFiles(files);
+    if (r.bad.length) hud.toast(`Kunde inte spela ${r.bad.join(', ')} — prova en annan MP3- eller MIDI-fil`, 'bad');
+    renderMusic();
+  };
+  music.onTrack = (name) => { if (inGame) hud.toast(`🎵 ${name}`); if (!$('musik').classList.contains('hidden')) renderMusic(); };
+  $('mlist').onclick = async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    await audio.start();
+    if (b.dataset.mi != null) await music.playIndex(+b.dataset.mi);
+    if (b.dataset.mx != null) await music.removeAt(+b.dataset.mx);
+    renderMusic();
+  };
+  bind('musbtn', 'onclick', openMusic);
+  bind('sb-mus', 'onclick', openMusic);
+  bind('mdone', 'onclick', closeMusic);
+  $('mval').onclick = async (e) => {
+    const b = e.target.closest('button[data-mus]');
+    if (!b) return;
+    await audio.start();
+    const ok = await music.set(b.dataset.mus);
+    if (!ok && b.dataset.mus === 'egen') $('mfile').click();       // ingen fil än: välj en
+    renderMusic();
+  };
+  $('mfile').onchange = (e) => { loadMusic(e.target.files); e.target.value = ''; };
+  $('mvol').oninput = () => { music.setVol(+$('mvol').value / 100); $('mvolv').textContent = $('mvol').value + ' %'; };
+  // dra in en fil i fönstret
+  window.addEventListener('dragover', (e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
+  window.addEventListener('drop', (e) => { const f = e.dataTransfer?.files; if (!f?.length) return; e.preventDefault(); loadMusic(f); });
+  syncMusBtn();
+
   const muteBtn = $('sb-mute');
   const syncMute = () => { muteBtn.textContent = audio.muted ? 'LJUD AV' : 'LJUD PÅ'; };
   muteBtn.onclick = () => { audio.setMuted(!audio.muted); syncMute(); };
@@ -395,6 +446,7 @@ async function boot() {
     if (!game.me) { if (code === 'Enter' && !$('menu').classList.contains('hidden') && $('garage').classList.contains('hidden')) start(); return; }
     if (code === 'KeyC') game.cam.toggle();
     if (code === 'KeyM') { audio.setMuted(!audio.muted); syncMute(); }
+    if (code === 'KeyN') music.toggle().then((ok) => { syncMusBtn(); hud.toast(music.choice === 'av' ? '🔇 Musiken av' : ok ? '🎵 Musiken på' : '📁 Välj en musikfil under MUSIK', ok ? 'good' : ''); });
     if (code === 'KeyR') { game.me.rTry = game.time; if (game.mode === 'client') game.net?.send({ t: 'reset' }); else game.requestReset(game.me); }
     if (code === 'Enter' && $('garage').classList.contains('hidden')) toggleReady();
   };

@@ -1,0 +1,37 @@
+// Egna låtar: flera filer på en gång (FILER=sökvägar med |), spelas efter varandra, sparas över omladdning, ta bort
+import { createRequire } from 'module';
+const require = createRequire('D:/Qisy/QISYFrontend/QISYFrontend-1/package.json');
+const { chromium } = require('playwright');
+const base = process.env.BASE || 'http://localhost:8810/';
+const files = (process.env.FILER || 'tools/out/testlat.mid|audio/wind.mp3').split('|');
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11', '--autoplay-policy=no-user-gesture-required'] });
+const page = await (await browser.newContext({ viewport: { width: 1100, height: 680 } })).newPage();
+const errors = [];
+page.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message));
+page.on('console', (m) => { if (m.type() === 'error' || /musiken/.test(m.text())) errors.push('CONSOLE ' + m.text()); });
+await page.goto(base);
+await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
+const st = () => page.evaluate(() => { const m = window.__game.audio.music, el = m.src?.el;
+  return `val ${m.choice} #${m.idx} «${m.fileName}» spelar ${m.playing}${el ? ` (${el.currentTime.toFixed(1)}/${el.duration.toFixed(0)} s)` : m.song ? ' (midi)' : ''} | lista: ${(m.list || []).map(f => f.name).join(' · ')}`; });
+await page.click('#musbtn'); await page.waitForTimeout(300);
+await page.setInputFiles('#mfile', files); await page.waitForTimeout(3000);
+console.log('inlagda:       ', await st());
+console.log('rader i rutan: ', await page.evaluate(() => [...document.querySelectorAll('#mlist .mrow')].map(r => (r.classList.contains('on') ? '▶ ' : '') + r.textContent.replace(/[▶✕]/g, '').trim()).join(' | ')));
+await page.screenshot({ path: 'tools/out/musik-lista.png' });
+// låten tar slut → nästa
+await page.evaluate(() => { const el = window.__game.audio.music.src?.el; if (el) el.currentTime = Math.max(0, el.duration - 0.6); });
+await page.waitForTimeout(2500);
+console.log('efter slutet:  ', await st());
+await page.click('#mlist .mrow:nth-child(3) button[data-mi]').catch(() => {}); await page.waitForTimeout(1500);
+console.log('▶ på nr 3:     ', await st());
+await page.reload();
+await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
+await page.click('#solo');
+await page.waitForFunction(() => window.__game.race.phase === 'race', null, { timeout: 60000 });
+await page.waitForTimeout(2000);
+console.log('omladdad, race:', await st());
+await page.click('#sb-mus'); await page.waitForTimeout(500);
+await page.click('#mlist .mrow:nth-child(1) button[data-mx]'); await page.waitForTimeout(800);
+console.log('tog bort nr 1: ', await st());
+console.log(errors.length ? errors.join('\n') : 'inga fel');
+await browser.close();

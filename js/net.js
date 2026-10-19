@@ -1,9 +1,9 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=25';
-import { Weapons } from './weapons.js?v=25';
-import { VTYPES } from './vtypes.js?v=25';
+import { PROTO } from './config.js?v=26';
+import { Weapons } from './weapons.js?v=26';
+import { VTYPES } from './vtypes.js?v=26';
 
 const PREFIX = 'knuffrakan-v' + PROTO + '-';
 const ROW = 28;     // flyttal per bil i en ögonblicksbild

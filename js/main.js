@@ -1,22 +1,22 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=26';
-import { Game } from './game.js?v=26';
-import { Music } from './music.js?v=26';
-import { HUD } from './hud.js?v=26';
-import { GameAudio } from './audio.js?v=26';
-import { Input } from './input.js?v=26';
-import { SHAPES } from './carmodel.js?v=26';
-import { makeCarView } from './vehicles3d.js?v=26';
-import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=26';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=26';
-import { logoCanvas } from './world.js?v=26';
-import { BotBrain } from './ai.js?v=26';
-import { connectRoom, NetHost, NetClient } from './net.js?v=26';
-import { TRACKS } from './track.js?v=26';
-import { SOUND_OPTS } from './sounds.js?v=26';
-import { newGP } from './gp.js?v=26';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=26';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=27';
+import { Game } from './game.js?v=27';
+import { Music } from './music.js?v=27';
+import { HUD } from './hud.js?v=27';
+import { GameAudio } from './audio.js?v=27';
+import { Input } from './input.js?v=27';
+import { SHAPES } from './carmodel.js?v=27';
+import { makeCarView } from './vehicles3d.js?v=27';
+import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=27';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=27';
+import { logoCanvas } from './world.js?v=27';
+import { BotBrain } from './ai.js?v=27';
+import { connectRoom, NetHost, NetClient } from './net.js?v=27';
+import { TRACKS } from './track.js?v=27';
+import { SOUND_OPTS } from './sounds.js?v=27';
+import { newGP } from './gp.js?v=27';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=27';
 
 const PUBLIC = 'PUBLIK';
 
@@ -160,17 +160,38 @@ async function boot() {
     try { res = await connectRoom(room, (s) => { $('netstatus').textContent = s; }); } catch (e) { console.warn(e); }
     busy = false;
     $('netstatus').textContent = '';
-    if (!res) { hud.toast('Kunde inte ansluta — du kör med bottar', 'bad'); startLocal(); return; }
+    if (!res?.role) {
+      const why = res?.fail === 'blocked' ? 'Rummet finns, men nätverket här stoppar anslutningen till den andra spelaren (vanligt på skolans wifi) — prova en mobils surfzon. Du kör med bottar så länge.'
+        : res?.fail === 'noserver' ? 'Kommer inte åt spelservern — nätverket blockerar den. Du kör med bottar så länge.'
+        : 'Kunde inte ansluta — du kör med bottar.';
+      hud.toast(why, 'bad'); $('netstatus').textContent = why;
+      startLocal(); return;
+    }
     if (res.role === 'host') {
       game.net = new NetHost(game, res.peer);
       game.room = room; game.isPublic = room === PUBLIC;
       if (opts.gp) game.gp = newGP();
+      // en gäst med nyare version: uppdatera (inte mitt i ett race) — gästen går med igen efteråt
+      game.onNewerGuest = () => {
+        if (game.race.phase === 'race') { const b = $('updbtn'); if (b) { b.textContent = '🔄 EN KOMPIS HAR EN NYARE VERSION — TRYCK FÖR ATT UPPDATERA'; b.classList.remove('hidden'); } return; }
+        hud.toast('En kompis har en nyare version — uppdaterar…', 'bad');
+        try { sessionStorage.setItem('knuff_auto', room); if (opts.gp) sessionStorage.setItem('knuff_autogp', '1'); } catch { /* ok */ }
+        setTimeout(() => { if (!reloadFresh()) hud.toast('Kunde inte uppdatera — ladda om sidan om en minut', 'bad'); }, 900);
+      };
       game.setTrack(trackChoice);
       startLocal();
       hud.toast(room === PUBLIC ? 'Du är först här — andra kan gå med i lobbyn' : opts.gp ? `🏆 Grand Prix-rum ${room}: dela koden med dina kompisar!` : `Rum ${room}: dela koden med dina kompisar!`, 'good');
     } else {
       game.becomeClient();
       game.room = room; game.isPublic = room === PUBLIC;
+      // värden har en annan version: är den nyare uppdaterar vi oss och går med igen; är den äldre uppdaterar den sig
+      game.onVersionMismatch = (hostProto) => {
+        if (hostProto > PROTO) {
+          hud.toast('Värden har en nyare version — uppdaterar och går med igen…', 'bad');
+          try { sessionStorage.setItem('knuff_auto', room); } catch { /* ok */ }
+          setTimeout(() => { if (!reloadFresh()) hud.toast('Kunde inte uppdatera — ladda om sidan om en minut', 'bad'); }, 900);
+        } else hud.toast('Värden har en äldre version — den uppdaterar sig, vänta lite…', 'bad');
+      };
       game.net = new NetClient(game, res.peer, res.conn, { name, spec });
       game.onHostLost = () => {
         hud.toast('Värden lämnade — letar nytt race…', 'bad');
@@ -185,8 +206,9 @@ async function boot() {
   bind('solo', 'onclick', startSolo);
   // Grand Prix-rum: egen kod (eller en påhittad) — kompisarna går med med EGET RUM
   bind('gpbtn', 'onclick', () => {
-    let code = ($('roomin').value || '').toUpperCase().replace(/[^A-ZÅÄÖ0-9]/g, '').slice(0, 6);
-    if (code.length < 3) { const L = 'ABCDEFGHJKLMNPRSTUVWXYZ'; code = 'GP' + Array.from({ length: 3 }, () => L[Math.floor(Math.random() * L.length)]).join(''); $('roomin').value = code; }
+    const code = ($('roomin').value || '').toUpperCase().replace(/[^A-ZÅÄÖ0-9]/g, '').slice(0, 6);
+    // ingen slumpkod: tryckte två kompisar på GRAND PRIX fick de var sitt rum
+    if (code.length < 3) { $('roomin').focus(); $('netstatus').textContent = 'Hitta på en rumskod (minst 3 tecken) och skriv SAMMA kod hos alla — tryck sedan GRAND PRIX'; return; }
     startOnline(code, { gp: true });
   });
   bind('roombtn', 'onclick', () => {
@@ -559,7 +581,9 @@ async function boot() {
   // automatisk start: tester (?auto), eller återanslutning efter att värden försvann
   let rejoin = null;
   try { rejoin = sessionStorage.getItem('knuff_auto'); sessionStorage.removeItem('knuff_auto'); } catch { /* ok */ }
-  if (rejoin) setTimeout(() => startOnline(rejoin), 300);
+  let rejoinGp = false;
+  try { rejoinGp = sessionStorage.getItem('knuff_autogp') === '1'; sessionStorage.removeItem('knuff_autogp'); } catch { /* ok */ }
+  if (rejoin) setTimeout(() => startOnline(rejoin, rejoinGp ? { gp: true } : {}), 300);
   else if (params.has('auto')) setTimeout(() => (params.has('online') ? startOnline(params.get('room') || PUBLIC) : startSolo()), 300);
 }
 

@@ -1,11 +1,19 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=26';
-import { Weapons } from './weapons.js?v=26';
-import { VTYPES } from './vtypes.js?v=26';
+import { PROTO } from './config.js?v=27';
+import { Weapons } from './weapons.js?v=27';
+import { VTYPES } from './vtypes.js?v=27';
 
-const PREFIX = 'knuffrakan-v' + PROTO + '-';
+// Rummets id hos PeerJS. Versionen ingår INTE (då hamnade en kompis med en äldre flik i ett eget rum utan
+// att någon märkte det) — i stället jämförs versionen i 'hello' och den äldre laddar om sig själv.
+const PREFIX = 'knuffrakan-rum-';
+// rumskoden → id: bara A–Z/0–9 (PeerJS godtar inte åäö — "HÄST" gick inte att skapa alls): Å/Ä → A, Ö → O
+export const roomKey = (room) => String(room || '').toUpperCase().replace(/[ÅÄ]/g, 'A').replace(/Ö/g, 'O').replace(/[^A-Z0-9]/g, '') || 'RUM';
+// Relästation (TURN) för nät där två enheter inte når varandra direkt (skolans wifi, gästnät, många mobilnät).
+// PeerJS egna TURN-servrar finns inte längre — en fungerande läggs här (kräver ett gratiskonto).
+const TURN = [];
+const PEER_OPTS = { config: { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }, ...TURN] } };
 const ROW = 28;     // flyttal per bil i en ögonblicksbild
 const HEAD = 6;     // [tid, fas, t, raceT, closeT, antal]
 const PHASES = ['idle', 'grid', 'count', 'race', 'results', 'lobby', 'podium'];
@@ -22,46 +30,56 @@ function loadPeer() {
 
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
+// Gå med: { role: 'client', peer, conn } eller { fail }: 'nohost' (inget rum), 'blocked' (rummet finns men
+// nätet stoppar kopplingen till värden), 'noserver' (kommer inte åt PeerJS-servern alls)
 function tryJoin(Peer, hostId, timeout = 7000) {
   return new Promise((resolve) => {
-    const peer = new Peer();
-    let done = false;
-    const fin = (v) => { if (done) return; done = true; if (!v) peer.destroy(); resolve(v); };
+    const peer = new Peer(PEER_OPTS);
+    let done = false, opened = false;
+    const fin = (v) => { if (done) return; done = true; if (!v.role) peer.destroy(); resolve(v); };
     peer.on('open', () => {
+      opened = true;
       const conn = peer.connect(hostId, { serialization: 'binary', reliable: true });
       conn.on('open', () => fin({ role: 'client', peer, conn }));
-      conn.on('error', () => fin(null));
+      conn.on('error', () => fin({ fail: 'blocked' }));
     });
-    peer.on('error', () => fin(null)); // peer-unavailable = ingen värd
-    setTimeout(() => fin(null), timeout);
+    // peer-unavailable kommer inom någon sekund om ingen värd finns; tystnad = värden finns men går inte att nå
+    peer.on('error', (e) => fin({ fail: e.type === 'peer-unavailable' ? 'nohost' : opened || e.type === 'webrtc' ? 'blocked' : 'noserver' }));
+    setTimeout(() => fin({ fail: opened ? 'blocked' : 'noserver' }), timeout);
   });
 }
 
 function tryHost(Peer, hostId) {
   return new Promise((resolve) => {
-    const peer = new Peer(hostId);
+    const peer = new Peer(hostId, PEER_OPTS);
     let done = false;
-    const fin = (v) => { if (done) return; done = true; if (!v) peer.destroy(); resolve(v); };
+    const fin = (v) => { if (done) return; done = true; if (!v.role) peer.destroy(); resolve(v); };
     peer.on('open', () => fin({ role: 'host', peer }));
-    peer.on('error', (e) => { if (e.type === 'unavailable-id') fin(null); else fin(null); });
-    setTimeout(() => fin(null), 8000);
+    peer.on('error', (e) => fin({ fail: e.type === 'unavailable-id' ? 'taken' : 'noserver' }));
+    setTimeout(() => fin({ fail: 'noserver' }), 8000);
   });
 }
 
 // Gå med i rummet — finns ingen värd blir man själv värd
+// Ut: { role: 'host' | 'client', … } eller { fail: 'blocked' | 'noserver' | 'nohost' }
 export async function connectRoom(room, onStatus) {
   const Peer = await loadPeer();
-  const hostId = PREFIX + room.toUpperCase();
+  const hostId = PREFIX + roomKey(room);
+  let fail = 'nohost';
   for (let attempt = 0; attempt < 3; attempt++) {
-    onStatus?.('Letar efter ett race…');
-    const c = await tryJoin(Peer, hostId, attempt === 0 ? 6000 : 4000);
-    if (c) return c;
-    onStatus?.('Startar ett nytt race…');
+    onStatus?.(attempt && fail === 'blocked' ? 'Rummet finns — försöker koppla upp igen…' : 'Letar efter rummet…');
+    const c = await tryJoin(Peer, hostId, attempt === 0 ? 8000 : 10000);
+    if (c.role) return c;
+    fail = c.fail;
+    if (fail === 'noserver') break;
+    if (fail === 'blocked') continue;             // värden finns — bli inte värd för ett eget, tomt rum
+    onStatus?.('Startar rummet…');
     const h = await tryHost(Peer, hostId);
-    if (h) return h;
+    if (h.role) return h;
+    if (h.fail === 'noserver') { fail = 'noserver'; break; }
     await wait(400 + Math.random() * 800); // någon annan hann bli värd — försök gå med igen
   }
-  return null;
+  return { fail };
 }
 
 export function carInfo(car) {
@@ -86,7 +104,8 @@ export class NetHost {
     const g = this.game;
     if (!d || typeof d !== 'object') return;
     if (d.t === 'hello') {
-      if (d.proto !== PROTO) { conn.send({ t: 'old' }); return; }
+      // olika versioner: den äldre laddar om sig själv (gästen direkt; värden när den inte är mitt i ett race)
+      if (d.proto !== PROTO) { conn.send({ t: 'old', proto: PROTO }); if (d.proto > PROTO) g.onNewerGuest?.(); return; }
       if (this.clients.has(conn)) return;
       const car = g.addRemotePlayer(String(d.name || 'Gäst').slice(0, 16), d.spec, conn);
       this.clients.set(conn, car);
@@ -240,7 +259,7 @@ export class NetClient {
       case 'flash': g.hud?.flash(d.m); if (d.beep) g.audio?.beep(true); break;
       case 'finish': g.clientFinish(d); break;
       case 'results': g.clientResults(d); break;
-      case 'old': g.hud?.toast('Någon kör en annan version — ladda om sidan', 'bad'); break;
+      case 'old': if (g.onVersionMismatch) g.onVersionMismatch(d.proto || 0); else g.hud?.toast('Någon kör en annan version — ladda om sidan', 'bad'); break;
       case 'wb': case 'wx': case 'wsh': case 'wgl': case 'wbn': case 'wsk': g.weapons?.onEvent(d); break;
       case 'splat': g.hud?.splat?.(); break;
       case 'gp': g.gp = d.gp; g.hud?.gpChanged?.(g); break;

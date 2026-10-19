@@ -1,7 +1,7 @@
 // Fordonstyper: stockcar, skolbuss, bigfoot … gokart, brandbil, stridsvagn och UFO.
 // Allt fysikaliskt per typ: mått, vikt, hjul, fjädring, grepp, styrning — plus kamera och tålighet.
 // Kroppens origo = tyngdpunkten. modelY = markens höjd i kroppens ram när bilen står still.
-import { withGear } from './gear.js?v=26';
+import { withGear } from './gear.js?v=27';
 
 export const VTYPES = {
   stock: {

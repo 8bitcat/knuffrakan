@@ -1,9 +1,9 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=31';
-import { Weapons } from './weapons.js?v=31';
-import { VTYPES } from './vtypes.js?v=31';
+import { PROTO } from './config.js?v=32';
+import { Weapons } from './weapons.js?v=32';
+import { VTYPES } from './vtypes.js?v=32';
 
 // Rummets id hos PeerJS. Versionen ingår INTE (då hamnade en kompis med en äldre flik i ett eget rum utan
 // att någon märkte det) — i stället jämförs versionen i 'hello' och den äldre laddar om sig själv.
@@ -310,7 +310,7 @@ export class NetClient {
       car.wrecked = !!(f & 1); car.ghostT = (f & 2) ? 1 : 0; car.drafting = !!(f & 4); car.finished = !!(f & 8);
       car.scrapeT = (f & 128) ? 0.15 : 0; car.grindT = (f & 256) ? 0.15 : 0; car.hidden = !!(f & 512);
       car.flatT = (f & 2048) ? 0.3 : 0; car.spookT = (f & 4096) ? 0.3 : 0; car.punctT = (f & 8192) ? 0.3 : 0;
-      car.place = rb[18]; car.prog = rb[19]; car.veh.vmax = rb[20]; car.saves = rb[21];
+      car.place = rb[18]; car.prog = rb[19]; car.lap = Math.floor(rb[19] / g.track.L);   // varvet ur framsteget (bara värden räknar varv) car.veh.vmax = rb[20]; car.saves = rb[21];
       car.lockT = rb[22]; car.flipT = rb[23]; car.rstate = rb[24]; { const x = rb[25], hi = Math.floor(x / 2); car.veh.loader = x - hi * 2; car.veh.tank = hi / 100; }
       car.wcode = rb[26]; car.wammo = rb[27]; car.firing = !!(f & 1024);
       car.trk.s = car.trk.s || 0;

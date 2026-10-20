@@ -2,8 +2,8 @@
 // group, model, wheels[{holder, spin, base}], setWheel, rest, dent, uvNear, livery, resetDamage, dispose, T.
 // Modellens y = 0 är marken, fronten åt -z.
 import * as THREE from 'three';
-import { VTYPES } from './vtypes.js?v=31';
-import { LOADER } from './gear.js?v=31';
+import { VTYPES } from './vtypes.js?v=32';
+import { LOADER } from './gear.js?v=32';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const mkTex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };

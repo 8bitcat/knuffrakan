@@ -1,9 +1,9 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=30';
-import { Weapons } from './weapons.js?v=30';
-import { VTYPES } from './vtypes.js?v=30';
+import { PROTO } from './config.js?v=31';
+import { Weapons } from './weapons.js?v=31';
+import { VTYPES } from './vtypes.js?v=31';
 
 // Rummets id hos PeerJS. Versionen ingår INTE (då hamnade en kompis med en äldre flik i ett eget rum utan
 // att någon märkte det) — i stället jämförs versionen i 'hello' och den äldre laddar om sig själv.

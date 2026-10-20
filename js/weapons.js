@@ -3,7 +3,7 @@
 // efter ögonblicksbilderna: varje bil har vapen + "skjuter" i sin rad, projektilerna ligger sist i
 // bilden, och lådor/explosioner/chockvågor kommer som händelser.
 import * as THREE from 'three';
-import { F_GAP, F_RAMP, F_LAND } from './track.js?v=30';
+import { F_GAP, F_RAMP, F_LAND } from './track.js?v=31';
 
 export const WEAPONS = {
   raket: { namn: 'Raketer', ikon: '🚀', ammo: 3 },
@@ -467,11 +467,13 @@ export class Weapons {
         // styr mot målet (med förhandssikte) eller mot punkten på vägen — vrider ~2,8 rad/s och ökar farten
         const tg = p.target && !p.target.wrecked && !p.target.hidden ? p.target : null;
         const aim = tg ? _b.copy(tg.veh.pos).addScaledVector(tg.veh.vel, p.pos.distanceTo(tg.veh.pos) / p.vmax) : p.aim;
-        const want = _h.copy(aim).sub(p.pos).normalize();
+        const want = _h.copy(aim).sub(p.pos), dist = want.length(); want.divideScalar(dist || 1);
         const sp0 = p.vel.length(), dir0 = _a.copy(p.vel).divideScalar(sp0 || 1);
         const ang = Math.acos(clamp(dir0.dot(want), -1, 1));
-        dir0.lerp(want, Math.min(1, 2.8 * dt / Math.max(1e-3, ang))).normalize();
-        p.vel.copy(dir0).multiplyScalar(Math.min(p.vmax, sp0 + 140 * dt));
+        // nära målet: svänger skarpare och saktar in, så den dyker ner i stället för att flyga förbi
+        const near = clamp(1 - dist / 70, 0, 1), turn = 2.8 + 7 * near;
+        dir0.lerp(want, Math.min(1, turn * dt / Math.max(1e-3, ang))).normalize();
+        p.vel.copy(dir0).multiplyScalar(Math.min(p.vmax + (tg ? tg.veh.speed : 0), (tg ? tg.veh.speed : 0) + 35 + dist * 1.3, sp0 + 140 * dt));   // alltid fortare än målet
       }
       const sp = p.vel.length(), dir = _d.copy(p.vel).divideScalar(sp || 1), step = sp * dt;
       let hitCar = null, ht = step + 0.5;

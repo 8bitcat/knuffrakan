@@ -26,7 +26,7 @@ await page.click('#mlist .mrow:nth-child(3) button[data-mi]').catch(() => {}); a
 console.log('▶ på nr 3:     ', await st());
 await page.reload();
 await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
-await page.click('#solo');
+await page.evaluate(() => window.__solo());
 await page.waitForFunction(() => window.__game.race.phase === 'race', null, { timeout: 60000 });
 await page.waitForTimeout(2000);
 console.log('omladdad, race:', await st());

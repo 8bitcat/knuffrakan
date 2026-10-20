@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="sv" data-v="27">
+<html lang="sv" data-v="28">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,800;1,900&family=Michroma&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=27">
+<link rel="stylesheet" href="css/style.css?v=28">
 <script type="importmap">
 {
   "imports": {
@@ -31,21 +31,16 @@
   <div class="mcard">
     <button id="musbtn" class="chk icon" title="Musik — egna låtar eller Knuffrakan-låten">🎵</button>
     <div id="menulogo"></div>
-    <p class="tag">Packracing i 300 km/h genom snöbergen. Ju längre bak du ligger, desto fortare går du — knuffa dig fram!<br><span class="sub">KÖR! = race online med alla som spelar just nu · Eget rum = bara ni som har koden</span></p>
+    <p class="tag">Packracing i 300 km/h genom snöbergen. Ju längre bak du ligger, desto fortare går du — knuffa dig fram!<br><span class="sub">SPELA = kör direkt med alla som spelar just nu (annars bottar) · GÅ MED I RUM = du och kompisarna med samma kod</span></p>
     <input id="namein" maxlength="16" placeholder="Ditt namn" autocomplete="off">
     <div id="mtrack" class="tracks"></div>
-    <button id="play" class="big">KÖR!</button>
+    <button id="play" class="big">SPELA</button>
+    <button id="roomopen" class="big roomb">👥 GÅ MED I RUM</button>
     <div id="netstatus"></div>
     <div class="row2">
-      <button id="solo" class="chk">SPELA SJÄLV</button>
       <button id="garagebtn" class="chk">GARAGE</button>
       <button id="gearbtn" class="chk">TILLBEHÖR</button>
       <button id="labbtn" class="chk">LJUD</button>
-    </div>
-    <div class="row2 room">
-      <input id="roomin" maxlength="6" placeholder="Rumskod" autocomplete="off">
-      <button id="roombtn" class="small">EGET RUM</button>
-      <button id="gpbtn" class="small gp">🏆 GRAND PRIX</button>
     </div>
     <div class="keys">
       <b>W / ↑</b> gas · <b>S / ↓</b> broms/back · <b>A D / ← →</b> styr · <b>Mellanslag</b> handbroms ·
@@ -81,12 +76,21 @@
   <div class="grow end"><span></span><button id="ldone" class="big">KLAR</button></div>
 </div>
 
+<div id="roompop" class="hidden">
+  <h2>GÅ MED I RUM</h2>
+  <p class="lsub">Skriv rummets kod — <b>samma kod hos alla kompisar</b>. Finns rummet går du med, annars skapas det och kompisarna går med hos dig.</p>
+  <input id="roomin" maxlength="6" placeholder="KOD" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go">
+  <div id="roomhint">3–6 tecken · bara A–Z och 0–9</div>
+  <div class="grow end"><button id="roomcancel" class="small">AVBRYT</button><button id="roomgo" class="big">GÅ IN</button></div>
+</div>
+
 <div id="musik" class="hidden">
   <h2>MUSIK</h2>
   <p class="lsub">Välj vad ni vill köra till. Egna låtar (MP3 eller MIDI) spelas bara hos dig och sparas i den här webbläsaren — välj flera på en gång eller dra in dem i fönstret. N slår av och på.</p>
   <div class="lsec">
     <div id="mval" class="opts">
       <button data-mus="av">🔇 Ingen musik</button>
+      <button data-mus="spel">🎵 Spelets låtar</button>
       <button data-mus="tema">🎹 Knuffrakan-låten</button>
       <button data-mus="egen">📁 Egna låtar</button>
     </div>
@@ -158,6 +162,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=27"></script>
+<script type="module" src="js/main.js?v=28"></script>
 </body>
 </html>

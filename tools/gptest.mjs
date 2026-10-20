@@ -7,20 +7,22 @@ const room = 'GP' + Math.floor(Math.random() * 9000 + 1000);
 const base = process.env.BASE || 'http://localhost:8810/';
 const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11'] });
 const errors = [];
-const mk = async (tag, btn) => {
+const mk = async (tag) => {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 640 } });
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errors.push(tag + ' PAGEERROR ' + e.message));
   await p.addInitScript((n) => localStorage.setItem('knuff_namn', n), tag);
   await p.goto(base);
   await p.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
-  await p.fill('#roomin', room); await p.click(btn);
+  await p.click('#roomopen'); await p.fill('#roomin', room); await p.click('#roomgo');
   await p.waitForFunction(() => window.__game?.me && window.__game.race.phase === 'lobby', null, { timeout: 60000 });
   return p;
 };
-const A = await mk('Anna', '#gpbtn');
-const B = await mk('Bertil', '#roombtn');
+const A = await mk('Anna');
+const B = await mk('Bertil');
 await A.waitForTimeout(2000);
+await A.click('[data-gpmode="1"]');           // Grand Prix väljs i lobbyn
+await A.waitForTimeout(600);
 await A.click('[data-gpn="3"]');
 await B.waitForTimeout(1500);
 console.log('lobby hos gästen:', await B.evaluate(() => document.getElementById('lroom').textContent + ' | ' + [...document.querySelectorAll('#ltrack button')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')).join(',') + ' | ' + document.getElementById('lstart').textContent));

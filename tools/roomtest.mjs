@@ -16,7 +16,7 @@ const page = async (browser, name) => {
   await p.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
   return p;
 };
-const join = async (p, code, btn = '#roombtn') => { await p.fill('#roomin', code); await p.click(btn); };
+const join = async (p, code) => { await p.click('#roomopen'); await p.fill('#roomin', code); await p.click('#roomgo'); };
 const inLobby = (p) => p.waitForFunction(() => window.__game?.me && window.__game.race.phase === 'lobby', null, { timeout: 90000 });
 const who = (p) => p.evaluate(() => { const g = window.__game; return `${g.mode || 'solo'} rum ${g.room} · människor: ${g.cars.filter(c => !c.brain).map(c => c.name).join(', ')}`; });
 
@@ -30,8 +30,10 @@ if (only.includes('1')) {
 }
 if (only.includes('2')) {
   const a = await page(B, 'Henry');
-  await a.fill('#roomin', ''); await a.click('#gpbtn'); await a.waitForTimeout(800);
-  console.log('2 GP utan kod:', await a.evaluate(() => `${document.getElementById('netstatus').textContent} | i spelet: ${!!window.__game.me}`));
+  await a.click('#roomopen'); await a.fill('#roomin', 'hä st!7'); await a.waitForTimeout(200);
+  const v = await a.evaluate(() => `kod «${document.getElementById('roomin').value}» · ${document.getElementById('roomhint').textContent}`);
+  await a.fill('#roomin', 'ab'); await a.click('#roomgo'); await a.waitForTimeout(300);
+  console.log('2 tecken:', v, '| för kort:', await a.evaluate(() => `${document.getElementById('roomhint').textContent} · i spelet: ${!!window.__game.me}`));
   await a.context().close();
 }
 if (only.includes('3')) {

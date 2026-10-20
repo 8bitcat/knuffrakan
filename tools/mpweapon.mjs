@@ -13,7 +13,7 @@ const mk = async (tag) => {
   await p.addInitScript((n) => { localStorage.setItem('knuff_namn', n); localStorage.setItem('knuff_bana', 'snoberget'); }, tag);
   await p.goto(base);
   await p.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
-  await p.fill('#roomin', room); await p.click('#roombtn');
+  await p.click('#roomopen'); await p.fill('#roomin', room); await p.click('#roomgo');
   await p.waitForFunction(() => window.__game?.me && window.__game.race.phase === 'lobby', null, { timeout: 60000 });
   return p;
 };

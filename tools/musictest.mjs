@@ -46,7 +46,7 @@ await page.click('#mdone');
 await page.reload();
 await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
 console.log('efter omladdning (meny):', await st());
-await page.click('#solo');
+await page.evaluate(() => window.__solo());
 await page.waitForFunction(() => window.__game.race.phase === 'race', null, { timeout: 60000 });
 await page.waitForTimeout(1200);
 console.log('i racet:        ', await st());

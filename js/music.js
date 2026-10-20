@@ -4,6 +4,13 @@
 
 const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* privat läge */ } return null; };
 
+// Spelets egna låtar (Carls mp3:or, omkodade till 96 kbps) — strömmas när de spelas, laddas aldrig i förväg
+export const SPELETS = [
+  { name: 'Disco Funk', url: 'audio/musik/discofunk.mp3' },
+  { name: 'Music', url: 'audio/musik/music.mp3' },
+  { name: 'Untitled', url: 'audio/musik/untitled.mp3' },
+];
+
 // ---------- egen fil i webbläsaren (IndexedDB; databasen heter som spelet — 8bitcat delar ursprung) ----------
 const idb = () => new Promise((res, rej) => {
   const r = indexedDB.open('knuffrakan', 1);
@@ -153,7 +160,8 @@ const K = {
 export class Music {
   constructor(audio) {
     this.audio = audio;
-    this.choice = ls('knuff_musik') || 'av';             // 'av' | 'tema' | 'egen'
+    this.choice = ls('knuff_musik') || 'spel';           // 'av' | 'spel' (spelets låtar) | 'tema' | 'egen'
+    this.sIdx = +(ls('knuff_musiks') || 0);
     this.vol = Math.min(1, Math.max(0, +(ls('knuff_musikvol') ?? 0.6)));
     this.idx = +(ls('knuff_musikidx') || 0);
     this.list = null; this.song = null; this.src = null; this.timer = null; this.voices = 0;
@@ -176,7 +184,7 @@ export class Music {
   applyVol() { if (this.out) this.out.gain.setTargetAtTime(this.audio.muted ? 0 : this.vol * 0.9, this.audio.ctx.currentTime, 0.05); }
   setVol(v) { this.vol = Math.min(1, Math.max(0, v)); ls('knuff_musikvol', String(this.vol)); this.applyVol(); }
   get playing() { return !!(this.song || this.src); }
-  get fileName() { const L = this.list; return L?.length ? L[this.idx % L.length].name : ''; }
+  get fileName() { if (this.choice === 'spel') return SPELETS[this.sIdx % SPELETS.length].name; const L = this.list; return L?.length ? L[this.idx % L.length].name : ''; }
   // spellistan (gamla versionen sparade en enda fil under 'fil')
   async getList() {
     if (!this.list) {
@@ -199,6 +207,14 @@ export class Music {
     if (this.choice === 'av' || !this.ensure()) return true;
     if (this.choice === 'tema') { this.startSong(tema()); return true; }
     const tok = (this.tok = (this.tok || 0) + 1);            // ett nyare play() tar över
+    if (this.choice === 'spel') {
+      this.sIdx %= SPELETS.length;
+      const t = SPELETS[this.sIdx];
+      try { await this.playUrl(t.url, false, tok, () => { this.sIdx = (this.sIdx + 1) % SPELETS.length; ls('knuff_musiks', String(this.sIdx)); this.play(); }); }
+      catch (e) { console.warn('musiken', e); return false; }
+      if (this.src) this.onTrack?.(t.name);
+      return true;
+    }
     const L = await this.getList();
     if (!L.length) return false;                            // inga egna låtar än
     if (this.choice !== 'egen' || this.playing || tok !== this.tok) return true;
@@ -207,20 +223,25 @@ export class Music {
     try {
       if (f.midi) this.startSong(parseMidi(f.data), one ? null : () => this.next());
       else {
-        // ljudfilen strömmas genom ett ljudelement (en avkodad låt på 5 min vore ~100 MB i minnet)
         const url = URL.createObjectURL(new Blob([f.data], { type: f.type || 'audio/mpeg' }));
-        const el = new Audio(); el.src = url; el.loop = one;
-        const node = this.audio.ctx.createMediaElementSource(el);
-        node.connect(this.out);
-        const h = this.src = { el, stop: () => { el.onended = null; el.pause(); node.disconnect(); el.removeAttribute('src'); el.load(); URL.revokeObjectURL(url); } };
-        el.onended = () => { if (this.src === h) { h.stop(); this.src = null; this.next(); } };
-        await el.play();
-        if (this.src !== h) return true;
+        await this.playUrl(url, one, tok, () => this.next(), true);
+        if (!this.src) return true;
       }
       this.onTrack?.(f.name);
       return true;
     } catch (e) { console.warn('musiken', e); return false; }
   }
+  // ljudfilen strömmas genom ett ljudelement (en avkodad låt på 5 min vore ~100 MB i minnet)
+  async playUrl(url, loop, tok, onEnd, blob = false) {
+    const el = new Audio(); el.src = url; el.loop = loop; el.preload = 'auto';
+    const node = this.audio.ctx.createMediaElementSource(el);
+    node.connect(this.out);
+    const h = this.src = { el, stop: () => { el.onended = null; el.pause(); node.disconnect(); el.removeAttribute('src'); el.load(); if (blob) URL.revokeObjectURL(url); } };
+    el.onended = () => { if (this.src === h) { h.stop(); this.src = null; onEnd(); } };
+    try { await el.play(); } catch (e) { if (this.src === h) { h.stop(); this.src = null; } throw e; }
+    if (this.src !== h || tok !== this.tok) { if (this.src === h) { h.stop(); this.src = null; } }
+  }
+  async playSpel(i) { this.sIdx = i; ls('knuff_musiks', String(i)); this.choice = 'spel'; ls('knuff_musik', 'spel'); this.last = 'spel'; return this.play(); }
   // nästa låt i spellistan (runt)
   async next() { const L = await this.getList(); if (!L.length) return; this.idx = (this.idx + 1) % L.length; ls('knuff_musikidx', String(this.idx)); this.play(); }
   async playIndex(i) { this.idx = i; ls('knuff_musikidx', String(i)); this.choice = 'egen'; ls('knuff_musik', 'egen'); this.last = 'egen'; return this.play(); }

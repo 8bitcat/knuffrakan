@@ -1,8 +1,8 @@
-import { CONF } from './config.js?v=27';
-import { GEAR } from './gear.js?v=27';
-import { WEAPONS, WIDS } from './weapons.js?v=27';
-import { TRACKS } from './track.js?v=27';
-import { SPECIAL_KNAPP } from './vtypes.js?v=27';
+import { CONF } from './config.js?v=28';
+import { GEAR } from './gear.js?v=28';
+import { WEAPONS, WIDS } from './weapons.js?v=28';
+import { TRACKS } from './track.js?v=28';
+import { SPECIAL_KNAPP } from './vtypes.js?v=28';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -142,6 +142,7 @@ export class HUD {
     if (!this.el.lobby) return;
     const info = game.race.phase === 'lobby' ? game.lobbyInfo : null;
     this.el.lobby.classList.toggle('hidden', !info || !game.me);
+    document.body.classList.toggle('inlobby', !!(info && game.me));        // minikartan skymde STARTA-knappen
     if (!info || !game.me) return;
     const myId = game.me.id, isHost = game.mode === 'host';
     const players = info.players || [];
@@ -152,12 +153,14 @@ export class HUD {
       this.lobbyKey = key;
       this.el.lroom.textContent = info.pub ? 'ÖPPET RACE' : (gp ? '🏆 GRAND PRIX · RUM ' : 'RUM ') + info.room;
       // Grand Prix: värden väljer hur många banor (de slumpas när man startar)
-      this.el.ltrack.innerHTML = gp
+      // eget rum: värden väljer vanligt race eller Grand Prix
+      const mode = info.pub ? '' : `<div class="lmode"><button data-gpmode="0" class="${gp ? '' : 'on'}" ${isHost ? '' : 'disabled'}>🏁 RACE</button><button data-gpmode="1" class="${gp ? 'on' : ''}" ${isHost ? '' : 'disabled'}>🏆 GRAND PRIX</button></div>`;
+      this.el.ltrack.innerHTML = mode + (gp
         ? `<div class="gpn">Antal banor (slumpad ordning)</div>` + [[3, '3'], [5, '5'], [0, 'ALLA ' + TRACKS.length]].map(([n, t]) =>
           `<button data-gpn="${n}" class="${gp.count === n ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${t}</button>`).join('')
-        : this.trackButtons(info.track, isHost, info.laps);
+        : this.trackButtons(info.track, isHost, info.laps));
       this.el.lstart.textContent = gp ? 'STARTA GRAND PRIX' : 'STARTA RACE';
-      this.el.lshare.textContent = info.pub ? 'Alla som trycker KÖR! hamnar här' : `Kompisar skriver ${info.room} och trycker EGET RUM`;
+      this.el.lshare.textContent = info.pub ? 'Alla som trycker SPELA hamnar här' : `Kompisarna trycker GÅ MED I RUM och skriver ${info.room}`;
       this.el.lplayers.innerHTML = players.map(p => `<div class="lp${p.ready ? ' ready' : ''}${p.id === myId ? ' me' : ''}">
         <span class="chip" style="background:linear-gradient(135deg,${esc(p.c1)} 55%,${esc(p.c2)} 55%)">${esc(String(p.nr ?? ""))}</span>
         <span class="nm">${esc(p.name)}${p.host ? ' <span class="host">värd</span>' : ''}<span class="gear">${(p.gear || []).map(g => GEAR[g]?.ikon || '').join('')}</span></span>

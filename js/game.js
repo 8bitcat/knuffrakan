@@ -1,23 +1,23 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=27';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=27';
-import { themeOf } from './themes.js?v=27';
-import { LAVA_IN } from './world.js?v=27';
-import { buildWorld, gridSlots } from './world.js?v=27';
-import { createScene, ChaseCam } from './scene.js?v=27';
-import { makeCarView } from './vehicles3d.js?v=27';
-import { typeOf } from './vtypes.js?v=27';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=27';
-import { makeLivery, randomSpec } from './livery.js?v=27';
-import { Vehicle, CP } from './vehicle.js?v=27';
-import { BotBrain } from './ai.js?v=27';
-import { Race } from './race.js?v=27';
-import { FX, Trails } from './fx.js?v=27';
-import { NameTag, SpeedPlate } from './tags.js?v=27';
-import { RemoteVeh, carInfo } from './net.js?v=27';
-import { Weapons } from './weapons.js?v=27';
-import { newGP, shuffledTracks, award, Podium } from './gp.js?v=27';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=28';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=28';
+import { themeOf } from './themes.js?v=28';
+import { LAVA_IN } from './world.js?v=28';
+import { buildWorld, gridSlots } from './world.js?v=28';
+import { createScene, ChaseCam } from './scene.js?v=28';
+import { makeCarView } from './vehicles3d.js?v=28';
+import { typeOf } from './vtypes.js?v=28';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=28';
+import { makeLivery, randomSpec } from './livery.js?v=28';
+import { Vehicle, CP } from './vehicle.js?v=28';
+import { BotBrain } from './ai.js?v=28';
+import { Race } from './race.js?v=28';
+import { FX, Trails } from './fx.js?v=28';
+import { NameTag, SpeedPlate } from './tags.js?v=28';
+import { RemoteVeh, carInfo } from './net.js?v=28';
+import { Weapons } from './weapons.js?v=28';
+import { newGP, shuffledTracks, award, Podium } from './gp.js?v=28';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const TRACK_DEFAULT = 'hoppbacken';
@@ -297,6 +297,12 @@ export class Game {
     return g ? { on: g.on, stage: g.stage, count: g.count, order: g.order, idx: g.idx, table: g.table, podium: g.podium } : null;
   }
   gpSend() { if (this.gp) this.emit({ t: 'gp', gp: this.gpPublic() }); this.hud?.gpChanged?.(this); }
+  // lobbyn i ett eget rum: värden slår på/av Grand Prix
+  gpMode(on) {
+    if (this.mode !== 'host' || this.isPublic || this.race.phase !== 'lobby') return;
+    if (on && !this.gp) { this.gp = newGP(); this.gpSend(); }
+    else if (!on && this.gp) { this.gp = null; this.emit({ t: 'gp', gp: null }); this.hud?.gpChanged?.(this); }
+  }
   gpSetCount(n) { if (this.mode !== 'host' || !this.gp || this.gp.stage !== 'lobby') return; this.gp.count = n; this.gpSend(); }
   // start: banorna slumpas, alla spelare börjar på 0 poäng
   gpStart() {

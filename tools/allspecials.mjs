@@ -24,7 +24,7 @@ for (const kind of (process.argv[2] || Object.keys(CASES).join(',')).split(','))
   await page.addInitScript((k) => { localStorage.setItem('knuff_bana', 'hoppbacken'); localStorage.setItem('knuff_spec', JSON.stringify({ colors: ['#ff3b6b', '#2bd6e8', '#fff'], pattern: 'split', number: 9, sponsor: 'TURBOFIL', shape: 1, kind: k })); }, kind);
   await page.goto(`http://localhost:${process.env.PORT || 8810}/?nogear`);
   await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
-  await page.click('#solo');
+  await page.evaluate(() => window.__solo());
   await page.waitForFunction(() => window.__game.race.phase === 'race' && window.__game.race.raceT > 4.5, null, { timeout: 60000 });
   await page.evaluate((vp) => { const g = window.__game, me = g.me, s = me.trk.s + 60;
     g.placeCar(me, s, 0, 20);

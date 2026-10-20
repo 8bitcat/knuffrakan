@@ -13,7 +13,7 @@ const mk = async (tag, kind) => {
   await p.addInitScript(([n, k]) => { localStorage.setItem('knuff_namn', n); localStorage.setItem('knuff_spec', JSON.stringify({ colors: ['#ff5fa2', '#2bb6f0', '#fff'], pattern: 'split', number: 7, sponsor: 'TURBOFIL', shape: 1, kind: k })); }, [tag, kind]);
   await p.goto(base);
   await p.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
-  await p.fill('#roomin', room); await p.click('#roombtn');
+  await p.click('#roomopen'); await p.fill('#roomin', room); await p.click('#roomgo');
   await p.waitForFunction(() => window.__game?.me && window.__game.race.phase === 'lobby', null, { timeout: 60000 });
   return p;
 };

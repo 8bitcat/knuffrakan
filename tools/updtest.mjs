@@ -30,7 +30,7 @@ const errors = [];
   await page.route('**/version.json*', (r) => fake ? r.fulfill({ contentType: 'application/json', body: '{"version":"9.9.9","proto":999}' }) : r.continue());
   await page.goto(base);
   await page.waitForFunction(() => window.ready === true, null, { timeout: 90000 });
-  await page.click('#solo');
+  await page.evaluate(() => window.__solo());
   await page.waitForTimeout(1500);
   fake = true;
   await page.clock?.fastForward?.(61000).catch?.(() => {});

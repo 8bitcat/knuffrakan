@@ -1,22 +1,22 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=27';
-import { Game } from './game.js?v=27';
-import { Music } from './music.js?v=27';
-import { HUD } from './hud.js?v=27';
-import { GameAudio } from './audio.js?v=27';
-import { Input } from './input.js?v=27';
-import { SHAPES } from './carmodel.js?v=27';
-import { makeCarView } from './vehicles3d.js?v=27';
-import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=27';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=27';
-import { logoCanvas } from './world.js?v=27';
-import { BotBrain } from './ai.js?v=27';
-import { connectRoom, NetHost, NetClient } from './net.js?v=27';
-import { TRACKS } from './track.js?v=27';
-import { SOUND_OPTS } from './sounds.js?v=27';
-import { newGP } from './gp.js?v=27';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=27';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=28';
+import { Game } from './game.js?v=28';
+import { Music, SPELETS } from './music.js?v=28';
+import { HUD } from './hud.js?v=28';
+import { GameAudio } from './audio.js?v=28';
+import { Input } from './input.js?v=28';
+import { SHAPES } from './carmodel.js?v=28';
+import { makeCarView } from './vehicles3d.js?v=28';
+import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=28';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=28';
+import { logoCanvas } from './world.js?v=28';
+import { BotBrain } from './ai.js?v=28';
+import { connectRoom, NetHost, NetClient } from './net.js?v=28';
+import { TRACKS } from './track.js?v=28';
+import { SOUND_OPTS } from './sounds.js?v=28';
+import { newGP } from './gp.js?v=28';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=28';
 
 const PUBLIC = 'PUBLIK';
 
@@ -180,7 +180,7 @@ async function boot() {
       };
       game.setTrack(trackChoice);
       startLocal();
-      hud.toast(room === PUBLIC ? 'Du är först här — andra kan gå med i lobbyn' : opts.gp ? `🏆 Grand Prix-rum ${room}: dela koden med dina kompisar!` : `Rum ${room}: dela koden med dina kompisar!`, 'good');
+      hud.toast(room === PUBLIC ? 'Du är först här — andra kan gå med i lobbyn' : `Rum ${room} är skapat — kompisarna trycker GÅ MED I RUM och skriver ${room}`, 'good');
     } else {
       game.becomeClient();
       game.room = room; game.isPublic = room === PUBLIC;
@@ -203,19 +203,33 @@ async function boot() {
     }
   };
   bind('play', 'onclick', () => startOnline(PUBLIC));
-  bind('solo', 'onclick', startSolo);
-  // Grand Prix-rum: egen kod (eller en påhittad) — kompisarna går med med EGET RUM
-  bind('gpbtn', 'onclick', () => {
-    const code = ($('roomin').value || '').toUpperCase().replace(/[^A-ZÅÄÖ0-9]/g, '').slice(0, 6);
-    // ingen slumpkod: tryckte två kompisar på GRAND PRIX fick de var sitt rum
-    if (code.length < 3) { $('roomin').focus(); $('netstatus').textContent = 'Hitta på en rumskod (minst 3 tecken) och skriv SAMMA kod hos alla — tryck sedan GRAND PRIX'; return; }
-    startOnline(code, { gp: true });
-  });
-  bind('roombtn', 'onclick', () => {
-    const code = ($('roomin').value || '').toUpperCase().replace(/[^A-ZÅÄÖ0-9]/g, '').slice(0, 6);
-    if (code.length < 3) { $('roomin').focus(); $('netstatus').textContent = 'Skriv en kod på minst 3 tecken'; return; }
+  window.__solo = startSolo;                                     // testverktygen (ingen knapp längre)
+  // GÅ MED I RUM: en skylt med koden. Finns rummet går man med, annars skapas det (Grand Prix väljs i lobbyn).
+  // Bara A–Z och 0–9 går att skriva (åäö och tecken försvinner direkt) — då kan det inte bli olika rum.
+  const cleanCode = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  const openRoom = () => {
+    $('roompop').classList.remove('hidden'); $('menu').classList.add('dim');
+    $('roomhint').textContent = '3–6 tecken · bara A–Z och 0–9'; $('roomhint').classList.remove('bad');
+    $('roomin').focus(); setTimeout(() => $('roomin').focus(), 50);   // direkt — annars försvann första bokstaven
+  };
+  const closeRoom = () => { $('roompop').classList.add('hidden'); $('menu').classList.remove('dim'); };
+  const goRoom = () => {
+    const code = cleanCode($('roomin').value);
+    if (code.length < 3) { $('roomhint').textContent = 'Koden behöver minst 3 tecken (A–Z, 0–9)'; $('roomhint').classList.add('bad'); $('roomin').focus(); return; }
+    try { localStorage.setItem('knuff_rum', code); } catch { /* ok */ }
+    closeRoom();
     startOnline(code);
+  };
+  $('roomin').addEventListener('input', () => {
+    const el = $('roomin'), v = cleanCode(el.value);
+    if (el.value !== v) { el.value = v; $('roomhint').textContent = 'Bara A–Z och 0–9 går att använda'; $('roomhint').classList.add('bad'); }
+    else { $('roomhint').textContent = '3–6 tecken · bara A–Z och 0–9'; $('roomhint').classList.remove('bad'); }
   });
+  $('roomin').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); goRoom(); } if (e.key === 'Escape') closeRoom(); e.stopPropagation(); });
+  try { $('roomin').value = cleanCode(localStorage.getItem('knuff_rum') || ''); } catch { /* ok */ }
+  bind('roomopen', 'onclick', openRoom);
+  bind('roomgo', 'onclick', goRoom);
+  bind('roomcancel', 'onclick', closeRoom);
   const start = () => startOnline(PUBLIC);
 
   // ---------- Garage ----------
@@ -340,6 +354,8 @@ async function boot() {
   const renderMenuTracks = () => { const el = $('mtrack'); if (el) el.innerHTML = hud.trackButtons(trackChoice, true, 1); };
   renderMenuTracks();
   const pickTrack = (e) => {
+    const gm = e.target.closest('[data-gpmode]');
+    if (gm) { game.gpMode(gm.dataset.gpmode === '1'); hud.lobbyKey = ''; return; }
     const n = e.target.closest('[data-gpn]');
     if (n) { game.gpSetCount(+n.dataset.gpn); hud.lobbyKey = ''; return; }
     const b = e.target.closest('[data-track]');
@@ -417,8 +433,10 @@ async function boot() {
   const renderMusic = async () => {
     for (const b of document.querySelectorAll('#mval button')) b.classList.toggle('on', b.dataset.mus === music.choice);
     const L = await music.getList();
-    $('mlist').innerHTML = L.map((f, i) => `<div class="mrow${music.choice === 'egen' && i === music.idx % L.length ? ' on' : ''}"><button class="small" data-mi="${i}">▶</button><span>${f.midi ? '🎹' : '🎵'} ${escH(f.name)}</span><button class="small" data-mx="${i}">✕</button></div>`).join('');
-    $('mname').textContent = L.length ? `${L.length} ${L.length === 1 ? 'låt' : 'låtar'} — spelas efter varandra` : 'inga egna låtar än';
+    const spel = SPELETS.map((t, i) => `<div class="mrow${music.choice === 'spel' && i === music.sIdx % SPELETS.length ? ' on' : ''}"><button class="small" data-ms="${i}">▶</button><span>🎵 ${escH(t.name)}</span></div>`).join('');
+    const egna = L.map((f, i) => `<div class="mrow${music.choice === 'egen' && i === music.idx % L.length ? ' on' : ''}"><button class="small" data-mi="${i}">▶</button><span>${f.midi ? '🎹' : '📁'} ${escH(f.name)}</span><button class="small" data-mx="${i}">✕</button></div>`).join('');
+    $('mlist').innerHTML = `<div class="mhd">Spelets låtar</div>${spel}${L.length ? '<div class="mhd">Egna låtar (bara här)</div>' + egna : ''}`;
+    $('mname').textContent = L.length ? `${L.length} egna ${L.length === 1 ? 'låt' : 'låtar'}` : 'egna låtar: MP3 eller MIDI';
     $('mvol').value = Math.round(music.vol * 100); $('mvolv').textContent = Math.round(music.vol * 100) + ' %';
     syncMusBtn();
   };
@@ -437,6 +455,7 @@ async function boot() {
     const b = e.target.closest('button');
     if (!b) return;
     await audio.start();
+    if (b.dataset.ms != null) await music.playSpel(+b.dataset.ms);
     if (b.dataset.mi != null) await music.playIndex(+b.dataset.mi);
     if (b.dataset.mx != null) await music.removeAt(+b.dataset.mx);
     renderMusic();

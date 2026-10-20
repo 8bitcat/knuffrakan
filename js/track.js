@@ -2,7 +2,7 @@
 // hopp med glipa, tunnlar genom berg, en dalbro och en bro där banan korsar sig själv.
 // Allt (väg, murar, terräng, AI, placeringar) utgår från samma sampling var 4:e meter.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=27';
+import { CONF } from './config.js?v=28';
 
 // ---------- Banorna ----------
 // SNÖBERGET: start/mål vid (0,0), körriktning +x.

@@ -1,7 +1,7 @@
 // Grand Prix: flera race i slumpad banordning, poäng per race (som F1), pokaler till de tre bästa.
 // Värden äger läget (game.gp) och skickar det till gästerna ({ t: 'gp' }); prispallen byggs hos alla.
 import * as THREE from 'three';
-import { TRACKS } from './track.js?v=32';
+import { TRACKS } from './track.js?v=33';
 
 export const GP_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];   // plats 11+ = 1 poäng
 export const ptsFor = (place) => GP_POINTS[place - 1] ?? 1;

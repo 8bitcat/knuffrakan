@@ -22,6 +22,16 @@ const SET = {
   olja: { b: [-40, 0, 22], me: 24, hold: 120, wait: 2600, drop: true },
   minor: { b: [-40, 0, 22], me: 24, hold: 120, wait: 2600, drop: true },
   chock: { b: [0, 6, 0], me: 0, hold: 120, wait: 900 },
+  flamma: { b: [9, 0, 0], me: 0, hold: 2500, wait: 600 },
+  laser: { b: [50, 0, 0], me: 0, hold: 120, wait: 500 },
+  frys: { b: [40, 0, 8], me: 0, hold: 120, wait: 700 },
+  krymp: { b: [40, 0, 0], me: 0, hold: 120, wait: 700 },
+  bowling: { b: [45, 0, 0], me: 10, hold: 120, wait: 2600 },
+  lim: { b: [-40, 0, 22], me: 24, hold: 120, wait: 2600, drop: true },
+  tornado: { b: [60, 0, 0], me: 10, hold: 120, wait: 2600 },
+  fyrverkeri: { b: [35, 0, 0], me: 0, hold: 120, wait: 1500 },
+  skold: { b: [0, 4, 0], me: 0, hold: 120, wait: 600 },
+  kanonkula: { b: [40, 0, 0], me: 12, hold: 120, wait: 2500 },
 };
 for (const id of which) {
   const S = SET[id];
@@ -37,18 +47,19 @@ for (const id of which) {
     me.health = 100; me.ghostT = 0; me.veh.setGhost(false); me.weapon = null; me.rollT = 0;
     g.weapons.clearProj();
     g.placeCar(me, s0, 0, S.me); g.placeCar(B, s0 + S.b[0], S.b[1], S.b[2]);
-    me.weapon = { id, ammo: { raket: 3, minor: 3, kulspruta: 60, kanon: 80 }[id] || 1 };
+    me.weapon = { id, ammo: { raket: 3, minor: 3, kulspruta: 60, kanon: 80, flamma: 45 }[id] || 1 };
     window.__s = { bpos: B.veh.pos.clone(), mev: me.veh.speed, ammo: me.weapon.ammo };
   }, [id, S]);
   await page.waitForTimeout(300);
   await page.keyboard.down('KeyF'); await page.waitForTimeout(S.hold); await page.keyboard.up('KeyF');
-  if (S.drop) await page.evaluate(() => { const B = window.__B; B.remoteInput.throttle = 1; });
+  if (S.drop) await page.evaluate(() => { const B = window.__B; B.remoteInput.throttle = 1; window.__minV = 1e9; window.__gooSeen = 0; const t = () => { if (B.gooT > 0) { window.__gooSeen = 1; window.__minV = Math.min(window.__minV, B.veh.speed); } if (window.__minV !== null) requestAnimationFrame(t); }; t(); });
   await page.waitForTimeout(Math.min(450, S.wait));
   await page.screenshot({ path: `tools/out/weapon-${id}.png` });
   await page.waitForTimeout(Math.max(0, S.wait - 450));
   const r = await page.evaluate((id) => {
     const g = window.__game, me = g.me, B = window.__B, s = window.__s;
-    return `${id.padEnd(10)} ${B.oilT ? '[OLJAD] ' : ''}mål: skada ${(100 - B.health).toFixed(0)}${B.wrecked ? ' VRAK' : ''} · flyttad ${B.veh.pos.distanceTo(s.bpos).toFixed(1)} m · snurr ${B.veh.spinT > 0 ? 'ja' : 'nej'} | jag: ammo ${s.ammo}→${me.weapon?.ammo ?? 0}, fart ${(me.veh.speed * 3.6).toFixed(0)} km/h, projektiler kvar ${g.weapons.proj.length}`;
+    const st = (window.__minV ? 'minfart ' + Math.round(window.__minV * 3.6) + ' km/h ' : '') + ['frozenT', 'shrinkT', 'burnT', 'gooT'].filter(k => B[k] > 0).join(',') + (me.shieldT > 0 ? ' [jag: SKÖLD]' : '') + (me.ballT > 0 ? ' [jag: KULA]' : '');
+    return `${id.padEnd(10)} ${B.oilT ? '[OLJAD] ' : ''}${st ? '[' + st + '] ' : ''}mål: skada ${(100 - B.health).toFixed(0)}${B.wrecked ? ' VRAK' : ''} · flyttad ${B.veh.pos.distanceTo(s.bpos).toFixed(1)} m · snurr ${B.veh.spinT > 0 ? 'ja' : 'nej'} | jag: ammo ${s.ammo}→${me.weapon?.ammo ?? 0}, fart ${(me.veh.speed * 3.6).toFixed(0)} km/h, projektiler kvar ${g.weapons.proj.length}`;
   }, id);
   console.log(r);
 }

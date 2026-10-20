@@ -2,7 +2,7 @@
 // hopp med glipa, tunnlar genom berg, en dalbro och en bro där banan korsar sig själv.
 // Allt (väg, murar, terräng, AI, placeringar) utgår från samma sampling var 4:e meter.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=32';
+import { CONF } from './config.js?v=33';
 
 // ---------- Banorna ----------
 // SNÖBERGET: start/mål vid (0,0), körriktning +x.
@@ -107,7 +107,7 @@ export const TRACKS = [
     id: 'snoberget', namn: 'SNÖBERGET', besk: 'Klassikern — 10,8 km med långa backar och krön', laps: 1,
     ctrl: CTRL_SNO, hills: [16, 7, 3],
     crests: [{ s: 0.085, h: 7, w: 55 }, { s: 0.50, h: 6, w: 50 }, { s: 0.60, h: 8, w: 60 }, { s: 0.91, h: 6.5, w: 55 }],
-    features: [],
+    features: [{ type: 'rail', at: 0.3, namn: 'TÅGÖVERGÅNG' }],
   },
   {
     id: 'hoppbacken', namn: 'HOPPBACKEN', besk: 'Hopp, tunnlar och broar — 3 varv, banan korsar sig själv', laps: 3,
@@ -138,10 +138,11 @@ export const TRACKS = [
     ctrl: CTRL_OKEN, hills: [10, 5, 2], crests: [{ s: 0.75, h: 7, w: 60 }],
     features: [
       { type: 'jump', at: 0.1 },
-      { type: 'canyon', at: 0.31, len: 700, h: 46, namn: 'DJÄVULSKANJONEN' },
+      { type: 'canyon', at: 0.31, len: 700, h: 46, namn: 'DJÄVULSKANJONEN', ras: true },
       { type: 'valley', at: 0.45, len: 170, depth: 24, namn: 'TORRA FLODEN' },
       { type: 'jump', at: 0.53 },
       { type: 'jump', at: 0.62 },
+      { type: 'rail', at: 0.8, namn: 'TÅGÖVERGÅNG' },
     ],
   },
   {
@@ -151,19 +152,20 @@ export const TRACKS = [
       { type: 'jump', at: 0.11 },
       { type: 'tunnel', at: 0.24, len: 320, namn: 'UNDER STAN' },
       { type: 'jump', at: 0.64 },
+      { type: 'rail', at: 0.67, namn: 'TÅGÖVERGÅNG' },
     ],
   },
   {
     id: 'is', namn: 'ISBANAN', besk: 'Hal is och doserade kurvor under norrskenet — 3 varv', laps: 3, theme: 'is',
     grip: 0.72, bank: { k: 150, max: 0.32 },
-    ctrl: CTRL_IS, hills: [2, 1, 0.5], crests: [], features: [],
+    ctrl: CTRL_IS, hills: [2, 1, 0.5], crests: [], features: [{ type: 'rail', at: 0.55, namn: 'TÅGÖVERGÅNG' }],
   },
   {
     id: 'djungel', namn: 'DJUNGELBANAN', besk: 'Regnskog, floder under broarna och tunneln genom templet — 2 varv', laps: 2, theme: 'djungel',
     ctrl: CTRL_DJUNGEL, hills: [14, 6, 3], crests: [{ s: 0.3, h: 6, w: 45 }, { s: 0.92, h: 5, w: 45 }],
     features: [
       { type: 'jump', at: 0.088 },
-      { type: 'valley', at: 0.18, len: 170, depth: 26, namn: 'FLODEN' },
+      { type: 'valley', at: 0.18, len: 170, depth: 13, namn: 'FLODEN', klaff: { boat: 'hjul' } },
       { type: 'tunnel', at: 0.42, len: 300, namn: 'TEMPLET' },
       { type: 'valley', at: 0.74, len: 160, depth: 30, namn: 'VATTENFALLET' },
     ],
@@ -185,7 +187,7 @@ export const TRACKS = [
     features: [
       { type: 'jump', at: 0.11 },
       { type: 'jump', at: 0.6 },
-      { type: 'valley', at: 0.82, len: 180, depth: 24, namn: 'LAGUNEN' },
+      { type: 'valley', at: 0.82, len: 180, depth: 13, namn: 'LAGUNEN', klaff: { boat: 'pirat' } },
     ],
   },
   {
@@ -194,7 +196,8 @@ export const TRACKS = [
     features: [
       { type: 'jump', at: 0.1 },
       { type: 'tunnel', at: 0.32, len: 300, namn: 'RÄVGRYTET' },
-      { type: 'valley', at: 0.64, len: 170, depth: 26, namn: 'BÄCKEN' },
+      { type: 'valley', at: 0.64, len: 170, depth: 13, namn: 'BÄCKEN', klaff: { boat: 'angbat' } },
+      { type: 'rail', at: 0.16, namn: 'TÅGÖVERGÅNG' },
     ],
   },
   {
@@ -222,13 +225,16 @@ export const TRACKS = [
       { type: 'jump', at: 0.9 },
       { type: 'tunnel', at: 0.17, len: 300, namn: 'DATORN' },
       { type: 'jump', at: 0.7 },
+      { type: 'rail', at: 0.5, namn: 'TÅGÖVERGÅNG' },
     ],
   },
 ];
 export const trackDef = (id) => TRACKS.find(t => t.id === id) || TRACKS[0];
 
-// Flaggor per sample
-export const F_GAP = 1, F_BRIDGE = 2, F_TUNNEL = 4, F_RAMP = 8, F_LAND = 16, F_LAVA = 32, F_CANYON = 64;
+// Flaggor per sample (F_RAIL = tågövergången, F_KLAFF = klaffbrons rörliga del)
+export const F_GAP = 1, F_BRIDGE = 2, F_TUNNEL = 4, F_RAMP = 8, F_LAND = 16, F_LAVA = 32, F_CANYON = 64, F_RAIL = 128, F_KLAFF = 256;
+// Klaffbron: varje klaff är så här lång (m) — två klaffar möts mitt över floden
+export const KLAFF_LEN = 16;
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -268,7 +274,8 @@ export function buildTrack(def = TRACKS[0]) {
   const px = A(), py = A(), pz = A(), hx = A(), hz = A();
   const fx = A(), fy = A(), fz = A(), rx = A(), ry = A(), rz = A(), ux = A(), uy = A(), uz = A();
   const kk = A(), bank = A(), slope = A();
-  const flags = new Uint8Array(N);
+  const flags = new Uint16Array(N);
+  const noBank = new Uint8Array(N), flatW = new Float32Array(N);   // hoppens ramper: ingen dosering; klaffbron/tågövergången: mjukt plan
   for (let i = 0; i < N; i++) { px[i] = sp[i].x; pz[i] = sp[i].z; }
   for (let i = 0; i < N; i++) {
     const a = (i - 1 + N) % N, b = (i + 1) % N;
@@ -350,12 +357,46 @@ export function buildTrack(def = TRACKS[0]) {
     }
     return true;
   };
-  for (const f of def.features) {
+  // Järnvägen vid en tågövergång: rakt tvärs vägen, så långt ut åt båda hållen som det går utan att
+  // komma nära någon annan del av banan, tunnlarnas berg, kanjonens väggar eller dalarna under broarna.
+  // Rälsen slutar i en tunnel i en kulle (där tåget kommer ut och försvinner).
+  const RAIL_MAX = 720, RAIL_MIN = 300;
+  const railFree = (x, z, s) => {
+    for (let j = 0; j < N; j += 2) {
+      if (Math.abs(sdist(j * ds, s)) < 260) continue;
+      if ((px[j] - x) ** 2 + (pz[j] - z) ** 2 < 140 * 140) return false;
+    }
+    for (const f of features) {
+      if (f.type === 'tunnel' || f.type === 'canyon') {
+        for (let t = f.s0 - 110; sdist(t, f.s1 + 110) <= 0; t += 20) { const j = idx(t); if ((px[j] - x) ** 2 + (pz[j] - z) ** 2 < 290 * 290) return false; }
+      } else if (f.type === 'valley') {
+        const j = idx(f.c), dx = x - px[j], dz = z - pz[j];
+        if (Math.abs(dx * hx[j] + dz * hz[j]) < f.len / 2 + 100 && Math.abs(-dx * hz[j] + dz * hx[j]) < VALLEY_LEN + 80) return false;
+      }
+    }
+    return true;
+  };
+  const railReach = (s) => {
+    const i = idx(s), ax = -hz[i], az = hx[i];       // rälsens riktning = vägens högerhand
+    const out = [];
+    for (const sd of [-1, 1]) {
+      let ok = 0;
+      for (let d = 30; d <= RAIL_MAX + 100; d += 10) { if (!railFree(px[i] + ax * sd * d, pz[i] + az * sd * d, s)) break; ok = d; }
+      out.push(Math.min(RAIL_MAX, ok - 100));
+    }
+    return out[0] >= RAIL_MIN && out[1] >= RAIL_MIN ? { ax, az, bx: hx[i], bz: hz[i], L1: out[0], L2: out[1] } : null;
+  };
+  // tågövergångarna placeras sist (de ska undvika allt annat)
+  const order = [...def.features].sort((a, b) => (a.type === 'rail') - (b.type === 'rail'));
+  for (const f of order) {
     const want = f.at * L;
     let placed = null;
     for (let k = 0; k < 120 && !placed; k++) {
       const s = want + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 40;
-      if (f.type === 'jump') {
+      if (f.type === 'rail') {
+        const a = s - 300, b = s + 160;
+        if (free(a, b) && maxK(s - 220, s + 100) < 1 / 800) { const r = railReach(s); if (r) placed = { ...f, c: wrapS(s), a, b, ...r }; }
+      } else if (f.type === 'jump') {
         const a = s - JUMP.KICK - 140, b = s + 185;   // återhämtningen får gå in i annat
         if (free(a, b) && maxK(s - 110, s + 150) < 1 / 1100) placed = { type: 'jump', lip: wrapS(s), a, b };
       } else if (f.type === 'tunnel') {
@@ -393,8 +434,8 @@ export function buildTrack(def = TRACKS[0]) {
       const d = sdist(i * ds, f.lip);
       if (d < -JUMP.KICK - 2 || d > JUMP_LEN + 2) continue;
       py[i] += jumpProfile(d);
-      if (d > 0 && d < JUMP.GAP) flags[i] |= F_GAP;
-      if ((d > -24 && d <= 0) || (d >= JUMP.GAP && d < JUMP.GAP + 24)) flags[i] |= F_RAMP;
+      if (d > 0 && d < JUMP.GAP) { flags[i] |= F_GAP; noBank[i] = 1; }
+      if ((d > -24 && d <= 0) || (d >= JUMP.GAP && d < JUMP.GAP + 24)) { flags[i] |= F_RAMP; noBank[i] = 1; }
       if (d > -40 && d < 300) flags[i] |= F_LAND;   // fångstängsel: ingen flyger ut över kanten
     }
     f.unsafeA = f.lip - JUMP.KICK - 10; f.unsafeB = f.lip + JUMP.GAP + 4;
@@ -425,6 +466,28 @@ export function buildTrack(def = TRACKS[0]) {
   for (const f of features) if (f.type === 'valley') {
     const i = idx(f.c);
     Object.assign(f, { x: px[i], z: pz[i], tx: hx[i], tz: hz[i], floorY: py[i] - f.depth, lv: VALLEY_LEN });
+    // klaffbron: mittdelen (iA..iB) är två klaffar som fälls upp när båten ska förbi
+    if (f.klaff) {
+      const iA = (Math.round((f.c - KLAFF_LEN) / ds) % N + N) % N, n = Math.round(2 * KLAFF_LEN / ds);
+      f.klaff = { ...f.klaff, iA, iB: (iA + n) % N, n, sA: iA * ds, sB: ((iA + n) % N) * ds };
+      for (let k = 0; k <= n; k++) flags[(iA + k) % N] |= F_KLAFF;
+      for (let j = 0; j < N; j++) {
+        const d = Math.max(sdist(f.klaff.sA, j * ds), sdist(j * ds, f.klaff.sB));   // avstånd utanför klaffarna (≤ 0 = på dem)
+        if (d < 70) flags[j] |= F_RAMP;                   // inga vapenlådor vid bron
+        flatW[j] = Math.max(flatW[j], 1 - smoothstep(4, 60, d));
+      }
+    }
+  }
+  // tågövergångarna: rälsen ligger vågrätt i vägens höjd mitt på övergången
+  for (const f of features) if (f.type === 'rail') {
+    const i = idx(f.c);
+    Object.assign(f, { x: px[i], z: pz[i], y: py[i] });
+    for (let j = 0; j < N; j++) {
+      const d = Math.abs(sdist(j * ds, f.c));
+      if (d <= 4.5) flags[j] |= F_RAIL;                  // öppning i muren där rälsen går
+      if (d < 70) flags[j] |= F_RAMP;                     // inga vapenlådor på rälsen
+      flatW[j] = Math.max(flatW[j], 1 - smoothstep(10, 60, d));
+    }
   }
 
   // ---------- Ramar (riktning, höger, upp) med dosering ----------
@@ -435,7 +498,7 @@ export function buildTrack(def = TRACKS[0]) {
     // R0 = F × Y,  U0 = R0 × F
     let r0x = -tz, r0z = tx; const rl = Math.hypot(r0x, r0z); r0x /= rl; r0z /= rl;
     const u0x = -r0z * ty, u0y = r0z * tx - r0x * tz, u0z = r0x * ty;
-    const bk = (flags[i] & (F_GAP | F_RAMP)) ? 0 : clamp(-(def.bank?.k ?? CONF.BANK_K) * ks[i], -(def.bank?.max ?? CONF.BANK_MAX), def.bank?.max ?? CONF.BANK_MAX);
+    const bk = noBank[i] ? 0 : clamp(-(def.bank?.k ?? CONF.BANK_K) * ks[i], -(def.bank?.max ?? CONF.BANK_MAX), def.bank?.max ?? CONF.BANK_MAX) * (1 - flatW[i]);
     const c = Math.cos(bk), s = Math.sin(bk);
     fx[i] = tx; fy[i] = ty; fz[i] = tz;
     rx[i] = r0x * c + u0x * s; ry[i] = u0y * s; rz[i] = r0z * c + u0z * s;
@@ -511,8 +574,10 @@ export function buildTrack(def = TRACKS[0]) {
   // Säker plats att återuppstå på: aldrig på hoppets ramp eller i glipan — då en bit före med ansats
   function safeS(s) {
     for (const f of features) {
-      if (f.type !== 'jump') continue;
-      if (sdist(s, f.unsafeA) >= 0 && sdist(s, f.unsafeB) <= 0) return wrapS(f.lip - 170);
+      if (f.type === 'jump' && sdist(s, f.unsafeA) >= 0 && sdist(s, f.unsafeB) <= 0) return wrapS(f.lip - 170);
+      // inte på klaffbrons klaffar eller mitt på rälsen — en bit före i stället
+      if (f.klaff && sdist(s, f.klaff.sA - 12) >= 0 && sdist(s, f.klaff.sB + 6) <= 0) return wrapS(f.klaff.sA - 70);
+      if (f.type === 'rail' && Math.abs(sdist(s, f.c)) < 14) return wrapS(f.c - 40);
     }
     return wrapS(s);
   }

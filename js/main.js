@@ -1,22 +1,22 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=32';
-import { Game } from './game.js?v=32';
-import { Music, SPELETS } from './music.js?v=32';
-import { HUD } from './hud.js?v=32';
-import { GameAudio } from './audio.js?v=32';
-import { Input } from './input.js?v=32';
-import { SHAPES } from './carmodel.js?v=32';
-import { makeCarView } from './vehicles3d.js?v=32';
-import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=32';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=32';
-import { logoCanvas } from './world.js?v=32';
-import { BotBrain } from './ai.js?v=32';
-import { connectRoom, NetHost, NetClient } from './net.js?v=32';
-import { TRACKS } from './track.js?v=32';
-import { SOUND_OPTS } from './sounds.js?v=32';
-import { newGP } from './gp.js?v=32';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=32';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=33';
+import { Game } from './game.js?v=33';
+import { Music, SPELETS } from './music.js?v=33';
+import { HUD } from './hud.js?v=33';
+import { GameAudio } from './audio.js?v=33';
+import { Input } from './input.js?v=33';
+import { SHAPES } from './carmodel.js?v=33';
+import { makeCarView } from './vehicles3d.js?v=33';
+import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=33';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=33';
+import { logoCanvas } from './world.js?v=33';
+import { BotBrain } from './ai.js?v=33';
+import { connectRoom, NetHost, NetClient } from './net.js?v=33';
+import { TRACKS } from './track.js?v=33';
+import { SOUND_OPTS } from './sounds.js?v=33';
+import { newGP } from './gp.js?v=33';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=33';
 
 const PUBLIC = 'PUBLIK';
 

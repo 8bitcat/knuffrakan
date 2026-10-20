@@ -1,23 +1,24 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=32';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=32';
-import { themeOf } from './themes.js?v=32';
-import { LAVA_IN } from './world.js?v=32';
-import { buildWorld, gridSlots } from './world.js?v=32';
-import { createScene, ChaseCam } from './scene.js?v=32';
-import { makeCarView } from './vehicles3d.js?v=32';
-import { typeOf } from './vtypes.js?v=32';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=32';
-import { makeLivery, randomSpec } from './livery.js?v=32';
-import { Vehicle, CP } from './vehicle.js?v=32';
-import { BotBrain } from './ai.js?v=32';
-import { Race } from './race.js?v=32';
-import { FX, Trails } from './fx.js?v=32';
-import { NameTag, SpeedPlate } from './tags.js?v=32';
-import { RemoteVeh, carInfo } from './net.js?v=32';
-import { Weapons } from './weapons.js?v=32';
-import { newGP, shuffledTracks, award, Podium } from './gp.js?v=32';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=33';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=33';
+import { themeOf } from './themes.js?v=33';
+import { LAVA_IN } from './world.js?v=33';
+import { buildWorld, gridSlots } from './world.js?v=33';
+import { createScene, ChaseCam } from './scene.js?v=33';
+import { makeCarView } from './vehicles3d.js?v=33';
+import { typeOf } from './vtypes.js?v=33';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=33';
+import { makeLivery, randomSpec } from './livery.js?v=33';
+import { Vehicle, CP } from './vehicle.js?v=33';
+import { BotBrain } from './ai.js?v=33';
+import { Race } from './race.js?v=33';
+import { FX, Trails } from './fx.js?v=33';
+import { NameTag, SpeedPlate } from './tags.js?v=33';
+import { RemoteVeh, carInfo } from './net.js?v=33';
+import { Weapons } from './weapons.js?v=33';
+import { TrackEvents } from './events.js?v=33';
+import { newGP, shuffledTracks, award, Podium } from './gp.js?v=33';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const HEAL0 = new THREE.Color(0x7dff9a), HEAL1 = new THREE.Color(0xffffff);   // ambulansens lagning (gröna gnistor)
@@ -42,6 +43,7 @@ export class Game {
     this.me = null;
     this.race = new Race(this);
     this.weapons = new Weapons(this);
+    this.events = new TrackEvents(this);
     this.acc = 0; this.time = 0; this.simT = 0;
     this.nextId = 1;
     this.orbit = 0;
@@ -52,6 +54,9 @@ export class Game {
   }
 
   // Bygg (om) banan: riv gamla världen (grafik + kolliders) och bygg den nya
+  // gemensam klocka (banhändelserna): värdens simT — gästen räknar fram den ur ögonblicksbildernas tidsstämplar
+  clock() { return this.mode === 'client' && this.net?.off != null ? (performance.now() - this.net.off) / 1000 : this.simT; }
+
   setTrack(id) {
     const def = trackDef(id);
     if (this.trackId === def.id) return false;
@@ -76,6 +81,7 @@ export class Game {
     for (const c of this.cars || []) { c.trk.i = 0; c.lap = 0; c.prevS = 0; }
     if (this.hud) this.hud.mapBase = null;
     this.weapons?.onTrack();
+    this.events?.onTrack();
     console.log(`bana ${def.id}: ${(performance.now() - t0).toFixed(0)} ms`);
     return true;
   }
@@ -480,6 +486,10 @@ export class Game {
     // specialförmågorna vilar under starten (ingen kanonsalva in i ryggarna på griden)
     const ph = this.race.phase;
     if (ph === 'grid' || ph === 'count' || (ph === 'race' && this.race.raceT < 4)) for (const car of this.cars) if (car.veh.T.special) car.veh.input.loader = 0;
+    // fryst (frysstrålen): ingen gas, ingen styrning, nästan inget grepp
+    for (const car of this.cars) if (car.frozenT > 0) { Object.assign(car.veh.input, { throttle: 0, steer: 0, loader: 0, fire: 0 }); car.veh.slip(0.1, 0.05); }
+    // limmet: kladdet bromsar bilen kraftigt medan den är i pölen (farten halveras på ~0,2 s)
+    for (const car of this.cars) if (car.gooT > 0 && !car.wrecked) { const v = car.veh, lv = v.body.linvel(), k = Math.min(1, 3.5 * dt) * v.T.mass; v.applyJ(-lv.x * k, 0, -lv.z * k, v.pos.x, v.pos.y, v.pos.z); }
     const pushes = this.contacts(dt);
     for (const car of this.cars) car.veh.preStep(dt);
     // knuffarnas krafter läggs på efter preStep (räknas som egna impulser, inte smällar)
@@ -497,6 +507,7 @@ export class Game {
     this.propSlash(dt);
     this.specials(dt);
     this.weapons.step(dt);
+    this.events?.step(dt);
     this.race.update(dt);
     for (const car of this.cars) this.carState(car, dt);
   }
@@ -1010,6 +1021,35 @@ export class Game {
     }
     return best;
   }
+  // vapnens tillstånd på bilen (båda sidor): isblock, sköldbubbla, kanonkulans eld, brand + ljud när de börjar
+  stateFx(car, dt) {
+    const v = car.veh, T = v.T || car.view.T, g = car.view.group, near = this.nearMe(car);
+    const on = (key, flag, make) => {
+      if (flag && !car[key]) { car[key] = make(); g.add(car[key]); }
+      if (car[key]) car[key].visible = !!flag;
+      return car[key];
+    };
+    const ice = on('fxIce', car.frozenT > 0, () => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(T.half.x * 2 + 0.5, T.half.y * 2 + 0.9, T.half.z * 2 + 0.5), new THREE.MeshPhysicalMaterial({ color: 0xbfeaff, roughness: 0.05, transparent: true, opacity: 0.55, clearcoat: 1 }));
+      m.position.y = T.colY; return m;
+    });
+    const bub = on('fxShield', car.shieldT > 0, () => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: 0x5fd8ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      m.scale.set(T.half.x + 0.9, T.half.y + 0.9, T.half.z + 0.9); m.position.y = T.colY; return m;
+    });
+    if (bub?.visible) bub.material.opacity = 0.18 + 0.08 * Math.sin(this.time * 8);
+    if (car.ballT > 0 && Math.random() < dt * 40) { _v2.copy(v.pos).addScaledVector(v.fwd, -T.half.z); this.fx.fire(_v2, _v3.copy(v.vel).multiplyScalar(0.3), 1.5); }
+    if (car.burnT > 0 && Math.random() < dt * 18) { this.fx.fire(_v2.copy(v.pos).add(_v3.set((Math.random() - 0.5) * 1.5, 0.5, (Math.random() - 0.5) * 2)), v.vel, 0.9); if (Math.random() < 0.3) this.fx.smoke(_v2, v.vel, true, 0.6); }
+    // ljud när ett tillstånd börjar
+    const st = (car.frozenT > 0 ? 1 : 0) | (car.shieldT > 0 ? 2 : 0) | (car.ballT > 0 ? 4 : 0) | (car.shrinkT > 0 ? 8 : 0);
+    const nw = st & ~(car.fxSt || 0); car.fxSt = st;
+    if (nw & 1) this.audio?.freeze?.(near);
+    if (nw & 2) this.audio?.shield?.(near);
+    if (nw & 4) { this.audio?.whoosh?.(near); this.audio?.thump?.(50, 0.5, 0.6 * near); }
+    if (nw & 8) this.audio?.shrink?.(near);
+    void ice;
+  }
+
   // stridsvagnens skott: mynningsflamma, rök och smäll (båda sidor — ses som ett hopp i rekylen)
   cannonFx(car) {
     const v = car.veh, G = v.T.gun;
@@ -1116,6 +1156,7 @@ export class Game {
     for (const car of this.cars) {
       const im = car.veh.impact;
       if (car.hitCD > 0 || !im || car.wrecked) continue;
+      if (car.shieldT > 0 || car.ballT > 0) { car.hitCD = 0.15; continue; }
       let other = null, od = 6.4;
       for (const o of this.cars) {
         if (o === car || o.ghostT > 0 || o.hidden) continue;
@@ -1221,7 +1262,10 @@ export class Game {
     // punktering (spikmattan) och tillplattning (ångvälten): bilen orkar inte toppfarten
     if (car.flatT > 0) car.flatT -= dt;
     if (car.punctT > 0) car.punctT -= dt;
-    v.slowK = car.flatT > 0 ? 0.55 : car.punctT > 0 ? 0.7 : 1;
+    for (const k of ['frozenT', 'shrinkT', 'shieldT', 'gooT']) if (car[k] > 0) car[k] -= dt;
+    // brinner (flamkastaren): skada en stund efteråt
+    if (car.burnT > 0) { car.burnT -= dt; if (!car.wrecked && !(car.shieldT > 0) && !(car.ballT > 0)) { car.health -= 4 * dt / v.T.armor; car.lastDmgT = this.simT; car.lastHitBy = car.burnBy || car.lastHitBy; car.lastHitT = this.time; if (car.health <= 0) this.wreck(car); } }
+    v.slowK = Math.min(car.flatT > 0 ? 0.55 : 1, car.punctT > 0 ? 0.7 : 1, car.gooT > 0 ? 0.42 : 1, car.shrinkT > 0 ? 0.78 : 1);
     // ambulansen lagar sig själv sakta när den inte tagit stryk på 3 s (gröna gnistor när den lagas)
     if (v.T.regen && !car.wrecked && !car.hidden && car.health < 100 && this.simT - (car.lastDmgT || 0) > 3) {
       car.health = Math.min(100, car.health + v.T.regen * dt);
@@ -1353,9 +1397,12 @@ export class Game {
           car.view.setBeam?.(k, B ? car.view.group.worldToLocal(_v3.copy(B.veh.pos)) : null);
         }
       }
-      // tillplattad (ångvälten): bilden trycks ihop och växer sakta tillbaka
-      const fy = car.flatT > 0 ? 0.35 : 1, sy = g.scale.y + (fy - g.scale.y) * Math.min(1, dt * (fy < 1 ? 14 : 2));
-      if (Math.abs(sy - g.scale.y) > 1e-4) g.scale.set(1 + (1 - sy) * 0.25, sy, 1 + (1 - sy) * 0.12);
+      // tillplattad (ångvälten) / krympt (krympstrålen): bilden trycks ihop och växer sakta tillbaka — hjulen kvar på marken
+      const shk = car.shrinkT > 0 ? 0.45 : 1, fy = (car.flatT > 0 ? 0.35 : 1) * shk, fxz = (car.flatT > 0 ? 1.15 : 1) * shk;
+      const sy = g.scale.y + (fy - g.scale.y) * Math.min(1, dt * (fy < g.scale.y ? 14 : 2)), sx = g.scale.x + (fxz - g.scale.x) * Math.min(1, dt * (fxz < g.scale.x ? 14 : 2));
+      g.scale.set(sx, sy, sx);
+      if (sy < 0.999) g.position.addScaledVector(_v3.set(0, 1, 0).applyQuaternion(g.quaternion), (VT.modelY ?? -0.55) * (1 - sy));
+      this.stateFx(car, dt);
       // spökbilen i spökläge: genomskinlig i stället för att blinka
       car.view.setSpook?.(car.spookT > 0);
       // punktering: gnistor från fälgarna
@@ -1439,6 +1486,7 @@ export class Game {
       this.scrapes.length = 0;
     }
     this.weapons.frame(dt);
+    this.events?.frame(dt);
     this.world3d.update?.(dt, this.time, this.camera.position, this.fx, (p) => {
       const near = this.me ? Math.max(0, 1 - this.me.veh.pos.distanceTo(p) / 260) : 0.4;
       if (near > 0.05) this.audio?.blast?.(near * 0.8);

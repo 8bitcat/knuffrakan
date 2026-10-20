@@ -1,6 +1,6 @@
 // Bottarna: kör i full gas i sin fil, byter fil, väjer för långsammare bilar och
 // tacklar ibland den som ligger bredvid.
-import { steerMaxAt } from './vehicle.js?v=32';
+import { steerMaxAt } from './vehicle.js?v=33';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -143,6 +143,9 @@ export class BotBrain {
     if (need > 2.5) inp.throttle = 0.2;
     if (need > 5) { inp.throttle = 0; inp.brake = Math.min(1, need / 14); }
     if (lift) inp.throttle = Math.min(inp.throttle, 0.5);
+    // banhändelser (tåget, klaffbron, stenraset): sakta in så att bilen kommer fram när det är fritt
+    const cap = game.events?.speedCap?.(car) ?? -1;
+    if (cap >= 0 && sp > cap) { inp.throttle = 0; inp.brake = Math.min(1, (sp - cap) / 10); this.stuckT = 0; }
     if (Math.abs(alpha) > 1.6 && sp < 10) { inp.throttle = 0; inp.brake = 0.6; inp.steer = -inp.steer; }
 
     // fast? → be om omstart

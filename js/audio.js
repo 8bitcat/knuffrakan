@@ -1,8 +1,8 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice, JetVoice } from './engines.js?v=32';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=32';
+import { EngineVoice, JetVoice } from './engines.js?v=33';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=33';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -382,6 +382,35 @@ export class GameAudio {
     g.gain.setValueAtTime(0.32 * near, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
     o.connect(g); g.connect(this.master); o.start(t); lfo.start(t); o.stop(t + 0.6); lfo.stop(t + 0.6);
   }
+  // strålarna: laser (fallande pip), frys (klirr), krymp (sjunkande pew)
+  ray(k, near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = k === 0 ? 'sawtooth' : 'sine';
+    const [f0, f1, d] = k === 0 ? [1800, 200, 0.35] : k === 1 ? [2400, 1800, 0.4] : [900, 120, 0.5];
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + d);
+    g.gain.setValueAtTime(0.18 * near, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + d + 0.05);
+    if (k === 0) this.noise(0.25, 5000, 0.2 * near, 0, 'highpass');
+  }
+  freeze(near = 1) { if (!this.ctx || near < 0.03) return; [2093, 2637, 3136].forEach((f, i) => this.bellTone?.(f, i * 0.05, 0.12 * near)); this.noise(0.4, 7000, 0.15 * near, 0, 'highpass'); }
+  shrink(near = 1) { this.ray(2, near); }
+  shield(near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(880, t + 0.35);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2 * near, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.55);
+  }
+  bellTone(f, delay, vol) {
+    const ctx = this.ctx, t = ctx.currentTime + delay, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.55);
+  }
+  // bowlingklotet fäller en bil: ett "klonk" + klapper
+  strike(near = 1) { if (!this.ctx || near < 0.03) return; this.thump(90, 0.25, 0.6 * near); for (let i = 0; i < 4; i++) this.noise(0.05, 2500, 0.3 * near, 0.03 + i * 0.05, 'bandpass'); }
+  // fyrverkeri: smäll + sprakande
+  crackle(near = 1) { if (!this.ctx || near < 0.03) return; this.thump(60, 0.25, 0.4 * near); for (let i = 0; i < 8; i++) this.noise(0.03, 4000, 0.25 * near, 0.08 + Math.random() * 0.5, 'highpass'); }
   // bakdörrarna slås upp: ett gnissel
   creak(near = 1) {
     if (!this.ctx || near < 0.03) return;

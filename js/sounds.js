@@ -55,6 +55,30 @@ export const SOUND_OPTS = {
     { id: 'A', namn: 'Rymdsurr', jet: true, pitch: 0.45 },
     { id: 'B', namn: 'Rymdvissla', jet: true, pitch: 1.7 },
   ],
+  v2: [
+    { id: 'A', namn: 'Lastbilsdiesel', layers: [['bus_lo', 32.3], ['bus_mid', 40.4], ['bus_hi', 52.5]], f: [26, 72] },
+    { id: 'B', namn: 'Diesel (stadsbuss)', layers: [['busb_loop', 40.4]], f: [28, 68] },
+  ],
+  polis: [
+    { id: 'A', namn: 'Polis-V8', layers: [['nas_lo', 149.4], ['nas_mid', 176.3], ['nas_hi', 223.4], ['nas_top', 341.8]], f: [118, 390] },
+    { id: 'B', namn: 'Racermotor', layers: [['race_lo', 129], ['race_mid', 201], ['race_hi', 250]], f: [105, 310] },
+  ],
+  ambulans: [
+    { id: 'A', namn: 'Skåpbil (V8)', layers: [['bfb_lo', 56.5], ['bfb_hi', 86.1]], f: [48, 122] },
+    { id: 'B', namn: 'Diesel', layers: [['bus_lo', 32.3], ['bus_mid', 40.4], ['bus_hi', 52.5]], f: [32, 90] },
+  ],
+  valt: [
+    { id: 'A', namn: 'Ångmaskin (djup)', layers: [['bus_lo', 32.3], ['bus_mid', 40.4], ['bus_hi', 52.5]], f: [16, 44] },
+    { id: 'B', namn: 'Diesel (stadsbuss)', layers: [['busb_loop', 40.4]], f: [18, 46] },
+  ],
+  spokbil: [
+    { id: 'A', namn: 'Gammal V8 (mullrig)', layers: [['bf_lo', 45.8], ['bf_mid', 56.5], ['bf_hi', 90.2]], f: [38, 118] },
+    { id: 'B', namn: 'V8 (Maserati)', layers: [['bfb_lo', 56.5], ['bfb_hi', 86.1]], f: [46, 130] },
+  ],
+  heli: [
+    { id: 'A', namn: 'Turbin (helikopter)', jet: true, pitch: 0.7 },
+    { id: 'B', namn: 'Kolvmotor', layers: [['bf_lo', 45.8], ['bf_mid', 56.5], ['bf_hi', 90.2]], f: [50, 120] },
+  ],
   scrape: [
     { id: 'A', namn: 'Betong + plåt', wall: 'scr_belly', car: 'scr_drum', spark: 'scr_spark' },
     { id: 'B', namn: 'Metallrör + kylare', wall: 'scr_pipe', car: 'scr_rad', spark: 'scr_spark' },
@@ -65,7 +89,7 @@ export const SOUND_OPTS = {
     { id: 'A', namn: 'Gamla', light: ['hit1', 'hit2', 'hit3', 'hit4'], heavy: ['crash_heavy_1', 'crash_heavy_2', 'crash_heavy_3'], wreck: ['wreck'] },
   ],
 };
-export const DEFAULT_CHOICE = { stock: 'B', bus: 'A', bigfoot: 'A', formel: 'A', traktor: 'A', glass: 'A', rullstol: 'A', elrullstol: 'A', plan: 'A', gokart: 'A', brandbil: 'A', stridsvagn: 'A', ufo: 'A', scrape: 'A', crash: 'B' };
+export const DEFAULT_CHOICE = { stock: 'B', bus: 'A', bigfoot: 'A', formel: 'A', traktor: 'A', glass: 'A', rullstol: 'A', elrullstol: 'A', plan: 'A', gokart: 'A', brandbil: 'A', stridsvagn: 'A', ufo: 'A', v2: 'A', polis: 'A', ambulans: 'A', valt: 'A', spokbil: 'A', heli: 'A', scrape: 'A', crash: 'B' };
 // laddas alltid
 export const BASE_FILES = ['wind', 'pack', 'tire_screech', 'explosion', 'rev', 'pop1', 'pop2', 'pop3', 'airbrake'];
 export const LOOP_FILES = new Set(['wind', 'pack', 'tire_screech', 'metal_scrape']);

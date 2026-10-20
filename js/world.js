@@ -3,9 +3,9 @@
 // det finns en fysikvärld (värden).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONF } from './config.js?v=28';
-import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, F_LAVA, JUMP } from './track.js?v=28';
-import { themeOf } from './themes.js?v=28';
+import { CONF } from './config.js?v=29';
+import { F_GAP, F_BRIDGE, F_TUNNEL, F_RAMP, F_LAND, F_LAVA, JUMP } from './track.js?v=29';
+import { themeOf } from './themes.js?v=29';
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const h2 = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -270,6 +270,13 @@ function buildBarriers(ctx) {
   const railMat = new THREE.MeshLambertMaterial({ color: TH.safer, side: THREE.DoubleSide });
   const postGeo = new THREE.CylinderGeometry(0.07, 0.07, 3.2, 5);
   const posts = [], railPosts = [];
+  // neonbanan: lysande list på murarna (insidan + ovanpå)
+  const glowMat = TH.edgeGlow ? new THREE.MeshBasicMaterial({ color: TH.edgeGlow, toneMapped: false, side: THREE.DoubleSide }) : null;
+  const glowStrip = (run, side, t) => {
+    if (!glowMat) return;
+    const profs = t === 1 ? [[[-0.04, 1.5], [-0.04, 1.8]]] : [[[0.144, 0.62], [0.188, 0.78]], [[0.3, 1.115], [0.62, 1.115]]];
+    for (const p of profs) scene.add(new THREE.Mesh(extrude(T, run, side, p, base, 6), glowMat));
+  };
   // typ per sample: -1 ingen mur (glipa), 0 betong, 1 blå kurvvägg, 2 broräcke, 3 betong + högt fångstängsel (hopp)
   const types = { '-1': new Int8Array(N), '1': new Int8Array(N) };
 
@@ -306,6 +313,7 @@ function buildBarriers(ctx) {
       if (t === 3) {
         const m = new THREE.Mesh(extrude(T, run, side, CONCRETE, base, 6), concMat);
         m.castShadow = true; scene.add(m);
+        glowStrip(run, side, 0);
         scene.add(new THREE.Mesh(extrude(T, run, side, [[0.45, 1.0], [0.45, 7.0]], base, 4.5), fenceMat));
         scene.add(new THREE.Mesh(extrude(T, run, side, [[0.4, 6.9], [0.4, 7.2], [0.55, 7.2], [0.55, 6.9], [0.4, 6.9]], base, 6), railMat));
         for (let k = 0; k < run.length; k += 2) railPosts.push([run[k], side, 7.2]);
@@ -315,6 +323,7 @@ function buildBarriers(ctx) {
       const m = new THREE.Mesh(g, t ? saferMat : concMat);
       m.castShadow = true; m.receiveShadow = true;
       scene.add(m);
+      glowStrip(run, side, t);
       if (t) {
         scene.add(new THREE.Mesh(extrude(T, run, side, [[0.25, 1.95], [0.25, 4.9]], base, 4.5), fenceMat));
         for (let k = 0; k < run.length; k += 3) posts.push([run[k], side]);
@@ -406,10 +415,18 @@ function buildTerrain(ctx) {
     cIdx[b * cnx + a] = best;
   }
   const HWb = T.halfW, FL = T.flags, TH = ctx.theme;
-  // marken långt från vägen: stad = nästan platt, öken = sanddyner, annars berg och dalar
+  // havsytan (stranden) / neonslätten: en bit under banans lägsta punkt — vägen hamnar aldrig under
+  let lowY = null;
+  if (TH.sea || TH.grid) { lowY = Infinity; for (let i = 0; i < N; i++) lowY = Math.min(lowY, T.py[i]); lowY -= 3; }
+  const seaY = TH.sea ? lowY : null;
+  ctx.seaY = seaY; ctx.floorY = lowY;
+  // marken långt från vägen: stad = nästan platt, öken = sanddyner, strand = ön sluttar ner i havet,
+  // neon = platt slätt med rutnät, annars berg och dalar
   const nat = TH.flora === 'city' ? (x, z) => 2.5 * fbm(x * 0.004, z * 0.004, 2)
     : TH.flora === 'cactus' ? (x, z, D) => natural(x, z, D) * 0.7 + 7 * Math.abs(Math.sin(x * 0.011 + z * 0.004 + fbm(x * 0.002, z * 0.002, 2) * 3)) * Math.min(1, D / 200)
-      : natural;
+      : TH.sea ? (x, z, D) => seaY - 6 + (20 * (0.55 + 0.6 * fbm(x * 0.0016 + 2.3, z * 0.0016 - 5.1, 3)) + 2.5 * fbm(x * 0.007, z * 0.007, 2)) * (1 - smoothstep(160, 720, D))
+        : TH.grid ? (x, z, D) => { const w = smoothstep(650, 1050, D); return 1.5 * fbm(x * 0.003, z * 0.003, 2) * (1 - w) + lowY * w; }
+          : natural;
   const VM = new Float32Array(NV);            // dal-mask (inga träd på isen)
   const hole = new Uint8Array(NV);            // tunnelns hål i berget
   const feats = T.features;
@@ -533,16 +550,38 @@ function buildTerrain(ctx) {
   const col = new Float32Array(NV * 3);
   const snow = new THREE.Color(TH.ground[0]), snow2 = new THREE.Color(TH.ground[1]), rock = new THREE.Color(TH.ground[2]), c = new THREE.Color();
   const crack = TH.crack ? new THREE.Color(TH.crack) : null;
+  const patch = TH.patch ? new THREE.Color(TH.patch) : null;
+  const bands = TH.bands ? TH.bands.map(h => new THREE.Color(h)) : null;
+  const wet = new THREE.Color(0xd2b47c), foam = new THREE.Color(0xf4fbff), shallow = new THREE.Color(0x5ccbc4), deep = new THREE.Color(0x2a8ca6);
   for (let o = 0; o < NV; o++) {
     const ny = nor[o * 3 + 1];
     const x = pos[o * 3], z = pos[o * 3 + 2];
     c.copy(snow).lerp(snow2, 0.5 + 0.5 * fbm(x * 0.01, z * 0.01, 2));
+    // fläckar: grönt gräs bland löven, mintglasyr bland den rosa
+    if (patch && Dist[o] > HWb + 3) c.lerp(patch, smoothstep(0.12, 0.42, fbm(x * 0.0045 + 7.3, z * 0.0045 - 3.1, 3)) * 0.75);
     c.lerp(rock, smoothstep(0.86, 0.62, ny));
+    // godiskullar: randiga i höjdled som en tårta (bara en bit från vägen)
+    if (bands && Dist[o] > HWb + 50) c.lerp(bands[Math.floor((pos[o * 3 + 1] + 1400) / 34) % bands.length], smoothstep(HWb + 50, HWb + 200, Dist[o]) * 0.8);
     if (crack && Dist[o] > HWb + 8) c.lerp(crack, smoothstep(0.032, 0.0, Math.abs(fbm(x * 0.012 + 5, z * 0.012 - 2, 3))) * 0.9);
+    if (seaY !== null) {
+      // våt sand och skum i strandkanten, turkost grunt vatten, djupare blått längre ut
+      const y = pos[o * 3 + 1];
+      c.lerp(wet, smoothstep(seaY + 1.6, seaY + 0.2, y));
+      c.lerp(foam, Math.max(0, 1 - Math.abs(y - seaY + 0.15) / 0.55) * 0.7);
+      c.lerp(shallow, smoothstep(seaY - 0.4, seaY - 2.5, y)).lerp(deep, smoothstep(seaY - 2.5, seaY - 8, y));
+    }
     col[o * 3] = c.r; col[o * 3 + 1] = c.g; col[o * 3 + 2] = c.b;
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  const tmat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  if (TH.grid) {
+    // neonrutnät: lysande linjer var 24:e meter (världskoordinater → samma rutor som slätten utanför)
+    const uv = new Float32Array(NV * 2);
+    for (let o = 0; o < NV; o++) { uv[o * 2] = pos[o * 3] / 24; uv[o * 2 + 1] = pos[o * 3 + 2] / 24; }
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    Object.assign(tmat, { emissive: new THREE.Color(0xffffff), emissiveMap: (ctx.gridTex ||= gridTex()) });
+  }
+  const mesh = new THREE.Mesh(g, tmat);
   mesh.receiveShadow = true;
   scene.add(mesh);
 
@@ -669,10 +708,11 @@ function buildMountains(ctx, terr) {
   const R0 = Math.max(terr.x1 - terr.x0, terr.z1 - terr.z0) * 0.55;
   const geos = [];
   const [snowC, rockC, lowC] = (ctx.theme?.mtn || [0xf6e8ef, 0xc2a7b3, 0xd9c4cd]).map(h => new THREE.Color(h));
+  const hs = ctx.theme?.mtnH ?? 1;                                 // lägre kullar (höst, öar i havet)
   for (let k = 0; k < 44; k++) {
     const a = (k / 44) * Math.PI * 2 + hash1(k) * 0.12;
     const r = R0 + 300 + hash1(k + 50) * 1800;
-    const height = 380 + hash1(k + 90) * 650, rad = 800 + hash1(k + 130) * 900;
+    const height = (380 + hash1(k + 90) * 650) * hs, rad = 800 + hash1(k + 130) * 900;
     const g = new THREE.ConeGeometry(rad, height, 9, 4).toNonIndexed();
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
@@ -693,7 +733,9 @@ function buildMountains(ctx, terr) {
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.deleteAttribute('uv');
-    g.translate(cx + Math.cos(a) * r * 1.25, height / 2 - 60, cz + Math.sin(a) * r);
+    // öar: sandranden (fotens färg) hamnar precis vid vattenytan
+    const base = ctx.seaY != null ? ctx.seaY - height * 0.17 : -60;
+    g.translate(cx + Math.cos(a) * r * 1.25, height / 2 + base, cz + Math.sin(a) * r);
     geos.push(g);
   }
   const g = mergeGeometries(geos);
@@ -701,6 +743,7 @@ function buildMountains(ctx, terr) {
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   m.frustumCulled = false;
   ctx.scene.add(m);
+  return m;
 }
 
 // ---------- Startportal ----------
@@ -969,9 +1012,10 @@ function buildTunnels(ctx) {
   const { scene, track: T } = ctx;
   const W = T.halfW + 1.4;
   const prof = [[-W, -0.4], [-W, 5.6], [-W * 0.86, 7.6], [-W * 0.55, 8.9], [0, 9.4], [W * 0.55, 8.9], [W * 0.86, 7.6], [W, 5.6], [W, -0.4]];
-  const wallMat = new THREE.MeshLambertMaterial({ map: panelTex('#b9a8b0', 'rgba(60,40,60,0.35)'), side: THREE.DoubleSide });
-  const ledMat = new THREE.MeshBasicMaterial({ color: 0x4f8cff, side: THREE.DoubleSide, toneMapped: false });
-  const portalMat = new THREE.MeshLambertMaterial({ map: panelTex('#a8939c', 'rgba(40,30,40,0.4)') });
+  const PN = ctx.theme.panel;                     // temats egna betongfärger (annars rosa)
+  const wallMat = new THREE.MeshLambertMaterial({ map: panelTex(PN?.[0] || '#b9a8b0', 'rgba(60,40,60,0.35)'), side: THREE.DoubleSide });
+  const ledMat = new THREE.MeshBasicMaterial({ color: ctx.theme.led ?? 0x4f8cff, side: THREE.DoubleSide, toneMapped: false });
+  const portalMat = new THREE.MeshLambertMaterial({ map: panelTex(PN?.[1] || '#a8939c', 'rgba(40,30,40,0.4)') });
   const lampGeo = new THREE.BoxGeometry(0.6, 0.14, 2.4);
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff1c8, toneMapped: false });
   const lamps = [];
@@ -1035,9 +1079,10 @@ function buildTunnels(ctx) {
 function buildBridges(ctx) {
   const { scene, track: T, terr } = ctx;
   const W = T.halfW + 1.3;
-  const deckMat = new THREE.MeshLambertMaterial({ map: panelTex('#cdb9c1', 'rgba(60,40,60,0.25)'), side: THREE.DoubleSide });
-  const blueMat = new THREE.MeshLambertMaterial({ color: 0x2c5fd6, side: THREE.DoubleSide });
-  const pillarMat = new THREE.MeshLambertMaterial({ color: 0xc4b0b8, flatShading: true });
+  const PN = ctx.theme.panel;
+  const deckMat = new THREE.MeshLambertMaterial({ map: panelTex(PN?.[2] || '#cdb9c1', 'rgba(60,40,60,0.25)'), side: THREE.DoubleSide });
+  const blueMat = new THREE.MeshLambertMaterial({ color: ctx.theme.rail ?? 0x2c5fd6, side: THREE.DoubleSide });
+  const pillarMat = new THREE.MeshLambertMaterial({ color: PN ? new THREE.Color(PN[1]) : 0xc4b0b8, flatShading: true });
   const pillars = [];
   for (const f of T.features) {
     if (f.type !== 'valley' && f.type !== 'overpass') continue;
@@ -1078,6 +1123,20 @@ function buildValleys(ctx) {
   for (const f of T.features) {
     if (f.type !== 'valley') continue;
     const kind = ctx.theme.valley;
+    if (kind === 'slime' || kind === 'choklad') {
+      // slemträsket (lyser grönt) och chokladfloden: rinnande golv under bron
+      const slime = kind === 'slime';
+      const tex = slime ? (ctx.slimeTex ||= slimeTex()) : (ctx.chocoTex ||= chocoTex());
+      tex.repeat.set(slime ? 8 : 9, 1.2);
+      const mat = slime ? new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }) : new THREE.MeshLambertMaterial({ map: tex, emissive: 0x1a0a06 });
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(f.lv * 1.5, 46).rotateX(-Math.PI / 2), mat);
+      floor.rotation.y = Math.atan2(-f.tx, -f.tz);
+      floor.position.set(f.x, f.floorY + 0.35, f.z);
+      scene.add(floor);
+      if (slime) (ctx.slimeSpots ||= []).push({ x: f.x, y: f.floorY + 0.5, z: f.z, ax: -f.tz, az: f.tx, lv: f.lv });
+      boardAt(ctx, f.s0 - 120, T.halfW + 4, signTex(f.namn || 'BRON', slime ? 'SLEM UNDER!' : 'GOTT UNDER!', slime ? '#7aff4a' : '#ff8ac8'));
+      continue;
+    }
     if (kind !== 'ice') {
       const len = f.lv * 1.5, tex = kind === 'lava' ? (ctx.lavaTex ||= lavaTex()) : kind === 'water' ? (ctx.waterTex ||= waterTex()) : kind === 'dust' ? dustBedTex() : sandBedTex();
       tex.repeat.set(kind === 'lava' || kind === 'water' ? 10 : 6, kind === 'lava' || kind === 'water' ? 1.2 : 1);
@@ -1086,7 +1145,8 @@ function buildValleys(ctx) {
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(len, 46).rotateX(-Math.PI / 2), mat);
       floor.rotation.y = Math.atan2(-f.tx, -f.tz);
       floor.position.set(f.x, f.floorY + 0.35, f.z);
-      scene.add(floor);
+      // stranden: lagunen är havet självt när dalen går under havsytan
+      if (!(ctx.seaY != null && f.floorY < ctx.seaY - 1)) scene.add(floor);
       boardAt(ctx, f.s0 - 120, T.halfW + 4, signTex(f.namn || 'BRON', kind === 'lava' ? 'LAVA UNDER!' : 'HÅLL I DIG!', kind === 'lava' ? '#ff6a1e' : kind === 'water' ? '#4fc3ff' : '#ffb21a'));
       continue;
     }
@@ -1111,7 +1171,7 @@ function buildValleys(ctx) {
 function buildJumps(ctx) {
   const { scene, track: T } = ctx;
   const W = T.halfW + 1.0, G = JUMP.GAP;
-  const blockMat = new THREE.MeshLambertMaterial({ map: panelTex('#c3aeb7', 'rgba(60,40,60,0.3)'), side: THREE.DoubleSide });
+  const blockMat = new THREE.MeshLambertMaterial({ map: panelTex(ctx.theme.panel?.[2] || '#c3aeb7', 'rgba(60,40,60,0.3)'), side: THREE.DoubleSide });
   const hz = hazardTex();
   hz.repeat.set(8, 1);
   const capTex = canvasTex(256, 256, (c, w) => {
@@ -1178,6 +1238,12 @@ export function buildWorld(ctx) {
   const air = makeAir(ctx);
   const earth = ctx.theme.earth ? earthMesh() : null;
   if (earth) ctx.scene.add(earth);
+  // himlakroppar som följer kameran: spökmånen och neonbanans randiga solnedgång
+  const moon = ctx.theme.moon ? bigMoon() : null;
+  if (moon) ctx.scene.add(moon);
+  const sunset = ctx.theme.synthSun ? synthSun() : null;
+  if (sunset) ctx.scene.add(sunset);
+  if (ctx.theme.sea || ctx.theme.grid) buildFloor(ctx, terr);
   const gantry = buildGantry(ctx);
   const screen = buildScreen(ctx, terr);
   buildArrow(ctx, terr);
@@ -1190,7 +1256,13 @@ export function buildWorld(ctx) {
       if (lava) lava.offset.y -= dt * 0.08;
       if (ctx.lavaTex && ctx.lavaTex !== lava) ctx.lavaTex.offset.x += dt * 0.03;
       if (ctx.waterTex) ctx.waterTex.offset.x += dt * 0.12;
+      if (ctx.slimeTex) { ctx.slimeTex.offset.x += dt * 0.025; ctx.slimeTex.offset.y += dt * 0.01; }
+      if (ctx.chocoTex) ctx.chocoTex.offset.x += dt * 0.07;
+      if (ctx.seaTex) { ctx.seaTex.offset.x += dt * 0.006; ctx.seaTex.offset.y += dt * 0.004; }
+      if (ctx.pumpkinMat) ctx.pumpkinMat.color.setScalar(0.88 + 0.12 * Math.sin(time * 9) * Math.sin(time * 5.3 + 1));   // pumporna fladdrar
       if (earth && cam) earth.position.set(cam.x - 2600, cam.y + 2300, cam.z - 4200);
+      if (moon && cam) moon.position.set(cam.x - 3000, cam.y + 1350, cam.z - 4300);
+      if (sunset && cam) sunset.position.set(cam.x + 6200, cam.y + 640, cam.z - 1500);
       for (const p of ctx.plumes || []) { p.s.position.y = p.base.y + 60 + ((time * 14 + p.k * 90) % 540); p.s.material.opacity = 0.85 * (1 - ((time * 14 + p.k * 90) % 540) / 540); }
       air(dt, time, cam, fx, onBoom);
     },
@@ -1254,20 +1326,22 @@ function iceGeo() {
 function iceBlockGeo() { return mergeColored([colorGeo(new THREE.BoxGeometry(4, 2.6, 3.2).rotateY(0.4).translate(0, 1.1, 0), 0xa8dcf6), colorGeo(new THREE.BoxGeometry(2.4, 1.8, 2.2).rotateY(-0.3).translate(2.6, 2.9, 0.4), 0xc8ecff)]); }
 
 // utspridning som granarna (dungar, glesare längre bort), valfria former med vikter
-function scatter(ctx, terr, geos, weights, maxN, mat, minD = 9) {
+// opt: seed (annan utspridning), maxD (bara nära vägen), minY (inte under havsytan), CH (bitstorlek)
+function scatter(ctx, terr, geos, weights, maxN, mat, minD = 9, opt = {}) {
   const { scene, track: T } = ctx;
-  const CH = 600, chunks = new Map(), HWb = T.halfW;
-  let seed = 7;
+  const CH = opt.CH || 600, chunks = new Map(), HWb = T.halfW, maxD = opt.maxD ?? 1000;
+  let seed = opt.seed || 7;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const W = terr.x1 - terr.x0, D = terr.z1 - terr.z0, wsum = weights.reduce((a, b) => a + b, 0);
   let placed = 0;
   for (let n = 0; n < maxN * 12 && placed < maxN; n++) {
     const x = terr.x0 + rnd() * W, z = terr.z0 + rnd() * D;
     const dist = terr.distAt(x, z);
-    if (dist < HWb + minD || dist > 1000 || terr.valleyAt(x, z) > 0.05) continue;
+    if (dist < HWb + minD || dist > maxD || terr.valleyAt(x, z) > 0.05) continue;
     const dens = fbm(x * 0.006 + 4.4, z * 0.006 - 2.2, 3) * 0.6 + 0.35 - Math.min(0.5, dist / 1600);
     if (rnd() > dens + (dist < 60 ? 0.35 : 0)) continue;
     if (Math.hypot(x, z) < 140 && dist < 60) continue;
+    if (opt.minY != null && terr.heightAt(x, z) < opt.minY) continue;
     let r = rnd() * wsum, type = 0;
     while (type < weights.length - 1 && r > weights[type]) { r -= weights[type]; type++; }
     const key = Math.floor(x / CH) + '|' + Math.floor(z / CH) + '|' + type;
@@ -1299,6 +1373,11 @@ function buildFlora(ctx, terr) {
     const ice = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x16344a, transparent: true, opacity: 0.9 });
     return scatter(ctx, terr, [iceGeo(), iceBlockGeo(), pineGeo(true)], [0.35, 0.25, 0.4], 3600, [ice, ice, lam]);
   }
+  if (fl === 'beach') return buildBeach(ctx, terr, lam);
+  if (fl === 'autumn') return buildAutumn(ctx, terr, lam);
+  if (fl === 'spooky') return buildSpooky(ctx, terr, lam);
+  if (fl === 'candy') return buildCandy(ctx, terr, lam);
+  if (fl === 'neon') return buildNeon(ctx, terr);
   return [];
 }
 
@@ -1402,15 +1481,21 @@ function buildCity(ctx, terr) {
     sign.rotation.y = toRoad;
     scene.add(sign);
   });
-  // gatlyktor längs vägen (stolpe + arm + lampa, och ett sken i en enda punktmoln)
+  roadLamps(ctx);
+  return out;
+}
+
+// gatlyktor längs vägen (stolpe + arm + lampa, och ett sken i ett enda punktmoln)
+function roadLamps(ctx, { every = 42, rgb = '255,225,170', head: headC = 0xfff1c8, post: postC = 0x2a2c33, size = 9 } = {}) {
+  const { scene, track: T } = ctx, HWb = T.halfW;
   const lamps = [];
-  for (let s = 20; s < T.L; s += 42) {
+  for (let s = 20; s < T.L; s += every) {
     const i = T.idx(s);
-    if (T.flags[i] & (F_GAP | F_TUNNEL)) continue;
+    if (T.flags[i] & (F_GAP | F_TUNNEL | F_BRIDGE)) continue;      // (inga lyktor som hänger i luften vid broarna)
     for (const sd of [-1, 1]) lamps.push([i, sd]);
   }
-  const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.14, 0.2, 9, 6).translate(0, 4.5, 0), new THREE.MeshLambertMaterial({ color: 0x2a2c33 }), lamps.length);
-  const head = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.25, 2.2), new THREE.MeshBasicMaterial({ color: 0xfff1c8, toneMapped: false }), lamps.length);
+  const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.14, 0.2, 9, 6).translate(0, 4.5, 0), new THREE.MeshLambertMaterial({ color: postC }), lamps.length);
+  const head = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.25, 2.2), new THREE.MeshBasicMaterial({ color: headC, toneMapped: false }), lamps.length);
   const gpos = new Float32Array(lamps.length * 3);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   lamps.forEach(([i, sd], k) => {
@@ -1424,20 +1509,52 @@ function buildCity(ctx, terr) {
   });
   scene.add(post, head);
   const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(gpos, 3));
-  const glow = new THREE.Points(gg, new THREE.PointsMaterial({ map: glowSpriteTex('255,225,170'), size: 9, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  const glow = new THREE.Points(gg, new THREE.PointsMaterial({ map: glowSpriteTex(rgb), size, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
   glow.frustumCulled = false;
   scene.add(glow);
-  return out;
 }
 
 // ---------- Berg: vulkaner, platåberg och stadssiluett ----------
 function buildMountainsThemed(ctx, terr) {
   const th = ctx.theme;
   if (th.mtnShape === 'cone') return buildMountains(ctx, terr);
+  if (th.mtnShape === 'wire') {
+    // neonberg: mörka toppar med lysande kanter (ingen dimma på linjerna — de ska synas långt)
+    const m = buildMountains(ctx, terr);
+    const lines = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 20), new THREE.LineBasicMaterial({ color: 0x2bf0ff, fog: false, transparent: true, opacity: 0.75 }));
+    lines.frustumCulled = false;
+    ctx.scene.add(lines);
+    return [];
+  }
   const cx = (terr.x0 + terr.x1) / 2, cz = (terr.z0 + terr.z1) / 2;
   const R0 = Math.max(terr.x1 - terr.x0, terr.z1 - terr.z0) * 0.55;
   const [topC, rockC, lowC] = th.mtn.map(h => new THREE.Color(h));
   const geos = [], tops = [];
+  if (th.mtnShape === 'gumdrop') {
+    // gelébergen: runda kupoler i godisfärger, några med vit glasyr på toppen
+    const pal = [0xff8ac8, 0x8ee8c8, 0xffe27a, 0xc8a0ff, 0xffb070, 0x8ad0ff, 0xff6a8a].map(h => new THREE.Color(h)), white = new THREE.Color(0xfff6fb), c = new THREE.Color();
+    for (let k = 0; k < 40; k++) {
+      const a = (k / 40) * Math.PI * 2 + hash1(k) * 0.1, r = R0 + 300 + hash1(k + 50) * 1800;
+      const height = 260 + hash1(k + 90) * 560, rad = 650 + hash1(k + 130) * 800;
+      const g = new THREE.SphereGeometry(rad, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, height / rad, 1).toNonIndexed();
+      const p = g.attributes.position, col = new Float32Array(p.count * 3), base = pal[k % pal.length], frost = k % 3 === 0;
+      for (let i = 0; i < p.count; i += 3) {
+        const t = (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) / 3 / height;
+        c.copy(frost && t > 0.78 ? white : base).multiplyScalar(0.94 + hash1(i + k * 7) * 0.1);   // sockerkorn
+        for (let j = 0; j < 3; j++) { col[(i + j) * 3] = c.r; col[(i + j) * 3 + 1] = c.g; col[(i + j) * 3 + 2] = c.b; }
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      g.deleteAttribute('uv');
+      g.translate(cx + Math.cos(a) * r * 1.25, -40, cz + Math.sin(a) * r);
+      geos.push(g);
+    }
+    const g = mergeGeometries(geos);
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+    m.frustumCulled = false;
+    ctx.scene.add(m);
+    return [];
+  }
   if (th.mtnShape === 'skyline') {
     const M = cityMats(), list = [];
     for (let k = 0; k < 160; k++) {
@@ -1559,6 +1676,9 @@ function buildLava(ctx) {
 const AIR = {
   ash0: new THREE.Color(0xffb050), ash1: new THREE.Color(0xff3a10), dark0: new THREE.Color(0x2a2224), dark1: new THREE.Color(0x4a3e40),
   dust0: new THREE.Color(0xf0d0a0), dust1: new THREE.Color(0xd8b080), snow0: new THREE.Color(0xffffff), snow1: new THREE.Color(0xdff2ff),
+  leaf: [0xe8761e, 0xc8321e, 0xf4c22a, 0xb8501a].map(h => new THREE.Color(h)),
+  spr: [0xff4a8e, 0x4ad8ff, 0xffe24a, 0x7aff8a, 0xffffff, 0xb07aff].map(h => new THREE.Color(h)),
+  wisp0: new THREE.Color(0x8aff9a), wisp1: new THREE.Color(0xb06aff), slime0: new THREE.Color(0xc8ff6a), slime1: new THREE.Color(0x3aff4a),
 };
 function makeAir(ctx) {
   const th = ctx.theme, T = ctx.track, terr = ctx.terr;
@@ -1577,6 +1697,23 @@ function makeAir(ctx) {
       for (let k = 0; k < 2; k++) fx.puff.spawn(cam.x + r(50), cam.y - 3 + Math.random() * 6, cam.z + r(50), 3 + r(1), r(0.3), 1 + r(1), 4, 0.6, 3.5, AIR.dust0, AIR.dust1, 0.22, 0, 0.1);
     } else if (th.air === 'snow') {
       for (let k = 0; k < 4; k++) fx.puff.spawn(cam.x + r(45), cam.y + 6 + Math.random() * 14, cam.z + r(45), r(0.8), -2.5, r(0.8), 6, 0.22, 0.2, AIR.snow0, AIR.snow1, 0.9, 0.2, 0.1);
+    } else if (th.air === 'leaves') {
+      // höstlöv som singlar ner
+      for (let k = 0; k < 2; k++) { const c = AIR.leaf[Math.floor(Math.random() * AIR.leaf.length)]; fx.puff.spawn(cam.x + r(45), cam.y + 5 + Math.random() * 14, cam.z + r(45), r(1.6), -1.4, r(1.6), 6, 0.34, 0.3, c, c, 0.95, 0.15, 0.25); }
+    } else if (th.air === 'sprinkles') {
+      // strössel i luften
+      for (let k = 0; k < 2; k++) { const c = AIR.spr[Math.floor(Math.random() * AIR.spr.length)]; fx.puff.spawn(cam.x + r(45), cam.y + 5 + Math.random() * 14, cam.z + r(45), r(0.8), -2.2, r(0.8), 5, 0.22, 0.2, c, c, 0.95, 0.2, 0.1); }
+    } else if (th.air === 'wisps') {
+      // irrbloss: gröna och lila sken som stiger långsamt
+      if (Math.random() < 0.5) fx.glow.spawn(cam.x + r(60), cam.y - 3 + Math.random() * 8, cam.z + r(60), r(0.5), 0.6, r(0.5), 3.5, 0.5, 1.1, AIR.wisp0, AIR.wisp1, 0.55, -0.1, 0.1);
+    }
+    // bubblor i slemträsket när man är i närheten
+    for (const sp of ctx.slimeSpots || []) {
+      if ((sp.x - cam.x) ** 2 + (sp.z - cam.z) ** 2 > 700 * 700) continue;
+      for (let k = 0; k < 2; k++) {
+        const u = r(sp.lv * 0.7), w = r(16);
+        fx.glow.spawn(sp.x + sp.ax * u + sp.az * w, sp.y, sp.z + sp.az * u - sp.ax * w, 0, 1.5 + Math.random() * 2, 0, 1.4, 1.2, 2.6, AIR.slime0, AIR.slime1, 0.7, 0, 0.3);
+      }
     }
     // eldklot: kastas från rökhimlen och slår ner en bit från vägen (bara syns och hörs)
     if (glowM) {
@@ -1697,4 +1834,480 @@ function dustBedTex() {
   });
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
+}
+
+// ============================================================================================
+// ---------- Nya teman: strand, höstskog, spöknatt, godisland och neonnatt ----------
+// ============================================================================================
+// färg per triangel efter mittpunkten (ränder, sektorer, prickar)
+function colorBy(geo, fn) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  if (g.attributes.uv) g.deleteAttribute('uv');
+  const p = g.attributes.position, a = new Float32Array(p.count * 3), c = new THREE.Color();
+  for (let i = 0; i < p.count; i += 3) {
+    c.set(fn((p.getX(i) + p.getX(i + 1) + p.getX(i + 2)) / 3, (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) / 3, (p.getZ(i) + p.getZ(i + 1) + p.getZ(i + 2)) / 3, i / 3));
+    for (let j = 0; j < 3; j++) { a[(i + j) * 3] = c.r; a[(i + j) * 3 + 1] = c.g; a[(i + j) * 3 + 2] = c.b; }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+  return g;
+}
+const sector = (x, z, n) => Math.floor((Math.atan2(z, x) / (Math.PI * 2) + 1) * n) % n;
+// stav mellan två punkter
+function barGeo(a, b, r, hex, seg = 4) {
+  const A = new THREE.Vector3(...a), d = new THREE.Vector3(...b).sub(A), len = d.length();
+  const g = new THREE.CylinderGeometry(r, r, len, seg).translate(0, len / 2, 0);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+  return colorGeo(g.translate(A.x, A.y, A.z), hex);
+}
+function recolor(geo, hex) {
+  const c = new THREE.Color(hex), a = geo.attributes.color;
+  for (let i = 0; i < a.count; i++) a.setXYZ(i, c.r, c.g, c.b);
+  return geo;
+}
+// en sak vid banan (s, sida) på marken, vänd mot vägen
+function placeProp(ctx, s, lat, obj, rot = 0) {
+  const T = ctx.track, f = T.sampleAt(T.wrapS(s));
+  const x = f.x + f.rx * lat, z = f.z + f.rz * lat;
+  obj.position.set(x, ctx.terr.heightAt(x, z) - 0.2, z);
+  obj.rotation.y = Math.atan2(-Math.sign(lat) * f.rx, -Math.sign(lat) * f.rz) + rot;
+  obj.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  ctx.scene.add(obj);
+  return obj;
+}
+const lamMesh = (geo) => new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+const glowMesh = (geo) => new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }));
+// hav/slätt utanför terrängen (havet runt stranden, neonrutnätet ut till horisonten)
+function buildFloor(ctx, terr) {
+  const cx = (terr.x0 + terr.x1) / 2, cz = (terr.z0 + terr.z1) / 2, S = 40000;
+  const g = new THREE.PlaneGeometry(S, S).rotateX(-Math.PI / 2).translate(cx, 0, cz);
+  let mat;
+  if (ctx.theme.sea) {
+    const tex = ctx.seaTex = seaTex();
+    tex.repeat.set(S / 90, S / 90);
+    mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, opacity: 0.8, emissive: 0x0c4c5c });
+  } else {
+    const p = g.attributes.position, uv = g.attributes.uv;
+    for (let i = 0; i < p.count; i++) uv.setXY(i, p.getX(i) / 24, p.getZ(i) / 24);
+    mat = new THREE.MeshLambertMaterial({ color: ctx.theme.ground[0], emissive: 0xffffff, emissiveMap: (ctx.gridTex ||= gridTex()) });
+  }
+  const m = new THREE.Mesh(g, mat);
+  m.position.y = ctx.floorY;
+  m.receiveShadow = true; m.frustumCulled = false;
+  ctx.scene.add(m);
+}
+// rita med omslag (sömlösa rutor)
+function wrapDraw(c, w, h, x, y, draw) { for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) draw(x + dx, y + dy); }
+function seaTex() {
+  const t = canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = '#29b2c6'; c.fillRect(0, 0, w, h);
+    for (let k = 0; k < 160; k++) {
+      c.strokeStyle = `rgba(${Math.random() < 0.6 ? '225,255,255' : '18,110,150'},0.5)`; c.lineWidth = 2;
+      wrapDraw(c, w, h, Math.random() * w, Math.random() * h, (x, y) => { c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + 10, y - 5, x + 20, y); c.stroke(); });
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+function gridTex() {
+  const t = canvasTex(128, 128, (c, w, h) => {
+    c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
+    c.fillStyle = 'rgba(255,43,214,0.3)'; c.fillRect(0, 0, w, 8); c.fillRect(0, 0, 8, h);   // skenet runt linjen
+    c.fillStyle = '#ff2bd6'; c.fillRect(0, 2, w, 4); c.fillRect(2, 0, 4, h);
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+function slimeTex() {
+  const t = canvasTex(256, 256, (c, w, h) => {
+    const img = c.createImageData(w, h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const n = fbm(x / 22, y / 22, 4), m = Math.abs(fbm(x / 11 + 3, y / 11 - 7, 3)), hot = Math.max(0, 1 - m * 3.5);
+      const o = (y * w + x) * 4;
+      img.data[o] = 40 + 120 * hot + n * 20; img.data[o + 1] = 150 + 100 * hot + n * 30; img.data[o + 2] = 24 + 70 * hot * hot; img.data[o + 3] = 255;
+    }
+    c.putImageData(img, 0, 0);
+    c.strokeStyle = 'rgba(225,255,170,0.75)'; c.lineWidth = 2;
+    for (let k = 0; k < 40; k++) { c.beginPath(); c.arc(Math.random() * w, Math.random() * h, 2 + Math.random() * 6, 0, Math.PI * 2); c.stroke(); }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+function chocoTex() {
+  const t = canvasTex(256, 256, (c, w, h) => {
+    const img = c.createImageData(w, h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const n = fbm(x / 30, y / 16, 4), sw = Math.sin(x * 0.049 + n * 7), cream = Math.max(0, sw - 0.82) * 4;
+      const o = (y * w + x) * 4;
+      img.data[o] = 92 + 26 * sw + 120 * cream; img.data[o + 1] = 50 + 16 * sw + 110 * cream; img.data[o + 2] = 30 + 10 * sw + 90 * cream; img.data[o + 3] = 255;
+    }
+    c.putImageData(img, 0, 0);
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+// ---------- Stranden: palmer, parasoll, badbollar, sandslott, surfbrädor, livräddartorn ----------
+function umbrellaGeo(cA, cB) {
+  return mergeColored([
+    colorGeo(new THREE.CylinderGeometry(0.08, 0.08, 4.4, 5).translate(0, 2.2, 0), 0xf4f4f4),
+    colorBy(new THREE.ConeGeometry(2.8, 1.0, 12, 1).translate(0, 4.3, 0), (x, y, z) => sector(x, z, 12) % 2 ? cA : cB),
+    colorGeo(new THREE.SphereGeometry(0.14, 5, 4).translate(0, 4.85, 0), cA),
+  ]).rotateZ(0.12);
+}
+function beachBallGeo() {
+  const cols = [0xff3b3b, 0xffffff, 0x2b7bff, 0xffd21f, 0xffffff, 0x2bc84a];
+  return mergeColored([colorBy(new THREE.SphereGeometry(1.4, 12, 8).translate(0, 1.4, 0), (x, y, z) => Math.abs(y - 1.4) > 1.25 ? 0xffffff : cols[sector(x, z, 6)])]);
+}
+function sandcastleGeo() {
+  const S = 0xe8c888, D = 0xd4ac68, parts = [colorGeo(new THREE.BoxGeometry(3.4, 1.4, 3.4).translate(0, 0.7, 0), S)];
+  for (const [x, z] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) {
+    parts.push(colorGeo(new THREE.CylinderGeometry(0.6, 0.7, 2.2, 8).translate(x, 1.1, z), S), colorGeo(new THREE.ConeGeometry(0.75, 0.9, 8).translate(x, 2.65, z), D));
+  }
+  parts.push(colorGeo(new THREE.CylinderGeometry(0.9, 1.0, 3.0, 8).translate(0, 1.5, 0), S), colorGeo(new THREE.ConeGeometry(1.05, 1.3, 8).translate(0, 3.65, 0), D));
+  parts.push(colorGeo(new THREE.CylinderGeometry(0.05, 0.05, 1.3, 4).translate(0, 4.8, 0), 0x6a4a2a), colorGeo(new THREE.BoxGeometry(0.8, 0.45, 0.05).translate(0.4, 5.2, 0), 0xff3b3b));
+  return mergeColored(parts);
+}
+function surfboardGeo(c, s) {
+  return mergeColored([
+    colorBy(new THREE.CylinderGeometry(0.42, 0.42, 3.2, 10, 1).scale(1, 1, 0.2).translate(0, 1.6, 0), (x) => Math.abs(x) < 0.12 ? s : c),
+    colorGeo(new THREE.SphereGeometry(0.42, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 1.6, 0.2).translate(0, 3.2, 0), c),
+  ]).rotateZ(0.15);
+}
+function lifeguardGeo() {
+  const W = 0xffffff, R = 0xe8282e, parts = [];
+  for (const [x, z] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) parts.push(barGeo([x, 0, z], [x * 0.7, 4.2, z * 0.7], 0.14, W, 6));
+  parts.push(colorGeo(new THREE.BoxGeometry(3.6, 0.3, 3.6).translate(0, 4.3, 0), 0xd8b880));
+  parts.push(colorBy(new THREE.BoxGeometry(2.6, 2.2, 2.6, 1, 4, 1).translate(0, 5.55, 0), (x, y) => Math.floor((y - 4.45) * 1.8) % 2 ? W : R));
+  parts.push(colorGeo(new THREE.ConeGeometry(2.4, 1.2, 4).rotateY(Math.PI / 4).translate(0, 7.25, 0), R));
+  parts.push(barGeo([0, 7.8, 0], [0, 10.5, 0], 0.06, W), colorGeo(new THREE.BoxGeometry(1.2, 0.7, 0.05).translate(0.6, 10.1, 0), R));
+  for (let k = 0; k < 6; k++) parts.push(colorGeo(new THREE.BoxGeometry(1.0, 0.1, 0.25).translate(0, 0.6 + k * 0.62, 2.0 - k * 0.12), W));   // stege
+  return mergeColored(parts);
+}
+function hutGeo(c) {
+  return mergeColored([
+    colorBy(new THREE.BoxGeometry(3.6, 3.2, 3.6, 6, 1, 6).translate(0, 1.6, 0), (x, y, z) => Math.floor((x + z + 10) * 1.2) % 2 ? c : 0xffffff),
+    colorGeo(new THREE.ConeGeometry(3.3, 1.8, 4).rotateY(Math.PI / 4).translate(0, 4.1, 0), c),
+    colorGeo(new THREE.BoxGeometry(1.2, 2.0, 0.1).translate(0, 1.0, 1.82), 0x3a2a2a),
+  ]);
+}
+function buildBeach(ctx, terr, lam) {
+  const land = ctx.seaY + 1.2;
+  const out = scatter(ctx, terr, [palmGeo(), jungleBushGeo(), rockGeo(0xa89a88, 0.7)], [0.58, 0.24, 0.18], 2800, lam, 9, { minY: land, CH: 800 });
+  out.push(...scatter(ctx, terr, [umbrellaGeo(0xff4a5a, 0xffffff), umbrellaGeo(0x2bb4ff, 0xffe45a), beachBallGeo(), sandcastleGeo(), surfboardGeo(0xff8a2a, 0xffffff), surfboardGeo(0x2bc8d8, 0xffe45a)],
+    [0.22, 0.2, 0.16, 0.14, 0.14, 0.14], 650, lam, 6, { seed: 19, maxD: 170, minY: land, CH: 900 }));
+  // vid starten: livräddartorn, badhytter, parasoll och badbollar
+  const HW = ctx.track.halfW;
+  placeProp(ctx, -95, -(HW + 24), lamMesh(lifeguardGeo()));
+  [0xff5a8a, 0x2bb4ff, 0xffc21a, 0x3ac86a].forEach((c, k) => placeProp(ctx, 10 + k * 12, HW + 22, lamMesh(hutGeo(c))));
+  for (const [s, lat, g] of [[-40, -(HW + 12), umbrellaGeo(0xff4a5a, 0xffffff)], [-25, -(HW + 15), umbrellaGeo(0x2bb4ff, 0xffe45a)], [-60, -(HW + 14), beachBallGeo()], [75, HW + 13, umbrellaGeo(0xffc21a, 0xffffff)], [90, HW + 12, sandcastleGeo()]]) placeProp(ctx, s, lat, lamMesh(g));
+  return out;
+}
+
+// ---------- Höstskogen: röda, orange och gula lövträd, björkar, granar, flugsvampar, en röd stuga ----------
+function leafTreeGeo(pal, birch = false) {
+  const parts = [];
+  if (birch) {
+    parts.push(colorBy(new THREE.CylinderGeometry(0.3, 0.42, 9, 6, 8).translate(0, 4.5, 0), (x, y, z, k) => (Math.floor(y * 1.4) % 3 === 0 && hash1(k) > 0.3) ? 0x2a2626 : 0xf2efe8));
+    for (const [x, y, z, r] of [[0, 9.6, 0, 2.4], [1.2, 8, 0.6, 1.9], [-1.1, 8.4, -0.5, 1.9], [0.2, 11.2, 0.3, 1.6]]) parts.push(colorGeo(new THREE.IcosahedronGeometry(r, 0).scale(1, 1.25, 1).translate(x, y, z), pal[parts.length % pal.length]));
+  } else {
+    const B = 0x5a3a26;
+    parts.push(colorGeo(new THREE.CylinderGeometry(0.45, 0.75, 7.5, 7).translate(0, 3.75, 0), B));
+    parts.push(barGeo([0, 5, 0], [2, 7.6, 0.6], 0.2, B, 5), barGeo([0, 5.5, 0], [-1.8, 7.9, -0.8], 0.2, B, 5));
+    for (const [x, y, z, r] of [[0, 9.6, 0, 3.6], [2.4, 8.4, 0.9, 2.7], [-2.3, 8.8, -1.0, 2.8], [0.6, 11.4, -0.7, 2.5], [-0.6, 8.2, 2.0, 2.4]]) parts.push(colorGeo(new THREE.IcosahedronGeometry(r, 0).scale(1, 0.8, 1).translate(x, y, z), pal[parts.length % pal.length]));
+  }
+  return mergeColored(parts);
+}
+function autumnBushGeo() {
+  const parts = [];
+  for (const [x, z, r, c] of [[0, 0, 1.4, 0xc8321e], [1.2, 0.5, 1.0, 0xe8761e], [-1.0, 0.6, 1.1, 0xa8281e], [0.3, -1.1, 0.9, 0xf0a02a]]) parts.push(colorGeo(new THREE.IcosahedronGeometry(r, 0).scale(1, 0.75, 1).translate(x, r * 0.6, z), c));
+  return mergeColored(parts);
+}
+function mushroomGeo() {
+  const parts = [colorGeo(new THREE.CylinderGeometry(0.35, 0.45, 1.6, 8).translate(0, 0.8, 0), 0xf6f0e4),
+    colorGeo(new THREE.SphereGeometry(1.3, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.65, 1).translate(0, 1.5, 0), 0xe0201e)];
+  for (let k = 0; k < 7; k++) {
+    const a = k * 2.4, rr = k ? 0.85 : 0;
+    parts.push(colorGeo(new THREE.SphereGeometry(0.17, 5, 4).scale(1, 0.5, 1).translate(Math.cos(a) * rr, 1.5 + Math.sqrt(1 - (rr / 1.3) ** 2) * 0.845, Math.sin(a) * rr), 0xffffff));
+  }
+  return mergeColored(parts);
+}
+function stugaGeo() {
+  const R = 0xa8261e, W = 0xf4f0e8, parts = [colorGeo(new THREE.BoxGeometry(9, 4.2, 6.5).translate(0, 2.1, 0), R)];
+  for (const [x, z] of [[-4.5, -3.25], [4.5, -3.25], [-4.5, 3.25], [4.5, 3.25]]) parts.push(colorGeo(new THREE.BoxGeometry(0.4, 4.3, 0.4).translate(x, 2.15, z), W));
+  parts.push(colorGeo(new THREE.CylinderGeometry(4.3, 4.3, 9.8, 3).rotateZ(Math.PI / 2).rotateX(-Math.PI / 2).scale(1, 0.62, 1).translate(0, 5.5, 0), 0x2e2a2c));
+  for (const x of [-2.6, 2.6]) { parts.push(colorGeo(new THREE.BoxGeometry(1.5, 1.4, 0.2).translate(x, 2.5, 3.3), W), colorGeo(new THREE.BoxGeometry(1.1, 1.0, 0.25).translate(x, 2.5, 3.3), 0x2a3a4a)); }
+  parts.push(colorGeo(new THREE.BoxGeometry(1.3, 2.4, 0.2).translate(0, 1.2, 3.3), W), colorGeo(new THREE.BoxGeometry(0.9, 2.1, 0.25).translate(0, 1.1, 3.3), 0x2a6a3a));
+  parts.push(colorGeo(new THREE.BoxGeometry(0.9, 2.4, 0.9).translate(2.6, 7.2, -1), 0x8a3a2a));
+  return mergeColored(parts);
+}
+function buildAutumn(ctx, terr, lam) {
+  const ORANGE = [0xe8761e, 0xf0902a, 0xd8601a, 0xf4a83a], RED = [0xc8281e, 0xe0402a, 0xa81e1e, 0xd85a2a], YEL = [0xf4c22a, 0xffd84a, 0xe0a81e, 0xf0b830];
+  const out = scatter(ctx, terr, [leafTreeGeo(ORANGE), leafTreeGeo(RED), leafTreeGeo(YEL, true), pineGeo(false), autumnBushGeo(), mushroomGeo()],
+    [0.27, 0.21, 0.2, 0.13, 0.12, 0.07], 6200, lam, 9, { CH: 800 });
+  const HW = ctx.track.halfW;
+  placeProp(ctx, -90, -(HW + 30), lamMesh(stugaGeo()));
+  for (const [s, lat] of [[-60, -(HW + 13)], [-45, -(HW + 16)], [40, HW + 14], [60, HW + 18]]) placeProp(ctx, s, lat, lamMesh(mushroomGeo()), s);
+  placeProp(ctx, 20, HW + 26, lamMesh(leafTreeGeo(RED)));
+  return out;
+}
+
+// ---------- Spökbanan: krokiga döda träd, gravstenar, kors, spöken och lysande pumpor ----------
+function spookyTreeGeo() {
+  const C = 0x2a2232, parts = [];
+  let x = 0, y = 0, lean = 0;
+  for (let k = 0; k < 5; k++) {                      // krokig stam
+    const h = 2, r0 = 0.62 - k * 0.1;
+    parts.push(colorGeo(new THREE.CylinderGeometry(r0 - 0.1, r0, h, 6).translate(0, h / 2, 0).rotateZ(lean).translate(x, y, 0), C));
+    x -= Math.sin(lean) * h; y += Math.cos(lean) * h; lean += k % 2 ? -0.42 : 0.34;
+  }
+  for (const [a, y0, l, up] of [[0.4, 4.2, 3.4, 0.5], [2.7, 5.6, 3.0, 0.7], [4.5, 7.0, 2.6, 0.45], [1.6, 8.4, 2.2, 0.9]]) {
+    const p0 = [0, y0, 0], p1 = [Math.cos(a) * l, y0 + up * l, Math.sin(a) * l];
+    const p2 = [p1[0] + Math.cos(a + 0.9) * l * 0.5, p1[1] - 0.3, p1[2] + Math.sin(a + 0.9) * l * 0.5];
+    const p3 = [p1[0] + Math.cos(a - 0.7) * l * 0.4, p1[1] + 0.8, p1[2] + Math.sin(a - 0.7) * l * 0.4];
+    parts.push(barGeo(p0, p1, 0.16, C, 5), barGeo(p1, p2, 0.08, C), barGeo(p1, p3, 0.08, C));
+  }
+  return mergeColored(parts);
+}
+function graveGeo() {
+  const S = 0x8e8a9c;
+  return mergeColored([
+    colorGeo(new THREE.BoxGeometry(1.8, 0.3, 1.0).translate(0, 0.15, 0), 0x5a5664),
+    colorGeo(new THREE.BoxGeometry(1.4, 1.6, 0.35).translate(0, 1.1, 0), S),
+    colorGeo(new THREE.CylinderGeometry(0.7, 0.7, 0.35, 10, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateZ(Math.PI / 2).translate(0, 1.9, 0), S),
+    colorGeo(new THREE.BoxGeometry(0.8, 0.12, 0.05).translate(0, 1.6, 0.19), 0x55515f),
+    colorGeo(new THREE.BoxGeometry(0.6, 0.12, 0.05).translate(0, 1.3, 0.19), 0x55515f),
+  ]).rotateZ(0.07).rotateX(-0.05);
+}
+function crossGeo() {
+  const S = 0x9a96a8;
+  return mergeColored([colorGeo(new THREE.BoxGeometry(0.35, 3.0, 0.35).translate(0, 1.5, 0), S), colorGeo(new THREE.BoxGeometry(1.6, 0.35, 0.35).translate(0, 2.2, 0), S)]).rotateZ(-0.1);
+}
+// pumplykta (olyst material: hela pumpan "lyser") med ansikte åt två håll
+function pumpkinGeo() {
+  const parts = [colorBy(new THREE.SphereGeometry(1, 12, 8).scale(1.25, 0.95, 1.25).translate(0, 0.9, 0), (x, y, z) => sector(x, z, 12) % 2 ? 0xff7a12 : 0xe0560a)];
+  const F = 0xfff06a;
+  for (const sd of [1, -1]) {
+    for (const ex of [-0.42, 0.42]) parts.push(colorGeo(new THREE.BoxGeometry(0.3, 0.3, 0.14).rotateZ(Math.PI / 4).translate(ex, 1.15, sd * 1.17), F));
+    parts.push(colorGeo(new THREE.BoxGeometry(0.95, 0.2, 0.14).translate(0, 0.62, sd * 1.15), F));
+    for (const ex of [-0.48, 0.48]) parts.push(colorGeo(new THREE.BoxGeometry(0.18, 0.22, 0.14).translate(ex, 0.75, sd * 1.13), F));
+  }
+  parts.push(colorGeo(new THREE.CylinderGeometry(0.1, 0.15, 0.45, 5).rotateZ(0.2).translate(0.05, 1.95, 0), 0x3a5a1a));
+  return mergeColored(parts);
+}
+function ghostGeo() {
+  const W = 0xf4f2ff, parts = [
+    colorGeo(new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 1.1, 1).translate(0, 1.6, 0), W),
+    colorBy(new THREE.CylinderGeometry(1, 1.3, 1.6, 10, 1, true).translate(0, 0.8, 0), (x, y, z) => W),
+  ];
+  for (const ex of [-0.35, 0.35]) parts.push(colorGeo(new THREE.SphereGeometry(0.17, 6, 4).scale(1, 1.4, 0.6).translate(ex, 2.0, 0.92), 0x141018));
+  parts.push(colorGeo(new THREE.SphereGeometry(0.2, 6, 4).scale(1, 1.3, 0.6).translate(0, 1.45, 0.98), 0x141018));
+  return mergeColored(parts).translate(0, 3.5, 0);     // svävar
+}
+function deadBushGeo() {
+  const C = 0x3a2a44, parts = [];
+  for (let k = 0; k < 7; k++) { const a = k * 0.9; parts.push(barGeo([0, 0, 0], [Math.cos(a) * 1.6, 1.4 + (k % 3) * 0.5, Math.sin(a) * 1.6], 0.07, C)); }
+  return mergeColored(parts);
+}
+function hauntedGeo() {
+  const B = 0x3a2e48, D = 0x1e1626, parts = [colorGeo(new THREE.BoxGeometry(10, 8, 7).translate(0, 4, 0), B)];
+  parts.push(colorGeo(new THREE.ConeGeometry(7.4, 5, 4).rotateY(Math.PI / 4).scale(1, 1, 0.75).translate(0, 10.5, 0).rotateZ(0.06), D));
+  parts.push(colorGeo(new THREE.CylinderGeometry(2.2, 2.4, 14, 8).translate(5.5, 7, 2.5), B), colorGeo(new THREE.ConeGeometry(3, 6, 8).translate(5.5, 17, 2.5).rotateZ(-0.04), D));
+  parts.push(colorGeo(new THREE.BoxGeometry(1.0, 3.5, 1.0).translate(-3, 12, -1), D));
+  parts.push(colorGeo(new THREE.BoxGeometry(2.2, 3.4, 0.3).translate(-1.5, 1.7, 3.55), 0x140e18));
+  return mergeColored(parts);
+}
+function hauntedWindowsGeo() {
+  const Y = 0xffd84a, parts = [];
+  for (const z of [3.55, -3.55]) for (const [x, y] of [[-3.2, 5.6], [0.8, 5.6], [3.2, 2.4], [1.6, 2.4]]) parts.push(colorGeo(new THREE.BoxGeometry(1.4, 1.6, 0.2).translate(x, y, z), Y));
+  parts.push(colorGeo(new THREE.BoxGeometry(1.0, 1.4, 0.2).translate(5.5, 11, 4.75), 0xa8ff6a));
+  return mergeColored(parts);
+}
+// pumpor längs vägkanten (vända mot vägen) med ett orange sken
+function roadPumpkins(ctx, mat) {
+  const { scene, track: T, terr } = ctx, HW = T.halfW, list = [];
+  let n = 0;
+  for (let s = 35; s < T.L - 20; s += 95) {
+    const i = T.idx(s);
+    if (T.flags[i] & (F_GAP | F_TUNNEL | F_BRIDGE | F_LAND | F_RAMP)) continue;
+    const sd = n++ % 2 ? 1 : -1, lat = sd * (HW + 4.5);
+    const x = T.px[i] + T.rx[i] * lat, z = T.pz[i] + T.rz[i] * lat;
+    list.push([x, terr.heightAt(x, z) - 0.15, z, Math.atan2(-sd * T.rx[i], -sd * T.rz[i])]);
+  }
+  const inst = new THREE.InstancedMesh(pumpkinGeo(), mat, list.length);
+  const gpos = new Float32Array(list.length * 3), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(0.9, 0.9, 0.9), UP = new THREE.Vector3(0, 1, 0);
+  list.forEach(([x, y, z, yaw], k) => { inst.setMatrixAt(k, m4.compose(v.set(x, y, z), q.setFromAxisAngle(UP, yaw), sc)); gpos.set([x, y + 1, z], k * 3); });
+  scene.add(inst);
+  const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(gpos, 3));
+  const glow = new THREE.Points(gg, new THREE.PointsMaterial({ map: glowSpriteTex('255,140,40'), size: 8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  glow.frustumCulled = false;
+  scene.add(glow);
+}
+function buildSpooky(ctx, terr, lam) {
+  const pm = ctx.pumpkinMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+  const ghostM = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x4a4a6a, transparent: true, opacity: 0.85 });
+  const out = scatter(ctx, terr, [spookyTreeGeo(), graveGeo(), crossGeo(), pumpkinGeo(), rockGeo(0x4a4458, 0.8), ghostGeo(), deadBushGeo()],
+    [0.3, 0.2, 0.08, 0.12, 0.12, 0.05, 0.13], 3400, [lam, lam, lam, pm, lam, ghostM, lam], 9, { CH: 800 });
+  roadLamps(ctx, { every: 60, rgb: '255,170,90', head: 0xffc070, post: 0x1e1824, size: 11 });
+  roadPumpkins(ctx, pm);
+  const HW = ctx.track.halfW, house = new THREE.Group();
+  house.add(lamMesh(hauntedGeo()), glowMesh(hauntedWindowsGeo()));
+  placeProp(ctx, -95, -(HW + 34), house).scale.setScalar(1.4);
+  for (const [s, lat, g] of [[-40, HW + 12, graveGeo()], [-28, HW + 14, crossGeo()], [-55, HW + 16, graveGeo()], [30, -(HW + 13), graveGeo()], [55, HW + 20, spookyTreeGeo()]]) placeProp(ctx, s, lat, lamMesh(g), s * 0.05);
+  return out;
+}
+
+// ---------- Godisbanan: klubbor, polkagrisar, muffins, munkar, gelégodis, sockervaddsträd, pepparkakshus ----------
+function lollipopGeo(cA, cB) {
+  const swirl = (x, y) => (Math.floor((Math.atan2(y, x) / (Math.PI * 2) + 1) * 4 + Math.hypot(x, y) * 1.1) % 2) ? cA : cB;
+  const parts = [colorGeo(new THREE.CylinderGeometry(0.16, 0.16, 6.4, 6).translate(0, 3.2, 0), 0xffffff)];
+  for (const sd of [1, -1]) { const g = colorBy(new THREE.RingGeometry(0.02, 2.2, 18, 4), swirl); if (sd < 0) g.rotateY(Math.PI); parts.push(g.translate(0, 8.4, sd * 0.25)); }
+  parts.push(colorGeo(new THREE.CylinderGeometry(2.2, 2.2, 0.5, 18, 1, true).rotateX(Math.PI / 2).translate(0, 8.4, 0), cA));
+  return mergeColored(parts);
+}
+function caneGeo() {
+  const R = 0xff2a3a, W = 0xffffff, H = 8, r = 1.3;
+  const shaft = colorBy(new THREE.CylinderGeometry(0.42, 0.42, H, 8, 16).translate(0, H / 2, 0), (x, y, z) => Math.floor(y * 1.6 + Math.atan2(z, x) * 0.5 + 20) % 2 ? R : W);
+  const hook = colorBy(new THREE.TorusGeometry(r, 0.42, 6, 12, Math.PI).translate(r, H, 0), (x, y) => Math.floor(Math.atan2(y - H, x - r) * 3.2 + 20) % 2 ? R : W);
+  const tip = colorBy(new THREE.CylinderGeometry(0.42, 0.42, 1.2, 8, 2).translate(2 * r, H - 0.6, 0), (x, y) => Math.floor(y * 1.6 + 20) % 2 ? R : W);
+  return mergeColored([shaft, hook, tip]);
+}
+function cupcakeGeo(frost) {
+  const parts = [colorBy(new THREE.CylinderGeometry(1.6, 1.2, 1.6, 14).translate(0, 0.8, 0), (x, y, z) => y > 1.55 ? frost : (sector(x, z, 14) % 2 ? 0xff9ac8 : 0xffd2e6))];
+  parts.push(colorGeo(new THREE.SphereGeometry(1.8, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.7, 1).translate(0, 1.6, 0), frost));
+  parts.push(colorGeo(new THREE.SphereGeometry(1.25, 12, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.8, 1).translate(0, 2.4, 0), frost));
+  parts.push(colorGeo(new THREE.ConeGeometry(0.75, 1.0, 12).translate(0, 3.6, 0), frost));
+  parts.push(colorGeo(new THREE.SphereGeometry(0.45, 8, 6).translate(0, 4.3, 0), 0xe0102a));        // körsbär
+  const spr = [0xff4a8e, 0x4ad8ff, 0xffe24a, 0x7aff8a, 0xb07aff];
+  for (let k = 0; k < 10; k++) {
+    const a = k * 2.39, rr = 0.6 + (k % 4) * 0.28, y = 1.6 + 0.7 * Math.sqrt(1.8 * 1.8 - rr * rr);
+    parts.push(colorGeo(new THREE.BoxGeometry(0.3, 0.08, 0.08).rotateY(a * 3).translate(Math.cos(a) * rr, y, Math.sin(a) * rr), spr[k % spr.length]));
+  }
+  return mergeColored(parts);
+}
+function donutGeo(frost) {
+  const spr = [0xffffff, 0x4ad8ff, 0xffe24a, 0x7aff8a];
+  return mergeColored([colorBy(new THREE.TorusGeometry(1.8, 0.9, 8, 18).translate(0, 2.7, 0), (x, y, z, k) => Math.abs(z) > 0.35 ? (hash1(k * 1.7) > 0.86 ? spr[k % 4] : frost) : 0xd8a058)]);
+}
+function gumdropsGeo() {
+  const parts = [];
+  for (const [x, z, r, c] of [[0, 0, 1.3, 0xff4a6a], [2.0, 0.6, 1.0, 0x4ad86a], [-1.6, 1.0, 1.1, 0xffc83a], [0.6, -1.8, 0.9, 0xb06aff]]) {
+    parts.push(colorGeo(new THREE.SphereGeometry(r, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 1.3, 1).translate(x, 0, z), c));
+  }
+  return mergeColored(parts);
+}
+function candyTreeGeo() {
+  const parts = [colorBy(new THREE.CylinderGeometry(0.3, 0.4, 6, 8, 6).translate(0, 3, 0), (x, y) => Math.floor(y * 1.5) % 2 ? 0xffffff : 0x7ad8ff)];
+  for (const [x, y, z, r, c] of [[0, 7.6, 0, 2.6, 0xffa6d6], [1.8, 6.8, 0.6, 1.8, 0xffc4e4], [-1.7, 7.0, -0.6, 1.9, 0xb8e4ff], [0.3, 9.2, -0.4, 1.7, 0xffb8dc]]) {
+    parts.push(colorGeo(new THREE.IcosahedronGeometry(r, 1).translate(x, y, z), c));
+  }
+  return mergeColored(parts);
+}
+function gingerGeo() {
+  const G = 0xb8743a, I = 0xffffff, parts = [colorGeo(new THREE.BoxGeometry(9, 5, 7).translate(0, 2.5, 0), G)];
+  parts.push(colorGeo(new THREE.CylinderGeometry(5.2, 5.2, 9.6, 3).rotateZ(Math.PI / 2).rotateX(-Math.PI / 2).scale(1, 0.7, 1).translate(0, 6.6, 0), 0xff8ac8));
+  for (const z of [-4.45, 4.45]) parts.push(colorBy(new THREE.BoxGeometry(9.8, 0.35, 0.35, 12, 1, 1).translate(0, 4.85, z), (x) => Math.floor(x * 1.3 + 20) % 2 ? I : 0xff4a8e));   // glasyrkanter
+  for (const x of [-2.6, 2.6]) parts.push(colorGeo(new THREE.BoxGeometry(1.6, 1.6, 0.2).translate(x, 3, 3.55), I), colorGeo(new THREE.BoxGeometry(1.2, 1.2, 0.25).translate(x, 3, 3.55), 0xffe27a));
+  parts.push(colorGeo(new THREE.BoxGeometry(1.6, 2.8, 0.25).translate(0, 1.4, 3.55), 0x7a3a1a));
+  for (let k = 0; k < 7; k++) parts.push(colorGeo(new THREE.SphereGeometry(0.28, 6, 4).translate(-3.9 + k * 1.3, 0.5, 3.6), [0xff4a6a, 0x4ad86a, 0xffc83a, 0x4ad8ff][k % 4]));
+  return mergeColored(parts);
+}
+function buildCandy(ctx, terr, lam) {
+  const out = scatter(ctx, terr, [lollipopGeo(0xff3b8a, 0xffffff), lollipopGeo(0x3ac8ff, 0xfff27a), caneGeo(), cupcakeGeo(0xffb6d8), donutGeo(0xff6ab0), gumdropsGeo(), candyTreeGeo()],
+    [0.15, 0.13, 0.17, 0.13, 0.1, 0.14, 0.18], 3200, lam, 9);
+  const HW = ctx.track.halfW;
+  placeProp(ctx, -90, -(HW + 30), lamMesh(gingerGeo()));
+  for (const [s, lat, g, sc] of [[-35, -(HW + 12), lollipopGeo(0xff3b8a, 0xffffff), 1.6], [-35, HW + 12, lollipopGeo(0x3ac8ff, 0xfff27a), 1.6], [40, HW + 16, cupcakeGeo(0xb8f0ff), 1.8], [60, -(HW + 15), caneGeo(), 1.5], [-70, HW + 18, donutGeo(0xff8ac8), 1.6]]) {
+    placeProp(ctx, s, lat, lamMesh(g)).scale.setScalar(sc);
+  }
+  return out;
+}
+
+// ---------- Neonbanan: pyramider med lysande kanter, pelare, trianglar, palmsiluetter, valv över vägen ----------
+function neonPyramidGeo(edge) {
+  const r = 12, h = 15, parts = [colorGeo(new THREE.ConeGeometry(r, h, 4, 1).translate(0, h / 2, 0), 0x150a26)];
+  const cs = [0, 1, 2, 3].map(k => [r * Math.sin(k * Math.PI / 2), 0.05, r * Math.cos(k * Math.PI / 2)]);
+  for (let k = 0; k < 4; k++) parts.push(barGeo(cs[k], [0, h, 0], 0.25, edge), barGeo(cs[k], cs[(k + 1) % 4], 0.25, edge));
+  return mergeColored(parts);
+}
+function neonPillarGeo() {
+  const parts = [colorGeo(new THREE.BoxGeometry(2.2, 20, 2.2).translate(0, 10, 0), 0x150a26)];
+  for (const y of [4, 8, 12, 16]) parts.push(colorGeo(new THREE.BoxGeometry(2.5, 0.3, 2.5).translate(0, y, 0), 0x2bf0ff));
+  parts.push(colorGeo(new THREE.BoxGeometry(2.8, 0.6, 2.8).translate(0, 20.2, 0), 0xff2bd6));
+  return mergeColored(parts);
+}
+function neonTriGeo(c) {
+  const s = 16, h = s * 0.866, a = [-s / 2, 0.5, 0], b = [s / 2, 0.5, 0], t = [0, h + 0.5, 0];
+  return mergeColored([barGeo(a, b, 0.35, c), barGeo(b, t, 0.35, c), barGeo(t, a, 0.35, c)]);
+}
+// valv över vägen med neonrör, var 520:e meter (inte vid hopp, broar och tunnlar)
+function buildNeonArches(ctx) {
+  const { scene, track: T } = ctx, W = T.halfW + 2.6, H = 15, geos = [], cols = [0x2bf0ff, 0xff2bd6], D = 0x150a26;
+  let n = 0;
+  for (let s = 300; s < T.L - 250; s += 520) {
+    const i = T.idx(s);
+    let bad = false;
+    for (let o = -14; o <= 14 && !bad; o++) bad = !!(T.flags[(i + o + T.N) % T.N] & (F_GAP | F_RAMP | F_LAND | F_TUNNEL | F_BRIDGE));
+    if (bad) continue;
+    const col = cols[n % 2], col2 = cols[++n % 2], parts = [];
+    // yttre ram i en färg, inre rör i den andra
+    for (const sx of [-1, 1]) parts.push(colorGeo(new THREE.BoxGeometry(0.9, H + 5, 0.9).translate(sx * W, (H - 5) / 2, 0), col), colorGeo(new THREE.BoxGeometry(0.5, H - 1.4, 0.5).translate(sx * (W - 1.6), (H - 1.4) / 2, 0), col2));
+    parts.push(colorGeo(new THREE.BoxGeometry(2 * W + 0.9, 0.9, 0.9).translate(0, H, 0), col), colorGeo(new THREE.BoxGeometry(2 * W - 2.7, 0.5, 0.5).translate(0, H - 1.6, 0), col2));
+    parts.push(colorGeo(new THREE.BoxGeometry(2 * W + 2.5, 2.6, 0.5).translate(0, H + 1.9, 0), D));      // mörk skylt ovanpå
+    const g = mergeColored(parts);
+    g.applyMatrix4(frameAt(T, s));
+    geos.push(g);
+  }
+  if (geos.length) scene.add(glowMesh(mergeGeometries(geos)));
+}
+function buildNeon(ctx, terr) {
+  const basic = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+  const out = scatter(ctx, terr, [recolor(palmGeo(), 0x12061e), neonPillarGeo(), neonTriGeo(0xff2bd6), neonTriGeo(0x2bf0ff)], [0.5, 0.2, 0.15, 0.15], 1500, basic, 10, { CH: 800 });
+  out.push(...scatter(ctx, terr, [neonPyramidGeo(0x2bf0ff), neonPyramidGeo(0xff2bd6)], [0.5, 0.5], 260, basic, 45, { seed: 23, CH: 800 }));
+  buildNeonArches(ctx);
+  // skyltar vid starten
+  const HW = ctx.track.halfW;
+  for (const [s, lat, word, col] of [[-80, -(HW + 18), 'KNUFF', '#ff2bd6'], [-20, HW + 18, 'TURBO', '#2bf0ff']]) {
+    const grp = new THREE.Group();
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(22, 7), new THREE.MeshBasicMaterial({ map: neonTex(word, col), transparent: true, toneMapped: false, side: THREE.DoubleSide, depthWrite: false }));
+    sign.position.y = 11;
+    grp.add(sign, glowMesh(mergeColored([colorGeo(new THREE.BoxGeometry(0.6, 8, 0.6).translate(-7, 4, -0.4), 0x150a26), colorGeo(new THREE.BoxGeometry(0.6, 8, 0.6).translate(7, 4, -0.4), 0x150a26)])));
+    placeProp(ctx, s, lat, grp);
+  }
+  for (const [s, lat] of [[-50, -(HW + 12)], [-110, HW + 14], [30, -(HW + 15)], [70, HW + 12]]) placeProp(ctx, s, lat, glowMesh(recolor(palmGeo(), 0x12061e))).scale.setScalar(1.5);
+  return out;
+}
+
+// ---------- Himlakroppar: spökmånen och den randiga 80-talssolen (följer kameran) ----------
+function bigMoon() {
+  const tex = canvasTex(256, 256, (c, w, h) => {
+    const g = c.createRadialGradient(w * 0.42, h * 0.4, 8, w / 2, h / 2, w / 2);
+    g.addColorStop(0, '#fffdf0'); g.addColorStop(1, '#ecdcae');
+    c.fillStyle = g; c.beginPath(); c.arc(w / 2, h / 2, w / 2 - 2, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(190,170,120,0.45)';
+    for (const [x, y, r] of [[90, 80, 22], [160, 120, 16], [110, 170, 26], [180, 70, 10], [70, 140, 12], [150, 190, 9]]) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); }
+  });
+  const grp = new THREE.Group();
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowSpriteTex('255,236,190'), fog: false, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 }));
+  glow.scale.setScalar(2600); glow.renderOrder = -3;
+  const disc = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, fog: false, toneMapped: false, depthWrite: false }));
+  disc.scale.setScalar(820); disc.renderOrder = -2;
+  grp.add(glow, disc);
+  return grp;
+}
+function synthSun() {
+  const tex = canvasTex(512, 512, (c, w, h) => {
+    const g = c.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#fff47a'); g.addColorStop(0.42, '#ffa23a'); g.addColorStop(0.75, '#ff4a8a'); g.addColorStop(1, '#d81a9a');
+    c.fillStyle = g; c.beginPath(); c.arc(w / 2, h / 2, w / 2 - 4, 0, Math.PI * 2); c.fill();
+    // ränderna som blir tjockare nedåt
+    c.globalCompositeOperation = 'destination-out';
+    for (let k = 0; k < 8; k++) c.fillRect(0, h * (0.3 + k * 0.064), w, 3 + k * 2.6);
+  });
+  const grp = new THREE.Group();
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowSpriteTex('255,90,170'), fog: false, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.7 }));
+  glow.scale.setScalar(5200); glow.renderOrder = -3;
+  const disc = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, fog: false, toneMapped: false, depthWrite: false }));
+  disc.scale.setScalar(2300); disc.renderOrder = -2;
+  grp.add(glow, disc);
+  return grp;
 }

@@ -2,9 +2,9 @@
 // (i tyngdpunktshöjd så bilen inte välter av att svänga), motor med dynamisk toppfart
 // (packracing) och smäll-detektering via hastighetsändring (Δv).
 import * as THREE from 'three';
-import { CONF } from './config.js?v=28';
-import { VTYPES, SPECIALS } from './vtypes.js?v=28';
-import { frontParts, loaderPose } from './gear.js?v=28';
+import { CONF } from './config.js?v=29';
+import { VTYPES, SPECIALS } from './vtypes.js?v=29';
+import { frontParts, loaderPose } from './gear.js?v=29';
 
 export const GROUP_CAR = (0x0001 << 16) | 0xffff;
 export const GROUP_GHOST = (0x0001 << 16) | 0x0002;   // krockar bara med världen
@@ -157,12 +157,22 @@ export class Vehicle {
         this.tank = on ? Math.max(0, this.tank - dt / S.hold) : Math.min(1, this.tank + dt / (S.hold * (S.refill || 2.2)));
         this.loader += clamp((on ? 1 : 0) - this.loader, -dt * 5, dt * 6);
       }
+      // helikoptern flyger: håll 6 m över marken (fjäder + dämpning, tyngdkraften tas bort), lite lutning framåt
+      if (T.special === 'flyg' && this.loader > 0.05) {
+        this.ray.origin = { x: this.pos.x, y: this.pos.y, z: this.pos.z }; this.ray.dir = { x: 0, y: -1, z: 0 };
+        const hit = this.sim.world.castRay(this.ray, 14, true, undefined, undefined, undefined, this.body);
+        const h = hit ? (hit.toi ?? hit.timeOfImpact) : 14, vy = this.body.linvel().y, g = CONF.GRAV * (this.sim.track?.def?.grav ?? 1);
+        const ay = clamp((6 - h) * 4 - vy * 2.6, -12, 14) + g;
+        this.applyJ(0, T.mass * ay * this.loader * dt, 0, this.pos.x, this.pos.y, this.pos.z);
+      }
       // nitro: en extra knuff framåt som får gå förbi toppfarten (upp till 30 %)
       if (T.special === 'nitro' && this.loader > 0.05) {
         const x = Math.max(0, this.vLong) / (this.vmax * 1.3), J = T.mass * 13 * this.loader * clamp(1 - x * x * x, 0, 1) * dt;
         if (J > 0) this.applyJ(this.fwd.x * J, this.fwd.y * J, this.fwd.z * J, this.pos.x, this.pos.y, this.pos.z);
       }
     }
+    // punktering / tillplattad: över den lägre toppfarten bromsar bilen in (game.carState sätter slowK)
+    if (this.slowK < 1 && this.vLong > this.vmax * this.slowK) { const J = T.mass * 9 * dt; this.applyJ(-this.fwd.x * J, 0, -this.fwd.z * J, this.pos.x, this.pos.y, this.pos.z); }
     // halt underlag (olja, vatten, dragstråle): greppet sänks några steg framåt
     if (this.slipT > 0) { this.slipT -= dt; this.pressF = Math.min(this.pressF, this.slipK); this.pressR = Math.min(this.pressR, this.slipK * 0.85); }
 
@@ -184,7 +194,7 @@ export class Vehicle {
         const x = Math.max(0, this.vLong) / this.vmax;
         // tunga fordon: seg start (accelK), full kraft först uppe i fart — samma toppfart
         const lowK = T.accelK + (1 - T.accelK) * smooth(0.45, 0.9, x);
-        drive = throttle * T.driveMax * this.powerMul * lowK * clamp(1 - x * x * x, -0.7, 1);
+        drive = throttle * T.driveMax * this.powerMul * lowK * clamp(1 - x * x * x, -0.7, 1) * (this.slowK ?? 1);
       } else if (brake > 0.05 && this.vLong < 1.5) {
         drive = -brake * T.driveMax * 0.45 * (this.vLong > -16 ? 1 : 0); // back
       }

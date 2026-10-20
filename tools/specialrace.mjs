@@ -2,7 +2,7 @@
 import { spawnSync } from 'child_process';
 const bana = process.env.BANA || 'hoppbacken', secs = +(process.env.SECS || 70);
 const js = `(async () => { const g = window.__game, wait = ms => new Promise(r => setTimeout(r, ms));
- const K = ['stock', 'bus', 'bigfoot', 'formel', 'glass', 'rullstol', 'elrullstol', 'plan', 'gokart', 'traktor', 'brandbil', 'stridsvagn', 'ufo'];
+ const K = ['v2', 'polis', 'ambulans', 'valt', 'spokbil', 'heli', 'stock', 'formel', 'bus', 'heli', 'ambulans', 'gokart', 'ufo'];
  const bots = g.cars.filter(c => c.brain && c !== g.me); bots.forEach((c, i) => g.setSpec(c, { ...c.spec, kind: K[i % K.length], gear: [] }));
  while (g.race.phase !== 'race') await wait(200);
  const hits = {}; const on = g.notify.bind(g); g.notify = (c, t, k) => { if (k === 'bad') { const w = String(t).trim().split(' ')[0]; hits[w] = (hits[w] || 0) + 1; } on(c, t, k); };

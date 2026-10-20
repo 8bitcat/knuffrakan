@@ -24,6 +24,7 @@ await A.waitForTimeout(2000);
 await A.click('[data-gpmode="1"]');           // Grand Prix väljs i lobbyn
 await A.waitForTimeout(600);
 await A.click('[data-gpn="3"]');
+await A.waitForTimeout(400); await A.click('[data-gpl="3"]');
 await B.waitForTimeout(1500);
 console.log('lobby hos gästen:', await B.evaluate(() => document.getElementById('lroom').textContent + ' | ' + [...document.querySelectorAll('#ltrack button')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')).join(',') + ' | ' + document.getElementById('lstart').textContent));
 await A.click('#lstart');

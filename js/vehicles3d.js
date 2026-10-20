@@ -1,11 +1,11 @@
 // Utseendet för skolbussen och bigfooten (stockcaren finns i carmodel.js).
 // Samma gränssnitt som CarView: group, setWheel, dent, uvNear, livery, resetDamage, dispose, rest.
 import * as THREE from 'three';
-import { CarView, SHAPES } from './carmodel.js?v=28';
-import { makeLivery } from './livery.js?v=28';
-import { VTYPES, typeOf } from './vtypes.js?v=28';
-import { addGear } from './gearview.js?v=28';
-import { FormelView, TraktorView, GlassView, RullstolView, ElrullstolView, PlanView, GokartView, BrandbilView, StridsvagnView, UfoView } from './vehicles3d2.js?v=28';
+import { CarView, SHAPES } from './carmodel.js?v=29';
+import { makeLivery } from './livery.js?v=29';
+import { VTYPES, typeOf } from './vtypes.js?v=29';
+import { addGear } from './gearview.js?v=29';
+import { FormelView, TraktorView, GlassView, RullstolView, ElrullstolView, PlanView, GokartView, BrandbilView, StridsvagnView, UfoView, V2View, PolisView, AmbulansView, ValtView, SpokbilView, HeliView } from './vehicles3d2.js?v=29';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const tex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
@@ -259,6 +259,12 @@ export function makeCarView(spec) {
   else if (T.id === 'brandbil') view = new BrandbilView(spec);
   else if (T.id === 'stridsvagn') view = new StridsvagnView(spec);
   else if (T.id === 'ufo') view = new UfoView(spec);
+  else if (T.id === 'v2') view = new V2View(spec);
+  else if (T.id === 'polis') view = new PolisView(spec);
+  else if (T.id === 'ambulans') view = new AmbulansView(spec);
+  else if (T.id === 'valt') view = new ValtView(spec);
+  else if (T.id === 'spokbil') view = new SpokbilView(spec);
+  else if (T.id === 'heli') view = new HeliView(spec);
   else { view = new CarView(sh, makeLivery(spec, sh)); view.T = VTYPES.stock; view.rest = () => view.wheels.forEach((w, k) => view.setWheel(k, 0.18, 0, 0)); }
   addGear(view, spec);
   return view;

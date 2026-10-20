@@ -1,12 +1,12 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice, JetVoice } from './engines.js?v=28';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=28';
+import { EngineVoice, JetVoice } from './engines.js?v=29';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=29';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol', 'plan', 'gokart', 'brandbil', 'stridsvagn', 'ufo'];
+const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol', 'plan', 'gokart', 'brandbil', 'stridsvagn', 'ufo', 'v2', 'polis', 'ambulans', 'valt', 'spokbil', 'heli'];
 // Glassbilens melodi: egen (inte någon glassbilsfirmas), speldosa i C-dur. [midi, åttondelar], 0 = paus
 const JINGLE = [
   [76, 1], [79, 1], [84, 1], [79, 1], [81, 1], [79, 1], [76, 2],
@@ -184,15 +184,15 @@ export class GameAudio {
     }
     this.scrape(me.scrWall ? 1 : 0, me.scrCar ? 1 : 0, me.slide ?? me.v);
     this.jingle(me.glassNear || 0);
-    this.specialLoops(me.siren || 0, me.spray || 0, me.beam || 0);
+    this.specialLoops(me.siren || 0, me.spray || 0, me.beam || 0, me.rotor || 0);
   }
 
   // brandbilens siren + vattenbrus och UFO:ts dragstråle — styrka 0..1 (efter avstånd)
-  specialLoops(siren, spray, beam) {
+  specialLoops(siren, spray, beam, rotor = 0) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
     if (!this.sl) {
-      if (siren + spray + beam < 0.01) return;
+      if (siren + spray + beam + rotor < 0.01) return;
       const mk = () => { const g = ctx.createGain(); g.gain.value = 0; g.connect(this.master); return g; };
       // sirenen: två toner (ba-bo) — två lite ostämda sågtänder genom lågpass, med lätt vibrato
       const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 588;
@@ -216,7 +216,16 @@ export class GameAudio {
       lfo.connect(lg); lg.connect(b1.frequency); lg.connect(b2.frequency);
       const bg = mk(), b2g = ctx.createGain(); b2g.gain.value = 0.35;
       b1.connect(bg); b2.connect(b2g); b2g.connect(bg); b1.start(); b2.start(); lfo.start();
-      this.sl = { o, sg, wg, bg };
+      // rotorn: dovt brus som slår (en fyrkantsvåg styr volymen ~7 gånger i sekunden)
+      const rs = ctx.createBufferSource(); rs.buffer = b; rs.loop = true;
+      const rl = ctx.createBiquadFilter(); rl.type = 'lowpass'; rl.frequency.value = 320;
+      const rg = ctx.createGain(); rg.gain.value = 0;
+      const chopG = ctx.createGain(); chopG.gain.value = 0.5;
+      const lfo2 = ctx.createOscillator(); lfo2.type = 'square'; lfo2.frequency.value = 7; const l2 = ctx.createGain(); l2.gain.value = 0.5;
+      lfo2.connect(l2); l2.connect(chopG.gain);
+      const rOut = mk();
+      rs.connect(rl); rl.connect(chopG); chopG.connect(rOut); rs.start(); lfo2.start();
+      this.sl = { o, sg, wg, bg, rOut };
     }
     const S = this.sl;
     const f = Math.floor(t * 1.6) % 2 ? 588 : 784;
@@ -224,6 +233,7 @@ export class GameAudio {
     S.sg.gain.setTargetAtTime(siren * 0.085, t, 0.15);
     S.wg.gain.setTargetAtTime(spray * 0.26, t, 0.1);
     S.bg.gain.setTargetAtTime(beam * 0.15, t, 0.1);
+    S.rOut?.gain.setTargetAtTime(rotor * 0.9, t, 0.1);
   }
 
   // Glassbilen i närheten: melodin på speldosa, level 0..1 (schemaläggs en bit i förväg)
@@ -372,6 +382,34 @@ export class GameAudio {
     g.gain.setValueAtTime(0.32 * near, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
     o.connect(g); g.connect(this.master); o.start(t); lfo.start(t); o.stop(t + 0.6); lfo.stop(t + 0.6);
   }
+  // bakdörrarna slås upp: ett gnissel
+  creak(near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(420, t); o.frequency.linearRampToValueAtTime(260, t + 0.35);
+    f.type = 'bandpass'; f.frequency.value = 1200; f.Q.value = 6;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12 * near, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(f); f.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.45);
+  }
+  // ambulansen lagar sig: en stigande klang
+  heal(near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    [523, 659, 784, 1047].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + i * 0.08); g.gain.exponentialRampToValueAtTime(0.18 * near, t + i * 0.08 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.08 + 0.5);
+      o.connect(g); g.connect(this.master); o.start(t + i * 0.08); o.stop(t + i * 0.08 + 0.55);
+    });
+  }
+  // spökbilen: ett ihåligt "uuuuh" som glider
+  ghost(near = 1) {
+    if (!this.ctx || near < 0.03) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(260, t); o.frequency.linearRampToValueAtTime(420, t + 0.6); o.frequency.linearRampToValueAtTime(220, t + 1.4);
+    lfo.frequency.value = 6; lg.gain.value = 14; lfo.connect(lg); lg.connect(o.frequency);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25 * near, t + 0.2); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+    o.connect(g); g.connect(this.master); o.start(t); lfo.start(t); o.stop(t + 1.55); lfo.stop(t + 1.55);
+  }
   // stridsvagnens kanon: ett djupt dån
   cannon(near = 1) {
     if (!this.ctx || near < 0.03) return;
@@ -425,6 +463,6 @@ export class GameAudio {
     for (const k of KINDS) { const p = this.pool[k]?.[3]; if (p && k !== kind) p.set(0, 0, 0); }
     this.voice(kind, 3).set(v, throttle, on ? 0.65 : 0, 0, 1, 0);
     this.jingle(on && kind === 'glass' ? 0.6 : 0);
-    this.specialLoops(on && kind === 'brandbil' ? 0.7 : 0, 0, 0);          // brandbilens siren
+    this.specialLoops(on && (kind === 'brandbil' || kind === 'polis' || kind === 'ambulans') ? 0.7 : 0, 0, 0);   // sirenerna
   }
 }

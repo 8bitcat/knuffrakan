@@ -3,7 +3,7 @@
 // efter ögonblicksbilderna: varje bil har vapen + "skjuter" i sin rad, projektilerna ligger sist i
 // bilden, och lådor/explosioner/chockvågor kommer som händelser.
 import * as THREE from 'three';
-import { F_GAP, F_RAMP, F_LAND } from './track.js?v=28';
+import { F_GAP, F_RAMP, F_LAND } from './track.js?v=29';
 
 export const WEAPONS = {
   raket: { namn: 'Raketer', ikon: '🚀', ammo: 3 },
@@ -17,7 +17,8 @@ export const WEAPONS = {
 export const WIDS = Object.keys(WEAPONS);                 // kod i ögonblicksbilden = index + 1, -1 = ruletten snurrar
 // vikt = a + b·p där p = 0 för ledaren och 1 för den sista
 const LOOT = { olja: [3, -2], minor: [2.5, -1.5], chock: [1.5, 0], harpun: [1, 1], raket: [0.6, 2], kulspruta: [0.5, 1.8], kanon: [0.15, 1.6] };
-const PT = { RAKET: 1, MINA: 2, OLJA: 3, KROK: 4, GRANAT: 5, GLASS: 6, BANAN: 7 };
+const PT = { RAKET: 1, MINA: 2, OLJA: 3, KROK: 4, GRANAT: 5, GLASS: 6, BANAN: 7, V2: 8, SPIK: 9, BAR: 10 };
+const V2_G = 14;                                          // V2-raketens bana (lobbas högt)
 const GLASS_G = 14;                                       // glasskulans tyngdkraft (lobbas)
 const PROW = 10;                                          // flyttal per projektil i ögonblicksbilden
 const WORLD_ONLY = (0xffff << 16) | 0x0002;              // strålar som bara träffar banan (inte bilar)
@@ -332,6 +333,80 @@ export class Weapons {
     } else { p.vel.copy(v.fwd).multiplyScalar(hs); p.vel.y += 5; }
     this.proj.push(p);
   }
+  // V2-raketbilen (E): raketen skjuts upp i en hög båge mot bilen långt fram (eller 90 m rakt fram)
+  v2(c) {
+    const g = this.g, v = c.veh, T = v.T, G = T.rocket;
+    const p = { id: this.nextP++, type: PT.V2, owner: c, pos: new THREE.Vector3(), vel: new THREE.Vector3(), born: g.simT, life: 7, a: 0, b: 0 };
+    p.pos.copy(v.pos).addScaledVector(v.up, T.modelY + G.y).addScaledVector(v.fwd, -G.z);
+    const tg = this.target(c, 0.9, 150, 22);
+    _a.copy(tg ? tg.veh.pos : _b.copy(v.pos).addScaledVector(v.fwd, 90)).sub(p.pos);
+    const hs = 50 + Math.max(0, v.vLong);
+    if (tg) _a.addScaledVector(tg.veh.vel, Math.hypot(_a.x, _a.z) / hs);   // dit bilen är när raketen slår ner
+    const t = Math.max(1.4, Math.hypot(_a.x, _a.z) / hs);
+    p.vel.set(_a.x / t, (_a.y + 0.5 * V2_G * t * t) / t, _a.z / t);
+    if (tg) { g.notify(tg, `🚀 ${c.name}s V2-raket är på väg mot dig!`, 'bad'); }
+    this.proj.push(p);
+  }
+  // V2-smällen: alla inom R flyger iväg (uppåt och utåt), skadan avtar med avståndet. self = bilen som själv sprängdes
+  v2Blast(pos, owner, direct, R = 20, self = null) {
+    const g = this.g;
+    for (const o of g.cars) {
+      if (o === self || o.wrecked || o.hidden || o.ghostT > 0) continue;
+      _a.copy(o.veh.pos).sub(pos);
+      const d = _a.length();
+      if (d > R) continue;
+      const k = 1 - d / R, m = o.veh.T.mass;
+      _a.y = 0; _a.normalize();
+      o.veh.applyJ?.(_a.x * m * 22 * k, m * (8 + 10 * k), _a.z * m * 22 * k, o.veh.pos.x + (Math.random() - 0.5), o.veh.pos.y, o.veh.pos.z + (Math.random() - 0.5));
+      o.veh.spinT = Math.max(o.veh.spinT || 0, 1.5);
+      this.hurt(o, owner, 30 * k + (o === direct ? 12 : 0));
+    }
+    this.v2Fx(pos);
+    if (owner && !self) g.notify(owner, '🚀 V2-raketen slog ner — alla flög!', 'good');
+    g.emit({ t: 'wv2', p: [+pos.x.toFixed(2), +pos.y.toFixed(2), +pos.z.toFixed(2)] });
+  }
+  v2Fx(pos) {
+    const g = this.g;
+    g.fx.explosion(pos, _b.set(0, 0, 0));
+    g.fx.explosion(_h.copy(pos).add(_b.set(0, 2, 0)), _b.set(0, 0, 0));
+    this.boomFx(pos, 1.5);
+    this.ringFx(pos);
+  }
+  // polisbilen (E): en spikmatta tvärs över vägen bakom bilen (högst 2 ute per polisbil)
+  spikes(c) {
+    const g = this.g, v = c.veh, T = v.T;
+    const mine = this.proj.filter(p => p.type === PT.SPIK && p.owner === c && !p.dead);
+    if (mine.length >= 2) mine[0].dead = true;
+    const p = { id: this.nextP++, type: PT.SPIK, owner: c, pos: new THREE.Vector3(), vel: new THREE.Vector3(), born: g.simT, life: 30, a: Math.atan2(-v.fwd.x, -v.fwd.z), b: 0, hit: new Set() };
+    p.pos.copy(v.pos).addScaledVector(v.fwd, -(T.half.z + 2.2));
+    _a.copy(p.pos).addScaledVector(_up, 2.5);
+    const t = this.rayWorld(_a, _d.set(0, -1, 0), 8);
+    p.pos.y = t >= 0 ? _a.y - t + 0.04 : v.pos.y + T.modelY + 0.04;
+    this.proj.push(p);
+  }
+
+  // ambulansen (E): tre patienter på rullbårar rullar ut genom bakdörrarna och glider kvar på vägen (högst 6 ute)
+  patients(c) {
+    const g = this.g, v = c.veh, T = v.T;
+    const mine = this.proj.filter(p => p.type === PT.BAR && p.owner === c && !p.dead);
+    for (let k = 0; k < mine.length - 3; k++) mine[k].dead = true;
+    for (let k = 0; k < 3; k++) {
+      const side = (k - 1) * 1.1;
+      const p = { id: this.nextP++, type: PT.BAR, owner: c, pos: new THREE.Vector3(), vel: new THREE.Vector3(), born: g.simT, life: 20, a: Math.atan2(-v.fwd.x, -v.fwd.z) + (Math.random() - 0.5) * 0.8, b: 0, cd: new Map() };
+      p.pos.copy(v.pos).addScaledVector(v.fwd, -(T.half.z + 1.2 + k * 0.6)).addScaledVector(v.right, side);
+      // samma fart som ambulansen men lite bakåt och utåt — de bromsas sakta av vägen
+      p.vel.copy(v.vel).multiplyScalar(0.55).addScaledVector(v.fwd, -4).addScaledVector(v.right, side * 2.5); p.vel.y = 0;
+      this.ground(p);
+      this.proj.push(p);
+    }
+    g.notify(c, '🚑 Patienterna rullar ut!', 'good');
+  }
+  ground(p) {
+    _a.copy(p.pos); _a.y += 3;
+    const t = this.rayWorld(_a, _d.set(0, -1, 0), 10);
+    if (t >= 0) p.pos.y = _a.y - t;
+  }
+
   // gokarten (E): ett bananskal bakom — den som kör på det snurrar (högst 3 ute per gokart)
   banana(c) {
     const g = this.g, v = c.veh, T = v.T;
@@ -384,6 +459,71 @@ export class Weapons {
       if (hitCar && !(tw >= 0 && tw < ht)) { p.pos.addScaledVector(dir, ht); this.splat(hitCar, p.owner, p.pos); p.dead = true; return; }
       if (tw >= 0) { p.pos.addScaledVector(dir, tw); this.glassFx(p.pos); g.emit({ t: 'wgl', p: [+p.pos.x.toFixed(2), +p.pos.y.toFixed(2), +p.pos.z.toFixed(2)] }); p.dead = true; return; }
       p.pos.addScaledVector(p.vel, dt);
+      return;
+    }
+    if (p.type === PT.V2) {
+      p.vel.y -= V2_G * dt;
+      const sp = p.vel.length(), dir = _d.copy(p.vel).divideScalar(sp || 1), step = sp * dt;
+      let hitCar = null, ht = step + 0.5;
+      for (const o of g.cars) {
+        if (o === p.owner || o.wrecked || o.hidden || o.ghostT > 0) continue;
+        const t = rayBox(p.pos, dir, o, 0.6);
+        if (t >= 0 && t < ht) { ht = t; hitCar = o; }
+      }
+      const tw = now - p.born > 0.3 ? this.rayWorld(p.pos, dir, Math.min(ht, step + 0.5)) : -1;
+      if (hitCar || tw >= 0) {
+        const wall = tw >= 0 && (!hitCar || tw < ht);
+        p.pos.addScaledVector(dir, wall ? tw : ht);
+        this.v2Blast(p.pos, p.owner, wall ? null : hitCar);
+        p.dead = true; return;
+      }
+      p.pos.addScaledVector(p.vel, dt);
+      if (now - p.born > p.life - dt) { this.v2Blast(p.pos, p.owner, null); p.dead = true; }
+      return;
+    }
+    if (p.type === PT.SPIK) {
+      const ca = Math.cos(p.a), sa = Math.sin(p.a);
+      for (const o of g.cars) {
+        if (o.wrecked || o.hidden || o.ghostT > 0 || p.hit.has(o) || o.veh.grounded === 0) continue;
+        if (o === p.owner && now - p.born < 1.5) continue;
+        const dx = o.veh.pos.x - p.pos.x, dz = o.veh.pos.z - p.pos.z, dy = o.veh.pos.y - p.pos.y;
+        const along = dx * ca - dz * sa, across = -(dx * sa + dz * ca);       // längs mattan / tvärs (bilens färdriktning)
+        if (Math.abs(along) > 2.9 + o.veh.T.half.x * 0.5 || Math.abs(across) > 0.6 + o.veh.T.half.z * 0.5 || Math.abs(dy) > 2.5) continue;
+        p.hit.add(o);
+        o.punctT = 4; o.veh.slip(0.6, 0.6);
+        if (o !== p.owner) { this.hurt(o, p.owner, 4); g.notify(p.owner, `🚓 ${o.name} körde på spikmattan!`, 'good'); }
+        g.notify(o, '🚓 Spikmatta! Punktering — du blir långsam en stund', 'bad');
+        g.fx.sparks(o.veh.pos, o.veh.vel, 14, 5);
+        if (o === g.me) g.audio?.crash?.(8, 1);
+      }
+      return;
+    }
+    if (p.type === PT.BAR) {
+      // bårarna glider och bromsas, följer marken och knuffas runt av bilarna
+      const sp = Math.hypot(p.vel.x, p.vel.z), dec = Math.min(sp, 7 * dt);
+      if (sp > 0.01) { p.vel.x -= p.vel.x / sp * dec; p.vel.z -= p.vel.z / sp * dec; }
+      p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt;
+      if (!(p.gt > now)) { p.gt = now + 0.1; const y0 = p.pos.y; this.ground(p); p.gy = p.pos.y; p.pos.y = y0; }   // marken under (10 ggr/s)
+      if (p.vel.y !== 0 || p.pos.y > p.gy + 0.05) { p.vel.y -= 14 * dt; p.pos.y += p.vel.y * dt; }
+      if (p.pos.y < p.gy) { p.pos.y = p.gy; p.vel.y = 0; }
+      if (sp > 0.5) p.a += (Math.random() - 0.5) * dt;
+      for (const o of g.cars) {
+        if (o.wrecked || o.hidden || o.ghostT > 0) continue;
+        if (o === p.owner && now - p.born < 2) continue;
+        if ((p.cd.get(o) || 0) > now) continue;
+        const dx = o.veh.pos.x - p.pos.x, dz = o.veh.pos.z - p.pos.z, dy = o.veh.pos.y - p.pos.y, r = o.veh.T.half.x + 1.1;
+        if (dx * dx + dz * dz > r * r || Math.abs(dy) > 3) continue;
+        p.cd.set(o, now + 1.5);
+        const v = o.veh, av = v.body.angvel(), lv = v.body.linvel(), m = v.T.mass;
+        v.body.setAngvel({ x: av.x, y: av.y + (Math.random() < 0.5 ? -1 : 1) * (3.5 + Math.random() * 2), z: av.z }, true);
+        v.applyJ(-lv.x * m * 0.18, 0, -lv.z * m * 0.18, v.pos.x, v.pos.y, v.pos.z);
+        v.spinT = Math.max(v.spinT, 1.0); v.slip(0.8, 0.3);
+        // båren flyger iväg (med patienten)
+        p.vel.set(lv.x * 0.7 + (Math.random() - 0.5) * 8, 5 + Math.random() * 3, lv.z * 0.7 + (Math.random() - 0.5) * 8);
+        if (o !== p.owner) { this.hurt(o, p.owner, 3); g.notify(p.owner, `🚑 ${o.name} körde på en patient!`, 'good'); }
+        g.notify(o, '🚑 Akta patienten! Du snurrar', 'bad');
+        this.bananaFx(p.pos);
+      }
       return;
     }
     if (p.type === PT.BANAN) {
@@ -700,6 +840,38 @@ export class Weapons {
       const ball1 = new THREE.Mesh(M.gl.ball, M.gl.pink); ball1.position.y = 0.06;
       obj.add(new THREE.Mesh(M.gl.cone, M.gl.waf), ball1, ball2);
       obj.scale.setScalar(1.4);
+    } else if (p.type === PT.V2) {
+      // V2-raketen: svartvit, fenor, stor låga
+      if (!M.v2) {
+        const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+        for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#141416' : '#f2f2ee'; x.fillRect(i * 32, j * 64, 32, 64); }
+        const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+        M.v2 = { m: new THREE.MeshStandardMaterial({ map: t, roughness: 0.5 }), body: new THREE.CylinderGeometry(0.42, 0.42, 3.8, 18).rotateX(Math.PI / 2),
+          nose: new THREE.ConeGeometry(0.42, 1.4, 18).rotateX(-Math.PI / 2).translate(0, 0, -2.6), fin: new THREE.BoxGeometry(0.05, 0.85, 0.95),
+          flame: new THREE.ConeGeometry(0.4, 3, 12, 1, true).rotateX(Math.PI / 2).translate(0, 0, 3.4) };
+      }
+      obj.add(new THREE.Mesh(M.v2.body, M.v2.m), new THREE.Mesh(M.v2.nose, M.v2.m));
+      for (let k = 0; k < 4; k++) { const f = new THREE.Mesh(M.v2.fin, k % 2 ? M.mine : M.rocketBody); f.position.set(Math.sin(k * Math.PI / 2) * 0.55, Math.cos(k * Math.PI / 2) * 0.55, 1.6); f.rotation.z = -k * Math.PI / 2; obj.add(f); }
+      const fl = new THREE.Mesh(M.v2.flame, M.fireM); fl.renderOrder = 4; obj.add(fl); v.flame = fl;
+    } else if (p.type === PT.BAR) {
+      // rullbår: madrass på en ram med fyra hjul, patienten sitter upp och viftar
+      M.bar ||= { frame: new THREE.BoxGeometry(0.75, 0.06, 2.0), mat: new THREE.BoxGeometry(0.7, 0.14, 1.9), leg: new THREE.CylinderGeometry(0.025, 0.025, 0.6, 6), wheel: new THREE.CylinderGeometry(0.08, 0.08, 0.05, 10).rotateZ(Math.PI / 2),
+        head: new THREE.SphereGeometry(0.15, 12, 10), body: new THREE.CapsuleGeometry(0.16, 0.35, 4, 10), arm: new THREE.CapsuleGeometry(0.05, 0.4, 4, 8),
+        white: new THREE.MeshStandardMaterial({ color: 0xf4f6f8, roughness: 0.6 }), blanket: new THREE.MeshStandardMaterial({ color: 0x7fc4ff, roughness: 0.7 }),
+        gown: new THREE.MeshStandardMaterial({ color: 0xa8e0d0, roughness: 0.7 }), skin: new THREE.MeshStandardMaterial({ color: 0xf1c7a5, roughness: 0.6 }) };
+      const B = M.bar, add = (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = true; obj.add(o); return o; };
+      add(B.frame, M.steel, 0, 0.62, 0); add(B.mat, B.white, 0, 0.72, 0);
+      add(B.mat, B.blanket, 0, 0.78, 0.35).scale.set(1.02, 0.8, 0.6);
+      for (const x of [-0.3, 0.3]) for (const z of [-0.85, 0.85]) { add(B.leg, M.steel, x, 0.32, z); add(B.wheel, M.mine, x, 0.08, z); }
+      const torso = add(B.body, B.gown, 0, 1.05, -0.55); torso.rotation.x = -0.25;
+      add(B.head, B.skin, 0, 1.45, -0.62);
+      v.arms = [-1, 1].map(s => { const a = add(B.arm, B.gown, s * 0.25, 1.25, -0.55); a.rotation.z = s * 2.4; return a; });
+      obj.rotation.y = p.a || 0;
+    } else if (p.type === PT.SPIK) {
+      M.spik ||= { base: new THREE.BoxGeometry(5.6, 0.06, 0.5), spike: new THREE.ConeGeometry(0.05, 0.2, 5) };
+      obj.add(new THREE.Mesh(M.spik.base, M.mine));
+      for (let i = 0; i < 18; i++) for (const z of [-0.14, 0.14]) { const s = new THREE.Mesh(M.spik.spike, M.steel); s.position.set(-2.6 + i * 0.306 + (z > 0 ? 0.15 : 0), 0.13, z); obj.add(s); }
+      obj.rotation.y = p.a || 0;
     } else if (p.type === PT.BANAN) {
       M.ban ||= { peel: new THREE.MeshStandardMaterial({ color: 0xffd93a, roughness: 0.5, emissive: 0x3a2a00 }), tip: new THREE.MeshStandardMaterial({ color: 0x5a3a1a, roughness: 0.7 }),
         geo: new THREE.SphereGeometry(1, 10, 8), stem: new THREE.CylinderGeometry(0.035, 0.05, 0.16, 6) };
@@ -728,7 +900,8 @@ export class Weapons {
     const g = this.g;
     v.obj.position.set(p.x, p.y, p.z);
     if (v.type === PT.GRANAT && Math.random() < 0.5) g.fx.smoke(_a.set(p.x, p.y, p.z), _b.set(0, 0, 0), false, 0.4);
-    if (v.type === PT.RAKET || v.type === PT.KROK || v.type === PT.GRANAT) {
+    if (v.type === PT.V2) { v.flame.scale.set(1, 1, 0.7 + Math.random() * 0.6); g.fx.smoke(_a.set(p.x, p.y, p.z), _b.set(0, 0, 0), false, 1.4); g.fx.fire(_a.set(p.x, p.y, p.z), _b.set(p.vx * 0.2, 0, p.vz * 0.2), 0.8); }
+    if (v.type === PT.RAKET || v.type === PT.KROK || v.type === PT.GRANAT || v.type === PT.V2) {
       const sp = Math.hypot(p.vx, p.vy, p.vz);
       if (sp > 1) v.obj.quaternion.setFromUnitVectors(_a.set(0, 0, -1), _b.set(p.vx / sp, p.vy / sp, p.vz / sp));
     }
@@ -739,6 +912,7 @@ export class Weapons {
     }
     if (v.type === PT.MINA) v.light.visible = p.a ? Math.floor(now * 4) % 2 === 0 : true;
     if (v.type === PT.GLASS) { v.obj.rotation.x += dt * 9; v.obj.rotation.z += dt * 4; }
+    if (v.type === PT.BAR) { v.obj.rotation.y = p.a || 0; v.arms.forEach((a, i) => { a.rotation.z = (i ? 1 : -1) * (2.2 + Math.sin(now * 9 + i * 2) * 0.6); }); }
     if (v.type === PT.KROK) {
       // repet från skyttens mynning till kroken
       const A = p.owner || g.carById(p.a);
@@ -804,6 +978,7 @@ export class Weapons {
     else if (d.t === 'wsh') this.ringFx(_o.set(d.p[0], d.p[1], d.p[2]));
     else if (d.t === 'wgl') this.glassFx(_o.set(d.p[0], d.p[1], d.p[2]));
     else if (d.t === 'wbn') this.bananaFx(_o.set(d.p[0], d.p[1], d.p[2]));
+    else if (d.t === 'wv2') this.v2Fx(_o.set(d.p[0], d.p[1], d.p[2]));
     else if (d.t === 'wsk') g.fx.tackle(_o.set(d.p[0], d.p[1], d.p[2]), _b.set(0, 0, 0), _h.set(d.d[0], 0, d.d[1]), 1.4);
   }
   // kod för ögonblicksbilden: 0 inget, -1 ruletten, annars index+1

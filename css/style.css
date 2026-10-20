@@ -154,7 +154,8 @@ button { font-family: inherit; cursor: pointer; }
 #ltrack { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
 #ltrack .tbt { font-size: 11.5px; padding: 5px 6px; border-radius: 9px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ltrack .tbt i { font-size: 9.5px; }
-#ltrack .lmode, #ltrack .gpn { grid-column: 1 / -1; }
+#ltrack .lmode, #ltrack .gpn, #ltrack .gprow { grid-column: 1 / -1; }
+.gprow { display: flex; gap: 6px; } .gprow button { flex: 1; padding: 7px 4px !important; }
 body.inlobby #minimap { display: none; }
 /* Lobbyn */
 #lobby { position: absolute; right: 14px; top: 120px; width: 300px; max-height: calc(100vh - 134px); overflow: auto; box-sizing: border-box; background: var(--card); border: 2px solid var(--blue); border-radius: 18px; padding: 12px 14px; pointer-events: auto; }
@@ -230,8 +231,8 @@ body.inlobby #minimap { display: none; }
 .row2.room .gp { background: linear-gradient(135deg, #ffc72c, #ff8a1c); color: #1a1205; border-color: #ffd86a; }
 #gpb { font: italic 900 14px "Exo 2", sans-serif; color: #ffc72c; letter-spacing: 1px; }
 .gpn { width: 100%; font: 700 12px Montserrat, sans-serif; opacity: .8; text-transform: uppercase; margin-bottom: 2px; }
-#ltrack button[data-gpn] { font: 800 14px Montserrat, sans-serif; padding: 8px 12px; border-radius: 10px; border: 2px solid #334; background: #1a1c2a; color: #fff; }
-#ltrack button[data-gpn].on { border-color: #ffc72c; color: #ffc72c; }
+#ltrack button[data-gpn], #ltrack button[data-gpl] { font: 800 14px Montserrat, sans-serif; padding: 8px 12px; border-radius: 10px; border: 2px solid #334; background: #1a1c2a; color: #fff; }
+#ltrack button[data-gpn].on, #ltrack button[data-gpl].on { border-color: #ffc72c; color: #ffc72c; }
 #results .gpt { margin-top: 12px; border-top: 2px solid #ffc72c55; padding-top: 8px; }
 #results .gpt h3 { margin: 0 0 6px; font: italic 900 20px "Exo 2", sans-serif; color: #ffc72c; text-align: center; }
 #results .gpt .nx { text-align: center; font-weight: 800; margin-top: 6px; opacity: .9; }

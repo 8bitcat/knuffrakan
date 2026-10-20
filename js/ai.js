@@ -1,6 +1,6 @@
 // Bottarna: kör i full gas i sin fil, byter fil, väjer för långsammare bilar och
 // tacklar ibland den som ligger bredvid.
-import { steerMaxAt } from './vehicle.js?v=28';
+import { steerMaxAt } from './vehicle.js?v=29';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -69,6 +69,18 @@ export class BotBrain {
       else if (SP === 'glass') want = !!W.target(car, 0.95, 50, 8);
       else if (SP === 'elchock') want = game.cars.some(o => o !== car && !o.wrecked && !o.hidden && o.veh.pos.distanceTo(v.pos) < 5);
       else if (SP === 'banan') want = game.cars.some(o => { if (o === car || o.wrecked || o.hidden) return false; const dx = o.veh.pos.x - v.pos.x, dz = o.veh.pos.z - v.pos.z, d = Math.hypot(dx, dz); return d > 4 && d < 25 && (dx * v.fwd.x + dz * v.fwd.z) / d < -0.85; });
+      else if (SP === 'v2') want = !!W.target(car, 0.9, 140, 25);
+      else if (SP === 'spikmatta') want = game.cars.some(o => { if (o === car || o.wrecked || o.hidden) return false; const dx = o.veh.pos.x - v.pos.x, dz = o.veh.pos.z - v.pos.z, d = Math.hypot(dx, dz); return d > 5 && d < 30 && (dx * v.fwd.x + dz * v.fwd.z) / d < -0.85; });
+      else if (SP === 'patienter') want = game.cars.some(o => { if (o === car || o.wrecked || o.hidden) return false; const dx = o.veh.pos.x - v.pos.x, dz = o.veh.pos.z - v.pos.z, d = Math.hypot(dx, dz); return d > 5 && d < 26 && (dx * v.fwd.x + dz * v.fwd.z) / d < -0.8; });
+      else if (SP === 'platta') want = !!W.target(car, 0.85, 8, 1);
+      else if (SP === 'spoke') want = (ahead && aheadD < 9) || car.health < 30;
+      else if (SP === 'flyg') {
+        // flyg över klungan när någon är i vägen (och inte nära broar/hopp), landa när tanken tar slut
+        const t = v.tank ?? 1;
+        if (this.flying) { if (t < 0.05 || !this.calmAhead(T, tk)) this.flying = false; }
+        else if (t > 0.9 && ahead && aheadD < 18 && this.calmAhead(T, tk)) this.flying = true;
+        want = this.flying;
+      }
       else if (SP === 'tackla') {
         if (side && this.aggr > 0.3) { const dx = side.veh.pos.x - v.pos.x, dz = side.veh.pos.z - v.pos.z; inp.side = Math.sign(dx * v.right.x + dz * v.right.z) || 1; want = true; }
       } else if (SP === 'nitro' || SP === 'efterbrann') {

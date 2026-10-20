@@ -25,7 +25,7 @@ export const GEAR = {
 export const GEAR_IDS = Object.keys(GEAR);
 
 // platser som fordonet redan har fyllt (traktorns frontlastare sitter fram)
-export const blockedSlot = (kind, slot) => (kind === 'traktor' || kind === 'plan' || kind === 'ufo') && slot === 'front';
+export const blockedSlot = (kind, slot) => (kind === 'traktor' || kind === 'plan' || kind === 'ufo' || kind === 'heli') && slot === 'front';
 
 // giltig lista: kända saker, en per plats, inom budget (i den ordning de valdes)
 export function cleanGear(list, kind) {
@@ -125,6 +125,18 @@ MOUNT.stridsvagn = { fz: 3.15, w: 1.5, bump: 0.7, roof: 2.3, rear: 3.1, deck: 1.
   plow: [0.1, 1.05], plowL: 0.9, wedge: [0.1, 0.72], wedgeL: 1.4, roofCage: true, noHood: true, wind: [1.5, -1.0, 2.2, -0.96] };
 MOUNT.ufo = { fz: 1.7, w: 1.4, bump: 1.35, roof: 2.4, rear: 1.7, deck: 1.75, sideY: 1.45, sideL: 1.6, cab: [-0.55, 0.55], belt: 1.75,
   plow: [1.05, 1.6], plowL: 0.7, wedge: [1.05, 1.4], wedgeL: 0.9, roofCage: true, noHood: true, wind: [1.8, -0.72, 2.25, -0.45] };
+MOUNT.v2 = { fz: 3.35, w: 1.15, bump: 0.62, roof: 2.55, rear: 3.3, deck: 1.45, sideY: 0.9, sideL: 4.0, cab: [-3.2, -1.7], belt: 1.4,
+  plow: [0.14, 1.05], plowL: 1.05, wedge: [0.12, 0.72], wedgeL: 1.5, roofCage: true, noHood: true, wind: [1.5, -3.28, 2.3, -3.2] };
+MOUNT.polis = { fz: 2.47, w: 0.98, bump: 0.45, roof: 1.45, rear: 2.47, deck: 1.3, sideY: 0.5, sideL: 2.0, cab: [-0.6, 1.9], belt: 0.9,
+  plow: [0.1, 0.85], plowL: 0.95, wedge: [0.1, 0.6], wedgeL: 1.35 };
+MOUNT.ambulans = { fz: 2.95, w: 1.1, bump: 0.55, roof: 2.8, rear: 2.95, deck: 2.8, sideY: 0.92, sideL: 3.8, cab: [-1.6, 2.7], belt: 1.4,
+  plow: [0.12, 1.05], plowL: 1.05, wedge: [0.12, 0.72], wedgeL: 1.5, roofCage: true, noHood: true, wind: [1.35, -2.95, 2.3, -2.6] };
+MOUNT.valt = { fz: 2.65, w: 1.25, bump: 0.8, roof: 3.0, rear: 2.6, deck: 2.0, sideY: 1.0, sideL: 2.6, cab: [0.3, 2.4], belt: 1.6,
+  plow: [0.12, 1.1], plowL: 0.9, wedge: [0.12, 0.75], wedgeL: 1.3, roofCage: true, noHood: true, wind: [1.6, 0.25, 2.8, 0.3] };
+MOUNT.spokbil = { fz: 2.77, w: 0.98, bump: 0.45, roof: 1.6, rear: 2.77, deck: 1.45, sideY: 0.55, sideL: 2.2, cab: [-0.8, 2.4], belt: 0.95,
+  plow: [0.1, 0.85], plowL: 0.95, wedge: [0.1, 0.6], wedgeL: 1.35 };
+MOUNT.heli = { fz: 2.0, w: 0.95, bump: 0.7, roof: 2.15, rear: 1.9, deck: 1.6, sideY: 0.95, sideL: 1.8, cab: [-1.4, 0.6], belt: 1.1,
+  plow: [0.4, 1.0], plowL: 0.7, wedge: [0.4, 0.8], wedgeL: 0.9, roofCage: true, noHood: true, wind: [1.0, -1.9, 1.8, -1.6] };
 MOUNT.bus.roofCage = true;
 export const mountOf = (T) => MOUNT[T.id] || MOUNT.stock;
 

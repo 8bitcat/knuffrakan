@@ -1,22 +1,22 @@
 // Uppstart: laddning, meny, garage, spelloop.
 import * as THREE from 'three';
-import { CONF, VERSION, PROTO, TITLES } from './config.js?v=28';
-import { Game } from './game.js?v=28';
-import { Music, SPELETS } from './music.js?v=28';
-import { HUD } from './hud.js?v=28';
-import { GameAudio } from './audio.js?v=28';
-import { Input } from './input.js?v=28';
-import { SHAPES } from './carmodel.js?v=28';
-import { makeCarView } from './vehicles3d.js?v=28';
-import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=28';
-import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=28';
-import { logoCanvas } from './world.js?v=28';
-import { BotBrain } from './ai.js?v=28';
-import { connectRoom, NetHost, NetClient } from './net.js?v=28';
-import { TRACKS } from './track.js?v=28';
-import { SOUND_OPTS } from './sounds.js?v=28';
-import { newGP } from './gp.js?v=28';
-import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=28';
+import { CONF, VERSION, PROTO, TITLES } from './config.js?v=29';
+import { Game } from './game.js?v=29';
+import { Music, SPELETS } from './music.js?v=29';
+import { HUD } from './hud.js?v=29';
+import { GameAudio } from './audio.js?v=29';
+import { Input } from './input.js?v=29';
+import { SHAPES } from './carmodel.js?v=29';
+import { makeCarView } from './vehicles3d.js?v=29';
+import { VTYPES, KINDS, typeOf, SPECIALS } from './vtypes.js?v=29';
+import { makeLivery, PALETTES, PATTERNS, SPONSORS, randomSpec } from './livery.js?v=29';
+import { logoCanvas } from './world.js?v=29';
+import { BotBrain } from './ai.js?v=29';
+import { connectRoom, NetHost, NetClient } from './net.js?v=29';
+import { TRACKS } from './track.js?v=29';
+import { SOUND_OPTS } from './sounds.js?v=29';
+import { newGP } from './gp.js?v=29';
+import { GEAR, GEAR_IDS, SLOTS, BUDGET, cleanGear, gearCost, toggleGear, randomGear, blockedSlot } from './gear.js?v=29';
 
 const PUBLIC = 'PUBLIK';
 
@@ -241,7 +241,7 @@ async function boot() {
     showcase.group.position.set(f.x, f.y - showcase.T.modelY, f.z);
     showcase.group.quaternion.copy(game.track.quatAt(30));
     showcase.rest();
-    showcase.orbitR = 7.2 * Math.max(1, showcase.T.half.z / 2.42) * ({ bigfoot: 1.3, traktor: 1.25, glass: 1.1, rullstol: 0.55, elrullstol: 0.6, plan: 1.35, gokart: 0.6, brandbil: 1.05, stridsvagn: 1.15, ufo: 1.1 }[showcase.T.id] || 1);
+    showcase.orbitR = 7.2 * Math.max(1, showcase.T.half.z / 2.42) * ({ bigfoot: 1.3, traktor: 1.25, glass: 1.1, rullstol: 0.55, elrullstol: 0.6, plan: 1.35, gokart: 0.6, brandbil: 1.05, stridsvagn: 1.15, ufo: 1.1, v2: 1.1, ambulans: 1.1, valt: 1.25, spokbil: 1.05, heli: 1.3 }[showcase.T.id] || 1);
     game.scene.add(showcase.group);
     game.showcase = showcase;
   };
@@ -356,6 +356,8 @@ async function boot() {
   const pickTrack = (e) => {
     const gm = e.target.closest('[data-gpmode]');
     if (gm) { game.gpMode(gm.dataset.gpmode === '1'); hud.lobbyKey = ''; return; }
+    const gl = e.target.closest('[data-gpl]');
+    if (gl) { game.gpSetLaps(+gl.dataset.gpl); hud.lobbyKey = ''; return; }
     const n = e.target.closest('[data-gpn]');
     if (n) { game.gpSetCount(+n.dataset.gpn); hud.lobbyKey = ''; return; }
     const b = e.target.closest('[data-track]');
@@ -421,7 +423,7 @@ async function boot() {
   bind('lfart', 'oninput', () => { lab.v = +$('lfart').value; lab.auto = false; });
   game.labTick = (dt) => {
     if (!lab.open) return;
-    if (lab.auto) { lab.v = Math.min(110, lab.v + dt * ({ bus: 3.5, traktor: 3, bigfoot: 5, glass: 5.5, formel: 10, rullstol: 12, elrullstol: 10, plan: 7, gokart: 11, brandbil: 4, stridsvagn: 3, ufo: 8 }[lab.kind] || 8)); if (lab.v >= 110) lab.auto = false; $('lfart').value = Math.round(lab.v); }
+    if (lab.auto) { lab.v = Math.min(110, lab.v + dt * ({ bus: 3.5, traktor: 3, bigfoot: 5, glass: 5.5, formel: 10, rullstol: 12, elrullstol: 10, plan: 7, gokart: 11, brandbil: 4, stridsvagn: 3, ufo: 8, v2: 6, polis: 9, ambulans: 5, valt: 2.5, spokbil: 8, heli: 7 }[lab.kind] || 8)); if (lab.v >= 110) lab.auto = false; $('lfart').value = Math.round(lab.v); }
     $('lfartv').textContent = Math.round(lab.v * 3.6) + ' km/h';
     audio.preview(lab.kind, lab.v, lab.gas || lab.auto ? 1 : 0.15, lab.on);
     audio.scrape(lab.scrW ? 1 : 0, lab.scrC ? 1 : 0, lab.scrW || lab.scrC ? Math.max(15, lab.v) : 0);
@@ -516,13 +518,15 @@ async function boot() {
     if (game.me && mapT > 0.1) { mapT = 0; hud.drawMap(game); }
     if (game.me) {
       const me = game.me, others = [];
-      let pack = 0, glassNear = me.spec?.kind === 'glass' && !me.wrecked ? 0.3 : 0, siren = 0, spray = 0, beam = 0;
+      let pack = 0, glassNear = me.spec?.kind === 'glass' && !me.wrecked ? 0.3 : 0, siren = 0, spray = 0, beam = 0, rotor = 0;
       // brandbilens siren/vatten och UFO:ts stråle när de är igång — ju närmare, desto starkare
       const spk = (c, d) => {
         const k = c.veh.loader || 0, K = c.spec?.kind;
         if (c.wrecked || c.hidden) return;
         // brandbilen kör alltid med sirenen på (starkare när den sprutar)
-        if (K === 'brandbil') { siren = Math.max(siren, Math.max(0, 1 - d / 160) ** 1.3 * (0.6 + 0.4 * k)); spray = Math.max(spray, Math.max(0, 1 - d / 60) * k); }
+        if (K === 'brandbil' || K === 'polis' || K === 'ambulans') siren = Math.max(siren, Math.max(0, 1 - d / 160) ** 1.3 * (0.6 + 0.4 * (K === 'brandbil' ? k : 0)));
+        if (K === 'brandbil') spray = Math.max(spray, Math.max(0, 1 - d / 60) * k);
+        if (K === 'heli') rotor = Math.max(rotor, Math.max(0, 1 - d / 90) ** 1.2 * (0.35 + 0.65 * k));
         else if (K === 'ufo' && k >= 0.05) beam = Math.max(beam, Math.max(0, 1 - d / 70) ** 1.3 * k);
       };
       spk(me, 0);
@@ -547,7 +551,7 @@ async function boot() {
       let slide = me.veh.speed;
       if (scrCar && me.contactWith) { const o = me.contactWith.veh; slide = Math.hypot(me.veh.vel.x - o.vel.x, me.veh.vel.z - o.vel.z) + 4; }
       audio.update({ kind: me.spec?.kind || 'stock', v: me.veh.speed, throttle: me.veh.input.throttle, brake: me.veh.input.brake || 0, on: !me.wrecked,
-        slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0, scrWall, scrCar, slide, glassNear, siren, spray, beam },
+        slip: me.veh.wheels[2].slip + me.veh.wheels[3].slip, drift: me.veh.drift || 0, scrWall, scrCar, slide, glassNear, siren, spray, beam, rotor },
         others, me.veh.speed, pack, Math.min(dt, 0.1));
     }
     game.labTick?.(Math.min(dt, 0.1));

@@ -1,9 +1,9 @@
 // Nätverk via PeerJS, värd-auktoritativt: värden kör all fysik, gästerna skickar
 // knapptryck (30 Hz) och får ögonblicksbilder (20 Hz) + händelser (smällar, vrak, resultat).
 import * as THREE from 'three';
-import { PROTO } from './config.js?v=28';
-import { Weapons } from './weapons.js?v=28';
-import { VTYPES } from './vtypes.js?v=28';
+import { PROTO } from './config.js?v=29';
+import { Weapons } from './weapons.js?v=29';
+import { VTYPES } from './vtypes.js?v=29';
 
 // Rummets id hos PeerJS. Versionen ingår INTE (då hamnade en kompis med en äldre flik i ett eget rum utan
 // att någon märkte det) — i stället jämförs versionen i 'hello' och den äldre laddar om sig själv.
@@ -165,6 +165,7 @@ export class NetHost {
       if (c.wrecked) f |= 1; if (c.ghostT > 0) f |= 2; if (c.drafting) f |= 4; if (c.finished) f |= 8;
       if (v.wheels[2].slip > 0.35) f |= 16; if (v.wheels[3].slip > 0.35) f |= 32; if (v.hold) f |= 64;
       if (c.scrapeT > 0) f |= 128; if (c.grindT > 0) f |= 256; if (c.hidden) f |= 512; if (c.firing) f |= 1024;
+      if (c.flatT > 0) f |= 2048; if (c.spookT > 0) f |= 4096; if (c.punctT > 0) f |= 8192;
       a[o + 17] = f;
       a[o + 18] = c.place;
       a[o + 19] = c.prog;
@@ -260,7 +261,7 @@ export class NetClient {
       case 'finish': g.clientFinish(d); break;
       case 'results': g.clientResults(d); break;
       case 'old': if (g.onVersionMismatch) g.onVersionMismatch(d.proto || 0); else g.hud?.toast('Någon kör en annan version — ladda om sidan', 'bad'); break;
-      case 'wb': case 'wx': case 'wsh': case 'wgl': case 'wbn': case 'wsk': g.weapons?.onEvent(d); break;
+      case 'wb': case 'wx': case 'wsh': case 'wgl': case 'wbn': case 'wsk': case 'wv2': g.weapons?.onEvent(d); break;
       case 'splat': g.hud?.splat?.(); break;
       case 'gp': g.gp = d.gp; g.hud?.gpChanged?.(g); break;
     }
@@ -308,6 +309,7 @@ export class NetClient {
       const f = rb[17];
       car.wrecked = !!(f & 1); car.ghostT = (f & 2) ? 1 : 0; car.drafting = !!(f & 4); car.finished = !!(f & 8);
       car.scrapeT = (f & 128) ? 0.15 : 0; car.grindT = (f & 256) ? 0.15 : 0; car.hidden = !!(f & 512);
+      car.flatT = (f & 2048) ? 0.3 : 0; car.spookT = (f & 4096) ? 0.3 : 0; car.punctT = (f & 8192) ? 0.3 : 0;
       car.place = rb[18]; car.prog = rb[19]; car.veh.vmax = rb[20]; car.saves = rb[21];
       car.lockT = rb[22]; car.flipT = rb[23]; car.rstate = rb[24]; { const x = rb[25], hi = Math.floor(x / 2); car.veh.loader = x - hi * 2; car.veh.tank = hi / 100; }
       car.wcode = rb[26]; car.wammo = rb[27]; car.firing = !!(f & 1024);

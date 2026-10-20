@@ -1,8 +1,8 @@
-import { CONF } from './config.js?v=28';
-import { GEAR } from './gear.js?v=28';
-import { WEAPONS, WIDS } from './weapons.js?v=28';
-import { TRACKS } from './track.js?v=28';
-import { SPECIAL_KNAPP } from './vtypes.js?v=28';
+import { CONF } from './config.js?v=29';
+import { GEAR } from './gear.js?v=29';
+import { WEAPONS, WIDS } from './weapons.js?v=29';
+import { TRACKS } from './track.js?v=29';
+import { SPECIAL_KNAPP } from './vtypes.js?v=29';
 // HUD: placering, varv/tid, meddelanden, resultat, minikarta.
 const $ = (id) => document.getElementById(id);
 const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
@@ -128,8 +128,9 @@ export class HUD {
     const code = cli ? (me.wcode || 0) : me.rollT > 0 ? -1 : me.weapon ? WIDS.indexOf(me.weapon.id) + 1 : 0;
     const ammo = cli ? me.wammo : me.weapon?.ammo;
     let key = 'none', ic = '', nm = '';
-    if (code === -1) { const id = WIDS[Math.floor(game.time * 14) % WIDS.length]; ic = WEAPONS[id].ikon; nm = '…'; key = 'roll' + id; }
-    else if (code > 0) { const W = WEAPONS[WIDS[code - 1]]; ic = W.ikon; nm = W.namn + (ammo > 1 ? ' ×' + ammo : ''); key = ic + nm; }
+    // (tål konstiga värden: simuleringsverktygen kör utan klocka, en gäst kan få en kod från en annan version)
+    if (code === -1) { const n = WIDS.length, id = WIDS[((Math.floor((game.time || 0) * 14) % n) + n) % n]; ic = WEAPONS[id].ikon; nm = '…'; key = 'roll' + id; }
+    else if (code > 0 && WEAPONS[WIDS[code - 1]]) { const W = WEAPONS[WIDS[code - 1]]; ic = W.ikon; nm = W.namn + (ammo > 1 ? ' ×' + ammo : ''); key = ic + nm; }
     if (key === this.wKey) return;
     this.wKey = key;
     el.classList.toggle('hidden', code === 0); el.classList.toggle('roll', code === -1);
@@ -156,8 +157,10 @@ export class HUD {
       // eget rum: värden väljer vanligt race eller Grand Prix
       const mode = info.pub ? '' : `<div class="lmode"><button data-gpmode="0" class="${gp ? '' : 'on'}" ${isHost ? '' : 'disabled'}>🏁 RACE</button><button data-gpmode="1" class="${gp ? 'on' : ''}" ${isHost ? '' : 'disabled'}>🏆 GRAND PRIX</button></div>`;
       this.el.ltrack.innerHTML = mode + (gp
-        ? `<div class="gpn">Antal banor (slumpad ordning)</div>` + [[3, '3'], [5, '5'], [0, 'ALLA ' + TRACKS.length]].map(([n, t]) =>
+        ? `<div class="gpn">Antal banor (slumpad ordning)</div><div class="gprow">` + [[3, '3'], [5, '5'], [8, '8'], [0, 'ALLA ' + TRACKS.length]].map(([n, t]) =>
           `<button data-gpn="${n}" class="${gp.count === n ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${t}</button>`).join('')
+          + `</div><div class="gpn">Varv per bana</div><div class="gprow">` + [2, 3, 4, 5, 6].map(n =>
+          `<button data-gpl="${n}" class="${(gp.laps || 2) === n ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${n}</button>`).join('') + '</div>'
         : this.trackButtons(info.track, isHost, info.laps));
       this.el.lstart.textContent = gp ? 'STARTA GRAND PRIX' : 'STARTA RACE';
       this.el.lshare.textContent = info.pub ? 'Alla som trycker SPELA hamnar här' : `Kompisarna trycker GÅ MED I RUM och skriver ${info.room}`;

@@ -1,7 +1,7 @@
 // Fordonstyper: stockcar, skolbuss, bigfoot … gokart, brandbil, stridsvagn och UFO.
 // Allt fysikaliskt per typ: mått, vikt, hjul, fjädring, grepp, styrning — plus kamera och tålighet.
 // Kroppens origo = tyngdpunkten. modelY = markens höjd i kroppens ram när bilen står still.
-import { withGear } from './gear.js?v=28';
+import { withGear } from './gear.js?v=29';
 
 export const VTYPES = {
   stock: {
@@ -173,8 +173,88 @@ export const VTYPES = {
     modelY: -1.45, sideH: 1.2, longH: 1.45, armor: 1.1, stab: 0.8, rightK: 7, tagUp: 0.6, cam: { d: 1.8, h: 1.0 }, hood: { y: 0.75, z: -0.9 },
     detune: 0, special: 'strale', glide: true, hover: true,
   },
+  // V2-raketbilen: en lastbil med en stor V2-raket på ramen. Mellansnabb men SKÖR — och sprängs den med raketen
+  // laddad smäller raketen också. E = raketen flyger i en båge och kastar alla omkring nedslaget (laddar om långsamt)
+  v2: {
+    id: 'v2', namn: 'V2-raketbil', besk: 'Mellansnabb men skör — och sprängs den medan raketen är laddad smäller hela raketen. Tryck E: V2-raketen flyger i en båge och kastar alla runt nedslaget (laddar om långsamt)',
+    mass: 2200, half: { x: 1.15, y: 0.9, z: 3.3 }, colY: 0.45, inertia: { x: 12900, y: 13500, z: 4500 },
+    rayLen: 1.1, susK: 63000, susC: 7000, bump: 0.4, fsMax: 260000,
+    muLat: 1.75, muLong: 1.7, rearGrip: 0.95, driveMax: 16500 * 2200 / 1500, accelK: 0.75, brake: 44000, steerMax: 0.44, wb: 3.8, downforce: 1.2,
+    wheelR: 0.48, wheels: [
+      { x: -1.0, z: -2.2, front: true }, { x: 1.0, z: -2.2, front: true },
+      { x: -1.0, z: 1.6, front: false }, { x: 1.0, z: 1.6, front: false },
+    ],
+    modelY: -0.95, sideH: 0.75, longH: 0.95, armor: 0.55, stab: 0.9, rightK: 5, tagUp: 1.4, cam: { d: 3.5, h: 1.5 }, hood: { y: 1.2, z: -2.6 },
+    detune: -0.15, special: 'v2', rocket: { y: 3.1, z: 0.3 },            // raketens mitt när den skjuts (höjd över marken, z i modellen)
+  },
+  // Polisbilen: snabb kombi med blåljus och siren. E = en spikmatta bakom — den som kör över får punktering
+  polis: {
+    id: 'polis', namn: 'Polisbil', besk: 'Snabb kombi med blåljus och siren. Tryck E: släpp en spikmatta bakom dig — den som kör över den får punktering och blir långsam',
+    mass: 1650, half: { x: 0.98, y: 0.62, z: 2.45 }, colY: 0.3, inertia: { x: 5200, y: 5000, z: 2400 },
+    rayLen: 0.75, susK: 47000, susC: 4800, bump: 0.3, fsMax: 160000,
+    muLat: 1.95, muLong: 1.8, rearGrip: 0.94, driveMax: 16500 * 1650 / 1500 * 1.05, accelK: 1.05, brake: 33000, steerMax: 0.5, wb: 2.95, downforce: 0.8,
+    wheelR: 0.36, wheels: [
+      { x: -0.84, z: -1.48, front: true }, { x: 0.84, z: -1.48, front: true },
+      { x: -0.84, z: 1.48, front: false }, { x: 0.84, z: 1.48, front: false },
+    ],
+    modelY: -0.6, sideH: 0.45, longH: 0.6, armor: 1.0, stab: 1, rightK: 3.4, tagUp: 0.3, cam: { d: 0.4, h: 0.2 }, hood: { y: 0.65, z: -0.9 },
+    detune: 0.05, special: 'spikmatta',
+  },
+  // Ambulansen: tålig skåpbil med blåljus. E = den lagar sig själv (blir nästan hel igen)
+  ambulans: {
+    id: 'ambulans', namn: 'Ambulans', besk: 'Tålig skåpbil med blåljus och siren som lagar sig själv sakta. Tryck E: bakdörrarna slås upp och patienter på rullbårar åker ut — den som kör på dem snurrar',
+    mass: 2600, half: { x: 1.1, y: 1.2, z: 2.9 }, colY: 0.7, inertia: { x: 12700, y: 10500, z: 7500 },
+    rayLen: 1.15, susK: 72000, susC: 7500, bump: 0.4, fsMax: 280000,
+    muLat: 1.72, muLong: 1.62, rearGrip: 0.95, driveMax: 16500 * 2600 / 1500, accelK: 0.62, brake: 50000, steerMax: 0.46, wb: 3.5, downforce: 1.2,
+    wheelR: 0.42, wheels: [
+      { x: -0.95, z: -1.8, front: true }, { x: 0.95, z: -1.8, front: true },
+      { x: -0.95, z: 1.8, front: false }, { x: 0.95, z: 1.8, front: false },
+    ],
+    modelY: -1.0, sideH: 0.8, longH: 1.0, armor: 1.4, stab: 1.0, rightK: 5.5, tagUp: 1.4, cam: { d: 3, h: 1.4 }, hood: { y: 1.35, z: -2.2 },
+    detune: -0.1, special: 'patienter', regen: 2,                     // regen: lagar sig själv (hälsa/s) när den inte tagit stryk på 3 s
+  },
+  // Ångvälten: tyngst och segast av alla med en jättevals fram. E = vältpressen: plattar till bilarna framför i 3 s
+  valt: {
+    id: 'valt', namn: 'Ångvält', besk: 'Tyngst och segast av alla, med en jättevals fram och en rykande skorsten. Tryck E: i 3 sekunder plattar välten till bilarna den kör in i',
+    mass: 6000, half: { x: 1.25, y: 1.0, z: 2.6 }, colY: 0.35, inertia: { x: 23000, y: 25000, z: 11000 },
+    rayLen: 1.35, susK: 172000, susC: 16000, bump: 0.45, fsMax: 620000,
+    muLat: 1.9, muLong: 1.85, rearGrip: 0.98, driveMax: 16500 * 6000 / 1500 * 1.15, accelK: 0.25, brake: 110000, steerMax: 0.45, wb: 3.3, downforce: 2.4,
+    wheelR: 0.75, wheels: [
+      { x: -0.7, z: -1.8, front: true }, { x: 0.7, z: -1.8, front: true },
+      { x: -1.05, z: 1.5, front: false }, { x: 1.05, z: 1.5, front: false },
+    ],
+    modelY: -1.2, sideH: 0.8, longH: 1.2, armor: 2.6, stab: 0.12, rightK: 8, tagUp: 1.6, cam: { d: 3, h: 1.6 }, hood: { y: 1.4, z: 0.3 },
+    detune: -0.4, special: 'platta',
+  },
+  // Spökbilen: en svart likbil med lila sken och ett spöke vid ratten. E = blir ett spöke i 3 s (åker igenom allt)
+  spokbil: {
+    id: 'spokbil', namn: 'Spökbil', besk: 'Svart likbil med lila sken och ett spöke vid ratten. Tryck E: bli ett spöke i 3 sekunder — åk rakt igenom bilarna (och skräm dem), inget biter på dig',
+    mass: 1700, half: { x: 0.98, y: 0.75, z: 2.75 }, colY: 0.35, inertia: { x: 6900, y: 7200, z: 3000 },
+    rayLen: 0.85, susK: 48600, susC: 5000, bump: 0.3, fsMax: 160000,
+    muLat: 1.9, muLong: 1.8, rearGrip: 0.94, driveMax: 16500 * 1700 / 1500, accelK: 1.0, brake: 34000, steerMax: 0.48, wb: 3.3, downforce: 0.85,
+    wheelR: 0.4, wheels: [
+      { x: -0.86, z: -1.65, front: true }, { x: 0.86, z: -1.65, front: true },
+      { x: -0.86, z: 1.65, front: false }, { x: 0.86, z: 1.65, front: false },
+    ],
+    modelY: -0.7, sideH: 0.5, longH: 0.7, armor: 0.9, stab: 1, rightK: 3.6, tagUp: 0.5, cam: { d: 0.8, h: 0.4 }, hood: { y: 0.9, z: -0.6 },
+    detune: -0.05, special: 'spoke',
+  },
+  // Helikoptern: glider på medarna, rotorn drar (jet = dragkraft även i luften). E = flyg 6 m över banan i upp till
+  // 4 s — rotorvinden blåser undan bilarna under
+  heli: {
+    id: 'heli', namn: 'Helikopter', besk: 'Glider fram på medarna. Håll E: helikoptern lyfter och flyger över klungan i upp till 4 sekunder — rotorvinden blåser undan bilarna under',
+    mass: 1400, half: { x: 1.0, y: 0.85, z: 1.9 }, colY: 0.2, inertia: { x: 4800, y: 5200, z: 3000 },
+    rayLen: 1.15, susK: 40000, susC: 4300, bump: 0.3, fsMax: 150000,
+    muLat: 1.8, muLong: 1.7, rearGrip: 0.95, driveMax: 4200, accelK: 1, brake: 26000, steerMax: 0.44, wb: 2.2, downforce: 0.9,
+    wheelR: 0.15, wheels: [
+      { x: -0.85, z: -1.05, front: true }, { x: 0.85, z: -1.05, front: true },
+      { x: -0.85, z: 1.05, front: false }, { x: 0.85, z: 1.05, front: false },
+    ],
+    modelY: -1.0, sideH: 0.8, longH: 1.0, armor: 0.95, stab: 0.9, rightK: 6, tagUp: 1.1, cam: { d: 2.6, h: 1.3 }, hood: { y: 0.65, z: -1.2 },
+    detune: 0, jet: 10, glide: true, special: 'flyg',
+  },
 };
-export const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol', 'plan', 'gokart', 'brandbil', 'stridsvagn', 'ufo'];
+export const KINDS = ['stock', 'bus', 'bigfoot', 'formel', 'traktor', 'glass', 'rullstol', 'elrullstol', 'plan', 'gokart', 'brandbil', 'stridsvagn', 'ufo', 'v2', 'polis', 'ambulans', 'valt', 'spokbil', 'heli'];
 // Specialförmågorna på E. hold = håll in (sekunder per full tank, refill = gånger längre att fylla),
 // cd = tryck (sekunder att ladda om), ground = bara med hjulen på marken. knapp = E-knappens namn, tips = när racet börjar.
 export const SPECIALS = {
@@ -190,6 +270,12 @@ export const SPECIALS = {
   glass: { knapp: 'GLASS', cd: 1.6, tips: '🍦 Tryck E (eller GLASS): kasta glass på bilen framför — det kladdar ner rutan!' },
   elchock: { knapp: 'BLIXT', cd: 6, tips: '⚡ Tryck E (eller BLIXT): elchock på alla som är nära!' },
   banan: { knapp: 'BANAN', cd: 3, tips: '🍌 Tryck E (eller BANAN): släpp ett bananskal bakom dig — den som kör på det snurrar!' },
+  v2: { knapp: 'RAKET', cd: 14, tips: '🚀 Tryck E (eller RAKET): V2-raketen flyger i en båge och smäller — alla runt nedslaget flyger! Den laddar om långsamt, och du sprängs lätt.' },
+  spikmatta: { knapp: 'SPIKAR', cd: 6, tips: '🚓 Tryck E (eller SPIKAR): släpp en spikmatta bakom dig — den som kör över den får punktering!' },
+  patienter: { knapp: 'PATIENT', cd: 7, tips: '🚑 Tryck E (eller PATIENT): bakdörrarna slås upp och patienter på rullbårar åker ut — den som kör på dem snurrar! (Ambulansen lagar sig själv sakta.)' },
+  platta: { knapp: 'PLATTA', cd: 8, tips: '🛞 Tryck E (eller PLATTA): i 3 sekunder plattar välten till bilarna den kör in i!' },
+  flyg: { knapp: 'FLYG', hold: 4, refill: 3, tips: '🚁 Håll E (eller FLYG): helikoptern lyfter och flyger över klungan — rotorvinden blåser undan bilarna under!' },
+  spoke: { knapp: 'SPÖKE', cd: 10, tips: '👻 Tryck E (eller SPÖKE): bli ett spöke i 3 sekunder — åk rakt igenom bilarna och skräm dem!' },
 };
 // E-knappens namn per fordon (traktorns skopa + specialförmågorna)
 export const SPECIAL_KNAPP = { traktor: 'SKOPA', ...Object.fromEntries(Object.entries(VTYPES).filter(([, t]) => t.special).map(([k, t]) => [k, SPECIALS[t.special].knapp])) };

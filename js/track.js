@@ -2,7 +2,7 @@
 // hopp med glipa, tunnlar genom berg, en dalbro och en bro där banan korsar sig själv.
 // Allt (väg, murar, terräng, AI, placeringar) utgår från samma sampling var 4:e meter.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=28';
+import { CONF } from './config.js?v=29';
 
 // ---------- Banorna ----------
 // SNÖBERGET: start/mål vid (0,0), körriktning +x.
@@ -19,7 +19,10 @@ function eightCtrl() {
   const R = 400, d = 410;
   const diag = 2 * d * Math.SQRT2, side = 2 * (d - R * Math.SQRT1_2);
   const cmds = [['S', side / 2], ['A', R, 135], ['S', diag], ['A', R, -135], ['S', side], ['A', R, -135], ['S', diag], ['A', R, 135], ['S', side / 2]];
-  let x = -(d + R + R * Math.SQRT1_2), z = 0, th = -Math.PI / 2;     // söderut
+  return turtleCtrl(cmds, -(d + R + R * Math.SQRT1_2), 0, -Math.PI / 2);     // söderut
+}
+// Sköldpaddan: ['S', längd] = rakt, ['A', radie, grader] = båge (+ = höger). Punkt var ~50:e meter.
+function turtleCtrl(cmds, x = 0, z = 0, th = 0) {
   const pts = [];
   const STEP = 50;
   for (const [c, a1, a2] of cmds) {
@@ -77,6 +80,27 @@ const CTRL_MANE = [
   [0, 0], [800, 0], [1600, 0], [2160, -160], [2400, -560], [2240, -1040], [1680, -1280], [880, -1360],
   [0, -1360], [-800, -1320], [-1440, -1120], [-1760, -720], [-1680, -280], [-1200, -40], [-640, 0],
 ];
+// STRANDBANAN: en böna längs stranden — lång raka, midjan in mot lagunen
+const CTRL_STRAND = [
+  [0, 0], [700, 0], [1400, 0], [1950, -130], [2250, -480], [2150, -900], [1750, -1150], [1250, -1150], [850, -950],
+  [450, -950], [50, -1200], [-450, -1350], [-950, -1250], [-1300, -950], [-1400, -500], [-1150, -130], [-600, 0],
+];
+// HÖSTSKOGEN: en trekant genom skogen med en lång hårnål i norr
+const CTRL_HOST = [
+  [0, 0], [600, 0], [1200, -40], [1650, -260], [1800, -650], [1600, -1000], [1200, -1150], [900, -1450], [850, -1850],
+  [550, -2150], [100, -2150], [-200, -1850], [-250, -1400], [-500, -1050], [-900, -900], [-1150, -550], [-1000, -180], [-550, 0],
+];
+// SPÖKBANAN: en fladdermus — vågig vingkant i söder (S-kurvor)
+const CTRL_SPOKE = [
+  [0, 0], [600, 0], [1150, 80], [1500, 330], [1660, 700], [1560, 1000], [1270, 1110], [1000, 1170], [750, 1100], [500, 1030],
+  [250, 1100], [0, 1170], [-250, 1100], [-500, 1030], [-750, 1100], [-1000, 1170], [-1300, 1100], [-1550, 950], [-1650, 600],
+  [-1500, 250], [-1150, 60], [-600, 0],
+];
+// GODISBANAN: en klubba — pinnen är två raka, godiset en stor ring
+const CTRL_GODIS = turtleCtrl([['S', 700], ['A', 540, 50], ['A', 650, -280], ['A', 540, 50], ['S', 1400], ['A', 225, -180], ['S', 700]]);
+// NEONBANAN: kantig som ett gammalt dataspel — raka, skarpa 90°-kurvor och ett trappsteg
+const CTRL_NEON = turtleCtrl([['S', 600], ['A', 260, 90], ['S', 700], ['A', 260, 90], ['S', 300], ['A', 260, -90], ['S', 300], ['A', 260, 90],
+  ['S', 900], ['A', 260, 90], ['S', 1520], ['A', 260, 90], ['S', 1120]]);
 
 export const TRACKS = [
   {
@@ -153,6 +177,51 @@ export const TRACKS = [
       { type: 'jump', at: 0.36 },
       { type: 'valley', at: 0.55, len: 180, depth: 34, namn: 'STORA KRATERN' },
       { type: 'jump', at: 0.68 },
+    ],
+  },
+  {
+    id: 'strand', namn: 'STRANDBANAN', besk: 'Sol, palmer och parasoll — hopp och en bro över lagunen — 2 varv', laps: 2, theme: 'strand',
+    ctrl: CTRL_STRAND, hills: [6, 3, 1.5], crests: [{ s: 0.3, h: 5, w: 50 }, { s: 0.66, h: 6, w: 55 }],
+    features: [
+      { type: 'jump', at: 0.11 },
+      { type: 'jump', at: 0.6 },
+      { type: 'valley', at: 0.82, len: 180, depth: 24, namn: 'LAGUNEN' },
+    ],
+  },
+  {
+    id: 'host', namn: 'HÖSTSKOGEN', besk: 'Röda och gula lövträd, en tunnel genom backen och en bro över bäcken — 2 varv', laps: 2, theme: 'host',
+    ctrl: CTRL_HOST, hills: [12, 6, 3], crests: [{ s: 0.2, h: 6, w: 50 }, { s: 0.88, h: 6, w: 50 }],
+    features: [
+      { type: 'jump', at: 0.1 },
+      { type: 'tunnel', at: 0.32, len: 300, namn: 'RÄVGRYTET' },
+      { type: 'valley', at: 0.64, len: 170, depth: 26, namn: 'BÄCKEN' },
+    ],
+  },
+  {
+    id: 'spoke', namn: 'SPÖKBANAN', besk: 'Halloweennatt: pumpor, gravstenar och ett grönt slemträsk under bron — 2 varv', laps: 2, theme: 'spoke',
+    ctrl: CTRL_SPOKE, hills: [10, 5, 2], crests: [{ s: 0.25, h: 6, w: 50 }],
+    features: [
+      { type: 'jump', at: 0.1 },
+      { type: 'tunnel', at: 0.3, len: 280, namn: 'KRYPTAN' },
+      { type: 'valley', at: 0.6, len: 180, depth: 28, namn: 'SLEMTRÄSKET' },
+    ],
+  },
+  {
+    id: 'godis', namn: 'GODISBANAN', besk: 'Klubbor, polkagrisar och muffins — chokladflod, gelétunnel och hopp — 2 varv', laps: 2, theme: 'godis',
+    ctrl: CTRL_GODIS, hills: [8, 4, 2], crests: [{ s: 0.2, h: 6, w: 50 }, { s: 0.5, h: 5, w: 45 }],
+    features: [
+      { type: 'valley', at: 0.36, len: 180, depth: 26, namn: 'CHOKLADFLODEN' },
+      { type: 'tunnel', at: 0.5, len: 280, namn: 'GELÉBERGET' },
+      { type: 'jump', at: 0.68 },
+    ],
+  },
+  {
+    id: 'neon', namn: 'NEONBANAN', besk: '80-talsnatt: neonrutnät, solnedgång, tunnel och hopp — 3 varv', laps: 3, theme: 'neon',
+    ctrl: CTRL_NEON, hills: [4, 2, 1], crests: [],
+    features: [
+      { type: 'jump', at: 0.9 },
+      { type: 'tunnel', at: 0.17, len: 300, namn: 'DATORN' },
+      { type: 'jump', at: 0.7 },
     ],
   },
 ];

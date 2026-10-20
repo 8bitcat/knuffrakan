@@ -1,8 +1,8 @@
 // Tillbehörens utseende på bilarna. Mått och lägen ur MOUNT/frontParts i gear.js —
 // samma som fysiken, så det man ser är det som knuffas.
 import * as THREE from 'three';
-import { cleanGear, frontParts, MOUNT } from './gear.js?v=28';
-import { VTYPES } from './vtypes.js?v=28';
+import { cleanGear, frontParts, MOUNT } from './gear.js?v=29';
+import { VTYPES } from './vtypes.js?v=29';
 
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const tex = (c, rx = 1, ry = 1) => {
@@ -64,7 +64,7 @@ export function addGear(view, spec) {
     return o;
   };
   const parts = frontParts({ ...VT, modelY: 0, gear });
-  const big = { bus: 1.35, traktor: 1.3, glass: 1.15, brandbil: 1.3, stridsvagn: 1.35, gokart: 0.7 }[kind] || 1;
+  const big = { bus: 1.35, traktor: 1.3, glass: 1.15, brandbil: 1.3, stridsvagn: 1.35, gokart: 0.7, v2: 1.2, ambulans: 1.15, valt: 1.35 }[kind] || 1;
 
   // --- fram ---
   if (gear.includes('plog')) {

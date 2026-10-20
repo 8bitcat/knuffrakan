@@ -20,9 +20,15 @@ const BOX = {
   brandbil: { gears: [8, 15, 23, 33, 46, 120], rMin: 800, rMax: 2600 },
   stridsvagn: { gears: [7, 14, 22, 32, 120], rMin: 700, rMax: 2400 },
   ufo: { gears: [120], rMin: 1000, rMax: 3000 },
+  v2: { gears: [9, 17, 27, 40, 56, 120], rMin: 800, rMax: 2600 },
+  polis: { gears: [24, 44, 66, 120], rMin: 2600, rMax: 8200 },
+  ambulans: { gears: [11, 22, 38, 58, 120], rMin: 900, rMax: 5500 },
+  valt: { gears: [5, 9, 14, 20, 30, 120], rMin: 500, rMax: 1800 },
+  spokbil: { gears: [20, 38, 58, 120], rMin: 1400, rMax: 6000 },
+  heli: { gears: [120], rMin: 1200, rMax: 3200 },
 };
 // grupper: tunga dieslar, stora V8:or, skrikiga racermotorer
-const DIESEL = new Set(['bus', 'traktor', 'brandbil', 'stridsvagn']), BIG = new Set(['bigfoot', 'glass']), RACE = new Set(['stock', 'formel', 'gokart']);
+const DIESEL = new Set(['bus', 'traktor', 'brandbil', 'stridsvagn', 'v2', 'valt']), BIG = new Set(['bigfoot', 'glass', 'ambulans', 'spokbil']), RACE = new Set(['stock', 'formel', 'gokart', 'polis']);
 
 export class EngineVoice {
   // kind: 'stock' | 'bus' | 'bigfoot', set: post ur SOUND_OPTS (lager + tonhöjdsområde)

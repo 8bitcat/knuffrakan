@@ -1,23 +1,23 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=29';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=29';
-import { themeOf } from './themes.js?v=29';
-import { LAVA_IN } from './world.js?v=29';
-import { buildWorld, gridSlots } from './world.js?v=29';
-import { createScene, ChaseCam } from './scene.js?v=29';
-import { makeCarView } from './vehicles3d.js?v=29';
-import { typeOf } from './vtypes.js?v=29';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=29';
-import { makeLivery, randomSpec } from './livery.js?v=29';
-import { Vehicle, CP } from './vehicle.js?v=29';
-import { BotBrain } from './ai.js?v=29';
-import { Race } from './race.js?v=29';
-import { FX, Trails } from './fx.js?v=29';
-import { NameTag, SpeedPlate } from './tags.js?v=29';
-import { RemoteVeh, carInfo } from './net.js?v=29';
-import { Weapons } from './weapons.js?v=29';
-import { newGP, shuffledTracks, award, Podium } from './gp.js?v=29';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=30';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=30';
+import { themeOf } from './themes.js?v=30';
+import { LAVA_IN } from './world.js?v=30';
+import { buildWorld, gridSlots } from './world.js?v=30';
+import { createScene, ChaseCam } from './scene.js?v=30';
+import { makeCarView } from './vehicles3d.js?v=30';
+import { typeOf } from './vtypes.js?v=30';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=30';
+import { makeLivery, randomSpec } from './livery.js?v=30';
+import { Vehicle, CP } from './vehicle.js?v=30';
+import { BotBrain } from './ai.js?v=30';
+import { Race } from './race.js?v=30';
+import { FX, Trails } from './fx.js?v=30';
+import { NameTag, SpeedPlate } from './tags.js?v=30';
+import { RemoteVeh, carInfo } from './net.js?v=30';
+import { Weapons } from './weapons.js?v=30';
+import { newGP, shuffledTracks, award, Podium } from './gp.js?v=30';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const HEAL0 = new THREE.Color(0x7dff9a), HEAL1 = new THREE.Color(0xffffff);   // ambulansens lagning (gröna gnistor)

@@ -3,7 +3,7 @@
 // efter ögonblicksbilderna: varje bil har vapen + "skjuter" i sin rad, projektilerna ligger sist i
 // bilden, och lådor/explosioner/chockvågor kommer som händelser.
 import * as THREE from 'three';
-import { F_GAP, F_RAMP, F_LAND } from './track.js?v=29';
+import { F_GAP, F_RAMP, F_LAND } from './track.js?v=30';
 
 export const WEAPONS = {
   raket: { namn: 'Raketer', ikon: '🚀', ammo: 3 },
@@ -18,7 +18,6 @@ export const WIDS = Object.keys(WEAPONS);                 // kod i ögonblicksbi
 // vikt = a + b·p där p = 0 för ledaren och 1 för den sista
 const LOOT = { olja: [3, -2], minor: [2.5, -1.5], chock: [1.5, 0], harpun: [1, 1], raket: [0.6, 2], kulspruta: [0.5, 1.8], kanon: [0.15, 1.6] };
 const PT = { RAKET: 1, MINA: 2, OLJA: 3, KROK: 4, GRANAT: 5, GLASS: 6, BANAN: 7, V2: 8, SPIK: 9, BAR: 10 };
-const V2_G = 14;                                          // V2-raketens bana (lobbas högt)
 const GLASS_G = 14;                                       // glasskulans tyngdkraft (lobbas)
 const PROW = 10;                                          // flyttal per projektil i ögonblicksbilden
 const WORLD_ONLY = (0xffff << 16) | 0x0002;              // strålar som bara träffar banan (inte bilar)
@@ -338,12 +337,13 @@ export class Weapons {
     const g = this.g, v = c.veh, T = v.T, G = T.rocket;
     const p = { id: this.nextP++, type: PT.V2, owner: c, pos: new THREE.Vector3(), vel: new THREE.Vector3(), born: g.simT, life: 7, a: 0, b: 0 };
     p.pos.copy(v.pos).addScaledVector(v.up, T.modelY + G.y).addScaledVector(v.fwd, -G.z);
-    const tg = this.target(c, 0.9, 150, 22);
-    _a.copy(tg ? tg.veh.pos : _b.copy(v.pos).addScaledVector(v.fwd, 90)).sub(p.pos);
-    const hs = 50 + Math.max(0, v.vLong);
-    if (tg) _a.addScaledVector(tg.veh.vel, Math.hypot(_a.x, _a.z) / hs);   // dit bilen är när raketen slår ner
-    const t = Math.max(1.4, Math.hypot(_a.x, _a.z) / hs);
-    p.vel.set(_a.x / t, (_a.y + 0.5 * V2_G * t * t) / t, _a.z / t);
+    // som en riktig raket: skjuts rakt upp (med bilens egen fart — annars hamnade den bakom i 250 km/h),
+    // vänder sedan och rusar framåt mot bilen den siktar på, eller mot vägen långt fram, och dyker ner
+    const tg = this.target(c, 0.9, 170, 22);
+    p.vel.copy(v.vel).addScaledVector(_up, 24);
+    p.target = tg; p.vmax = Math.max(115, v.speed + 85);
+    const TR = g.track;
+    p.aim = TR.pointAt(TR.wrapS(c.trk.s + 150 + Math.max(0, v.vLong) * 2.2), (c.trk.lat || 0) * 0.5, new THREE.Vector3());
     if (tg) { g.notify(tg, `🚀 ${c.name}s V2-raket är på väg mot dig!`, 'bad'); }
     this.proj.push(p);
   }
@@ -462,7 +462,17 @@ export class Weapons {
       return;
     }
     if (p.type === PT.V2) {
-      p.vel.y -= V2_G * dt;
+      if (now - p.born < 0.5) p.vel.y = Math.max(p.vel.y, 22);                // uppskjutningen: rakt upp
+      else {
+        // styr mot målet (med förhandssikte) eller mot punkten på vägen — vrider ~2,8 rad/s och ökar farten
+        const tg = p.target && !p.target.wrecked && !p.target.hidden ? p.target : null;
+        const aim = tg ? _b.copy(tg.veh.pos).addScaledVector(tg.veh.vel, p.pos.distanceTo(tg.veh.pos) / p.vmax) : p.aim;
+        const want = _h.copy(aim).sub(p.pos).normalize();
+        const sp0 = p.vel.length(), dir0 = _a.copy(p.vel).divideScalar(sp0 || 1);
+        const ang = Math.acos(clamp(dir0.dot(want), -1, 1));
+        dir0.lerp(want, Math.min(1, 2.8 * dt / Math.max(1e-3, ang))).normalize();
+        p.vel.copy(dir0).multiplyScalar(Math.min(p.vmax, sp0 + 140 * dt));
+      }
       const sp = p.vel.length(), dir = _d.copy(p.vel).divideScalar(sp || 1), step = sp * dt;
       let hitCar = null, ht = step + 0.5;
       for (const o of g.cars) {

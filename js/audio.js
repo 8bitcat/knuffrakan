@@ -1,8 +1,8 @@
 // Ljud: riktiga CC0-inspelningar (se audio/CREDITS.txt), valbara i Ljudlabbet.
 // Motorer per fordonstyp (engines.js), packets vrål, skrap som följer glidfarten,
 // krockar i lager, däckskrik, vind, eko i tunnlar. Syntes som reserv.
-import { EngineVoice, JetVoice } from './engines.js?v=33';
-import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=33';
+import { EngineVoice, JetVoice } from './engines.js?v=34';
+import { SOUND_OPTS, DEFAULT_CHOICE, BASE_FILES, LOOP_FILES } from './sounds.js?v=34';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -381,6 +381,49 @@ export class GameAudio {
     lfo.frequency.value = 18; lg.gain.value = 40; lfo.connect(lg); lg.connect(o.frequency);
     g.gain.setValueAtTime(0.32 * near, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
     o.connect(g); g.connect(this.master); o.start(t); lfo.start(t); o.stop(t + 0.6); lfo.stop(t + 0.6);
+  }
+  // miniguns röst: ylande pipor som varvar upp + ett ihållande, distat BRRRRT (45 smällar i sekunden) + mullrande bas.
+  // level 0..1 (avstånd), spin 0..1 (piporna), firing 0/1. Anropas varje bildruta.
+  minigun(level, spin, firing) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.mg) {
+      if (level < 0.01) return;
+      const out = ctx.createGain(); out.gain.value = 0; out.connect(this.master);
+      // ylandet (piporna)
+      const wh = ctx.createOscillator(); wh.type = 'sawtooth'; wh.frequency.value = 120;
+      const whF = ctx.createBiquadFilter(); whF.type = 'bandpass'; whF.frequency.value = 900; whF.Q.value = 2;
+      const whG = ctx.createGain(); whG.gain.value = 0;
+      wh.connect(whF); whF.connect(whG); whG.connect(out); wh.start();
+      // BRRRRT: brus + såg som slås på/av 45 gånger i sekunden, genom en dist
+      const n = ctx.sampleRate, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      const ns = ctx.createBufferSource(); ns.buffer = buf; ns.loop = true;
+      const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1600; nf.Q.value = 0.7;
+      const saw = ctx.createOscillator(); saw.type = 'sawtooth'; saw.frequency.value = 45;
+      const sawF = ctx.createBiquadFilter(); sawF.type = 'lowpass'; sawF.frequency.value = 260;
+      const am = ctx.createGain(); am.gain.value = 0.5;
+      const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 45;
+      const lfoG = ctx.createGain(); lfoG.gain.value = 0.5; lfo.connect(lfoG); lfoG.connect(am.gain);
+      const sawG = ctx.createGain(); sawG.gain.value = 1.4;
+      ns.connect(nf); nf.connect(am); saw.connect(sawF); sawF.connect(sawG); sawG.connect(am);
+      const dist = ctx.createWaveShaper(); const curve = new Float32Array(1024);
+      for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; curve[i] = Math.tanh(x * 4); }
+      dist.curve = curve;
+      const brG = ctx.createGain(); brG.gain.value = 0;
+      am.connect(dist); dist.connect(brG); brG.connect(out);
+      // basdunket (tyngden i bröstet)
+      const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 45;
+      const subG = ctx.createGain(); subG.gain.value = 0; sub.connect(subG); subG.connect(out);
+      ns.start(); saw.start(); lfo.start(); sub.start();
+      this.mg = { out, wh, whG, brG, subG };
+    }
+    const M = this.mg;
+    M.out.gain.setTargetAtTime(level, t, 0.05);
+    M.wh.frequency.setTargetAtTime(120 + 520 * spin, t, 0.05);
+    M.whG.gain.setTargetAtTime(0.07 * spin, t, 0.05);
+    M.brG.gain.setTargetAtTime(firing ? 0.32 : 0, t, firing ? 0.01 : 0.03);
+    M.subG.gain.setTargetAtTime(firing ? 0.35 : 0, t, 0.02);
   }
   // strålarna: laser (fallande pip), frys (klirr), krymp (sjunkande pew)
   ray(k, near = 1) {

@@ -3,7 +3,7 @@
 // efter ögonblicksbilderna: varje bil har vapen + "skjuter" i sin rad, projektilerna ligger sist i
 // bilden, och lådor/explosioner/chockvågor kommer som händelser.
 import * as THREE from 'three';
-import { F_GAP, F_RAMP, F_LAND } from './track.js?v=33';
+import { F_GAP, F_RAMP, F_LAND } from './track.js?v=34';
 
 export const WEAPONS = {
   raket: { namn: 'Raketer', ikon: '🚀', ammo: 3 },
@@ -23,12 +23,14 @@ export const WEAPONS = {
   fyrverkeri: { namn: 'Fyrverkeri', ikon: '🎆', ammo: 2 },
   skold: { namn: 'Sköld', ikon: '🛡️', ammo: 1 },
   kanonkula: { namn: 'Kanonkula', ikon: '☄️', ammo: 1 },
+  // minigun: sex pipor som varvar upp (spin) och sprutar 45 skott i sekunden — ljudet är en egen röst (audio.minigun)
+  minigun: { namn: 'Minigun', ikon: 'MINI', ammo: 320, rate: 45, dmg: 0.55, spread: 0.035, kick: 0.06, gun: true, spin: true },
 };
 export const WIDS = Object.keys(WEAPONS);                 // kod i ögonblicksbilden = index + 1, -1 = ruletten snurrar
 // vikt = a + b·p där p = 0 för ledaren och 1 för den sista
 const LOOT = { olja: [3, -2], minor: [2.5, -1.5], chock: [1.5, 0], harpun: [1, 1], raket: [0.6, 2], kulspruta: [0.5, 1.8], kanon: [0.15, 1.6],
   flamma: [0.6, 1.0], laser: [0.3, 1.4], frys: [0.6, 1.0], bowling: [0.8, 1.0], lim: [2.0, -1.2], tornado: [0.2, 1.6], krymp: [0.6, 0.8],
-  fyrverkeri: [0.8, 0.8], skold: [1.5, 0.3], kanonkula: [0.1, 1.8] };
+  fyrverkeri: [0.8, 0.8], skold: [1.5, 0.3], kanonkula: [0.1, 1.8], minigun: [0.15, 1.5] };
 const PT = { RAKET: 1, MINA: 2, OLJA: 3, KROK: 4, GRANAT: 5, GLASS: 6, BANAN: 7, V2: 8, SPIK: 9, BAR: 10, BOWL: 11, LIM: 12, TORN: 13, FYR: 14 };
 const BEAMS = ['laser', 'frys', 'krymp'], BEAM_COL = [0xff3b4b, 0x9fe8ff, 0xc77dff];   // strålarnas färger
 const FW_COL = [0xff3b6b, 0xffd21f, 0x5bff7a, 0x2bd6e8, 0xb06aff, 0xff8a2a];
@@ -204,7 +206,11 @@ export class Weapons {
       if (c.wrecked) { c.weapon = null; c.rollT = 0; }
       if (c.brain && c.weapon) c.veh.input.fire = ph === 'race' && !c.hidden && this.botWants(c, dt) ? 1 : 0;
       c.firing = !!(live && c.weapon && WEAPONS[c.weapon.id].gun && c.veh.input.fire && !c.wrecked && !c.hidden);
-      if (live && c.weapon && c.veh.input.fire && !c.wrecked && !c.hidden && !(c.fireCD > 0)) this.fire(c);   // OBS: undefined för nyss anslutna
+      // miniguns pipor varvar upp (0,35 s) medan F hålls och ner (0,8 s) när den släpps — skjuter först när de snurrar fullt
+      if (c.weapon && WEAPONS[c.weapon.id].spin) c.mgSpin = c.firing ? Math.min(1, (c.mgSpin || 0) + dt / 0.35) : Math.max(0, (c.mgSpin || 0) - dt / 0.8);
+      else if (c.mgSpin) c.mgSpin = Math.max(0, c.mgSpin - dt / 0.8);
+      const spun = !(c.weapon && WEAPONS[c.weapon.id].spin) || c.mgSpin >= 1;
+      if (live && c.weapon && c.veh.input.fire && !c.wrecked && !c.hidden && !(c.fireCD > 0) && spun) this.fire(c);   // OBS: undefined för nyss anslutna
     }
     for (const c of g.cars) if (c.ballT > 0) this.cannonball(c, dt);
     for (const p of this.proj) this.stepProj(p, dt, now);
@@ -215,6 +221,7 @@ export class Weapons {
     const id = c.weapon.id;
     c.holdT = (c.holdT || 0) + dt;
     if (id === 'kulspruta' || id === 'kanon') return !!this.target(c, 0.988, 80, 3);
+    if (id === 'minigun') return !!this.target(c, 0.97, 85, 3);
     if (id === 'raket') return !!this.target(c, 0.92, 100, 6);
     if (id === 'harpun') return !!this.target(c, 0.94, 70, 12);
     if (id === 'flamma') return !!this.target(c, 0.93, 12, 1);
@@ -246,7 +253,7 @@ export class Weapons {
     const w = c.weapon, W = WEAPONS[w.id];
     c.holdT = 0;
     switch (w.id) {
-      case 'kulspruta': case 'kanon': this.shoot(c, w.id); c.fireCD = 1 / W.rate; break;
+      case 'kulspruta': case 'kanon': case 'minigun': this.shoot(c, w.id); c.fireCD = 1 / W.rate; break;
       case 'raket': this.spawn(c, PT.RAKET); c.fireCD = 0.45; break;
       case 'minor': this.spawn(c, PT.MINA); c.fireCD = 0.35; break;
       case 'olja': this.spawn(c, PT.OLJA); c.fireCD = 0.5; break;
@@ -299,7 +306,7 @@ export class Weapons {
       if (!best.gunHitMsgT || g.time - best.gunHitMsgT > 3) { best.gunHitMsgT = g.time; g.notify(best, `${W.ikon} ${c.name} skjuter på dig!`, 'bad'); }
     }
     this.tracer(o, d, bt, id === 'kanon', best || tw >= 0);
-    this.gunSound(c, id);
+    if (!W.spin) this.gunSound(c, id);                              // miniguns ljud är en egen, ihållande röst
   }
   gunSound(c, id) {
     const g = this.g;
@@ -1012,6 +1019,7 @@ export class Weapons {
         const id = c.wcode > 0 ? WIDS[c.wcode - 1] : null;
         if (!c.firing || !id || !WEAPONS[id].gun || c.hidden) { c.cliAcc = 0; continue; }
         if (WEAPONS[id].flame) { this.flameFx(c); continue; }
+        if (WEAPONS[id].spin && (c.mgSpin || 0) < 1) { c.cliAcc = 0; continue; }
         c.cliAcc = (c.cliAcc || 0) + dt * WEAPONS[id].rate;
         while (c.cliAcc >= 1) {
           c.cliAcc -= 1;
@@ -1025,7 +1033,7 @@ export class Weapons {
           const tw = this.rayWorld(o, d, bt);
           if (tw >= 0 && tw < bt) bt = tw;
           this.tracer(o, d, bt, id === 'kanon', hit || tw >= 0);
-          this.gunSound(c, id);
+          if (!WEAPONS[id].spin) this.gunSound(c, id);
         }
       }
     }
@@ -1067,6 +1075,16 @@ export class Weapons {
     for (const [id, v] of this.pview) if (!seen.has(id)) { this.grp.remove(v.obj); v.dispose?.(); this.pview.delete(id); }
     // vapnet syns på taket (kulspruta/kanon) och mynningsflamman när det skjuts
     for (const c of g.cars) this.gunMesh(c);
+    // miniguns ljud: den närmaste som varvar/skjuter (gästen räknar själv upp pipan efter skjutflaggan)
+    let mgL = 0, mgS = 0, mgF = 0;
+    for (const c of g.cars) {
+      const id = g.mode === 'client' ? (c.wcode > 0 ? WIDS[c.wcode - 1] : null) : c.weapon?.id;
+      if (g.mode === 'client') c.mgSpin = id === 'minigun' && c.firing ? Math.min(1, (c.mgSpin || 0) + dt / 0.35) : Math.max(0, (c.mgSpin || 0) - dt / 0.8);
+      if (!(c.mgSpin > 0) || c.hidden) continue;
+      const near = c === g.me ? 1 : g.me ? Math.max(0, 1 - g.me.veh.pos.distanceTo(c.veh.pos) / 140) ** 1.3 : 0.4;
+      if (near > mgL) { mgL = near; mgS = c.mgSpin; mgF = c.firing && c.mgSpin >= 1 ? 1 : 0; }
+    }
+    g.audio?.minigun?.(mgL, mgS, mgF);
   }
 
   cliProj(now) {
@@ -1228,14 +1246,25 @@ export class Weapons {
       const barrel = new THREE.Mesh(new THREE.CylinderGeometry(big ? 0.07 : 0.045, big ? 0.07 : 0.045, big ? 1.4 : 1.1, 10).rotateX(Math.PI / 2), M.steel);
       barrel.position.z = big ? -0.85 : -0.7; obj.add(barrel);
       if (big) { const brake = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 10).rotateX(Math.PI / 2), M.gunDark); brake.position.z = -1.55; obj.add(brake); }
+      let rot = null;
+      if (want === 'minigun') {
+        // sex pipor runt en axel + två ringar — snurrar med pipan
+        barrel.visible = false;
+        rot = new THREE.Group(); rot.position.z = -0.75; obj.add(rot);
+        for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2, b = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.3, 8).rotateX(Math.PI / 2), M.steel); b.position.set(Math.cos(a) * 0.09, Math.sin(a) * 0.09, 0); rot.add(b); }
+        for (const z of [-0.5, 0.2]) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.03, 6, 14), M.gunDark); r.position.z = z; rot.add(r); }
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.3, 14), M.gunDark); drum.rotation.z = Math.PI / 2; drum.position.set(0.28, -0.02, 0.15); obj.add(drum);
+      }
       const box = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.25), M.gunDark); box.position.set(0.22, -0.02, 0.05); obj.add(box);
       const flash = new THREE.Mesh(new THREE.ConeGeometry(big ? 0.22 : 0.15, big ? 0.7 : 0.5, 8, 1, true).rotateX(-Math.PI / 2), want === 'flamma' ? M.fireM : M.flash);
       flash.position.z = big ? -1.95 : -1.5; obj.add(flash);
       obj.position.set(0, T.colY + T.half.y + 0.16, -T.half.z * 0.05);
       c.view.group.add(obj);
-      c.gun = { id: want, obj, flash, parent: c.view.group };
+      if (want === 'minigun') { flash.position.z = -1.55; flash.scale.setScalar(1.4); }
+      c.gun = { id: want, obj, flash, parent: c.view.group, rot };
     }
-    c.gun.flash.visible = !!c.firing && Math.random() < 0.7;
+    if (c.gun.rot) c.gun.rot.rotation.z += (c.mgSpin || 0) * 0.016 * 70;          // piporna snurrar
+    c.gun.flash.visible = !!c.firing && (!c.gun.rot || c.mgSpin >= 1) && Math.random() < 0.85;
     if (c.gun.flash.visible) c.gun.flash.scale.setScalar(0.7 + Math.random() * 0.6);
   }
 

@@ -4,8 +4,8 @@
 // step(): tåget knuffar bilar det träffar, klaffarna är riktiga rörliga kroppar och den som kör ner i
 // floden när bron är uppe plaskar i och kommer tillbaka före bron.
 import * as THREE from 'three';
-import { CONF } from './config.js?v=33';
-import { GROUP_WORLD, canvasTex, signTex, panelTex, colorGeo, mergeColored, barGeo, planeOnRoad } from './world.js?v=33';
+import { CONF } from './config.js?v=34';
+import { GROUP_WORLD, canvasTex, signTex, panelTex, colorGeo, mergeColored, barGeo, planeOnRoad } from './world.js?v=34';
 
 const DT = CONF.DT;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };

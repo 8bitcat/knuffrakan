@@ -32,6 +32,7 @@ const SET = {
   fyrverkeri: { b: [35, 0, 0], me: 0, hold: 120, wait: 1500 },
   skold: { b: [0, 4, 0], me: 0, hold: 120, wait: 600 },
   kanonkula: { b: [40, 0, 0], me: 12, hold: 120, wait: 2500 },
+  minigun: { b: [30, 0, 0], me: 0, hold: 2500, wait: 300 },
 };
 for (const id of which) {
   const S = SET[id];
@@ -47,7 +48,7 @@ for (const id of which) {
     me.health = 100; me.ghostT = 0; me.veh.setGhost(false); me.weapon = null; me.rollT = 0;
     g.weapons.clearProj();
     g.placeCar(me, s0, 0, S.me); g.placeCar(B, s0 + S.b[0], S.b[1], S.b[2]);
-    me.weapon = { id, ammo: { raket: 3, minor: 3, kulspruta: 60, kanon: 80, flamma: 45 }[id] || 1 };
+    me.weapon = { id, ammo: { raket: 3, minor: 3, kulspruta: 60, kanon: 80, flamma: 45, minigun: 320 }[id] || 1 };
     window.__s = { bpos: B.veh.pos.clone(), mev: me.veh.speed, ammo: me.weapon.ammo };
   }, [id, S]);
   await page.waitForTimeout(300);

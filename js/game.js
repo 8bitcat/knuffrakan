@@ -1,24 +1,24 @@
 // Spelet: fysikvärlden, bilarna, racet, effekterna och renderingen.
 import * as THREE from 'three';
-import { CONF, BOT_NAMES, TITLES } from './config.js?v=33';
-import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=33';
-import { themeOf } from './themes.js?v=33';
-import { LAVA_IN } from './world.js?v=33';
-import { buildWorld, gridSlots } from './world.js?v=33';
-import { createScene, ChaseCam } from './scene.js?v=33';
-import { makeCarView } from './vehicles3d.js?v=33';
-import { typeOf } from './vtypes.js?v=33';
-import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=33';
-import { makeLivery, randomSpec } from './livery.js?v=33';
-import { Vehicle, CP } from './vehicle.js?v=33';
-import { BotBrain } from './ai.js?v=33';
-import { Race } from './race.js?v=33';
-import { FX, Trails } from './fx.js?v=33';
-import { NameTag, SpeedPlate } from './tags.js?v=33';
-import { RemoteVeh, carInfo } from './net.js?v=33';
-import { Weapons } from './weapons.js?v=33';
-import { TrackEvents } from './events.js?v=33';
-import { newGP, shuffledTracks, award, Podium } from './gp.js?v=33';
+import { CONF, BOT_NAMES, TITLES } from './config.js?v=34';
+import { buildTrack, trackDef, F_GAP, F_TUNNEL, F_LAVA } from './track.js?v=34';
+import { themeOf } from './themes.js?v=34';
+import { LAVA_IN } from './world.js?v=34';
+import { buildWorld, gridSlots } from './world.js?v=34';
+import { createScene, ChaseCam } from './scene.js?v=34';
+import { makeCarView } from './vehicles3d.js?v=34';
+import { typeOf } from './vtypes.js?v=34';
+import { randomGear, cleanGear, mountOf, loaderPose } from './gear.js?v=34';
+import { makeLivery, randomSpec } from './livery.js?v=34';
+import { Vehicle, CP } from './vehicle.js?v=34';
+import { BotBrain } from './ai.js?v=34';
+import { Race } from './race.js?v=34';
+import { FX, Trails } from './fx.js?v=34';
+import { NameTag, SpeedPlate } from './tags.js?v=34';
+import { RemoteVeh, carInfo } from './net.js?v=34';
+import { Weapons } from './weapons.js?v=34';
+import { TrackEvents } from './events.js?v=34';
+import { newGP, shuffledTracks, award, Podium } from './gp.js?v=34';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _f = {};
 const HEAL0 = new THREE.Color(0x7dff9a), HEAL1 = new THREE.Color(0xffffff);   // ambulansens lagning (gröna gnistor)
@@ -767,12 +767,20 @@ export class Game {
         const rx = b.pos.x - a.pos.x, ry = b.pos.y - a.pos.y, rz = b.pos.z - a.pos.z;
         const ahead = rx * a.fwd.x + ry * a.fwd.y + rz * a.fwd.z - L, lx = rx * a.right.x + ry * a.right.y + rz * a.right.z;
         if (ahead < -b.T.half.z || ahead > 16 || Math.abs(ry) > 4 || Math.abs(lx) > 1.0 + Math.max(0, ahead) * 0.16 + b.T.half.x) continue;
-        const f = k * (1 - 0.45 * Math.max(0, ahead) / 16), m = b.T.mass;
-        const acc = Math.min(18, 26000 * f / m), sd = Math.sign(lx) || (Math.random() < 0.5 ? -1 : 1);
-        const jx = m * acc * (a.right.x * sd + a.fwd.x * 0.3) * dt, jz = m * acc * (a.right.z * sd + a.fwd.z * 0.3) * dt;
-        // i bakvagnen: bilen vrids och sladdar
-        b.applyJ(jx, m * acc * 0.08 * dt, jz, b.pos.x - b.fwd.x * b.T.half.z * 0.6, b.pos.y, b.pos.z - b.fwd.z * b.T.half.z * 0.6);
-        b.slip(0.25, 1 - 0.7 * f);
+        // mycket starkare nära munstycket (1 nära … 0,15 längst ut), tunga fordon rubbas mindre
+        const near = 1 - Math.max(0, ahead) / 16, f = k * (0.15 + 0.85 * near * near), m = b.T.mass;
+        const acc = Math.min(55, 82000 * f / m), sd = Math.sign(lx) || (Math.random() < 0.5 ? -1 : 1);
+        const jx = m * acc * (a.right.x * sd + a.fwd.x * 0.15) * dt, jz = m * acc * (a.right.z * sd + a.fwd.z * 0.15) * dt;
+        // mest en sidoknuff i mitten (bilen glider undan åt sidan), lite i bakvagnen (den vrids)
+        b.applyJ(jx * 0.7, m * acc * 0.05 * dt, jz * 0.7, b.pos.x, b.pos.y, b.pos.z);
+        b.applyJ(jx * 0.3, 0, jz * 0.3, b.pos.x - b.fwd.x * b.T.half.z * 0.6, b.pos.y, b.pos.z - b.fwd.z * b.T.half.z * 0.6);
+        // första träffen: en rejäl sidosmäll (störst nära) — högst var 0,8 s per bil
+        if (!(B.waterKickT > this.time)) {
+          B.waterKickT = this.time + 0.8;
+          const kick = m * 8 * near * k * Math.min(1, 2600 / m) ** 0.5;
+          b.applyJ(a.right.x * sd * kick, m * 0.6 * near, a.right.z * sd * kick, b.pos.x, b.pos.y, b.pos.z);
+        }
+        b.slip(0.25, 1 - 0.75 * f);
         if (f > 0.35) b.spinT = Math.max(b.spinT, 0.5);
         B.health -= 2.5 * f * dt / b.T.armor; B.lastDmgT = this.simT; B.lastHitBy = A; B.lastHitT = this.time;
         if (!B.waterMsgT || this.time - B.waterMsgT > 3) {
